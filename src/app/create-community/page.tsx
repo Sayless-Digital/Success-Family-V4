@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Upload, Check, Building2, Package } from "lucide-react"
+import { ArrowLeft, Upload, Check, Building2, Package, Copy, CreditCard, FileText } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { supabase } from "@/lib/supabase"
 import type { SubscriptionPlan, BankAccount, BillingCycle } from "@/types"
 
@@ -46,10 +48,17 @@ export default function CreateCommunityPage() {
     }
   }, [user])
 
+  // Auto-select bank account if only one available
+  useEffect(() => {
+    if (bankAccounts.length === 1 && !selectedBankAccount) {
+      setSelectedBankAccount(bankAccounts[0])
+    }
+  }, [bankAccounts, selectedBankAccount])
+
   const fetchData = async () => {
     try {
       const [plansRes, bankAccountsRes] = await Promise.all([
-        supabase.from('subscription_plans').select('*').eq('is_active', true).order('monthly_price'),
+        supabase.from('subscription_plans').select('*').eq('is_active', true).order('sort_order').order('created_at'),
         supabase.from('bank_accounts').select('*').eq('is_active', true)
       ])
 
@@ -62,6 +71,15 @@ export default function CreateCommunityPage() {
       console.error('Error fetching data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      // You could add a toast notification here if needed
+    } catch (err) {
+      console.error('Failed to copy text: ', err)
     }
   }
 
@@ -118,40 +136,98 @@ export default function CreateCommunityPage() {
     setSubmitting(true)
 
     try {
+      console.log('Starting community creation process...')
+      console.log('User:', user.id)
+      console.log('User email:', user.email)
+      console.log('Selected plan:', selectedPlan.id)
+      console.log('Selected bank account:', selectedBankAccount.id)
+      console.log('Receipt file:', receiptFile.name)
+      console.log('Community name:', communityName)
+      
+      // Check authentication status
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      console.log('Current session:', session?.user?.id)
+      console.log('Session error:', sessionError)
+      console.log('Session user ID type:', typeof session?.user?.id)
+      console.log('Auth context user ID:', user.id)
+      console.log('Auth context user ID type:', typeof user.id)
+      console.log('Session and auth context match:', session?.user?.id === user.id)
+
+      // Test database access with current session
+      console.log('Testing database access...')
+      const { data: testData, error: testError } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('id', user.id)
+        .single()
+      
+      console.log('Test query result:', testData)
+      console.log('Test query error:', testError)
+      
+      if (testError) {
+        console.error('Database access test failed:', testError)
+        throw new Error(`Database access failed: ${testError.message}`)
+      }
+
       // Upload receipt
       setUploadProgress(30)
+      console.log('Uploading receipt...')
       const receiptUrl = await uploadReceipt()
+      console.log('Receipt uploaded successfully:', receiptUrl)
       
       // Generate slug
       setUploadProgress(50)
+      console.log('Generating slug...')
       const { data: slugData, error: slugError } = await supabase
         .rpc('generate_community_slug', { community_name: communityName })
       
-      if (slugError) throw slugError
+      if (slugError) {
+        console.error('Slug generation error:', slugError)
+        throw slugError
+      }
       const slug = slugData as string
+      console.log('Slug generated:', slug)
 
       // Calculate amount
       const amount = billingCycle === 'monthly' ? selectedPlan.monthly_price : selectedPlan.annual_price
+      console.log('Amount calculated:', amount)
 
       // Create community
       setUploadProgress(70)
+      console.log('Creating community...')
+      
+      const communityData = {
+        name: communityName,
+        slug,
+        description: communityDescription || null,
+        owner_id: user.id,
+        plan_id: selectedPlan.id,
+        billing_cycle: billingCycle,
+      }
+      
+      console.log('Community data to insert:', communityData)
+      console.log('User ID from auth context:', user.id)
+      console.log('User ID type:', typeof user.id)
+      
       const { data: community, error: communityError } = await supabase
         .from('communities')
-        .insert([{
-          name: communityName,
-          slug,
-          description: communityDescription || null,
-          owner_id: user.id,
-          plan_id: selectedPlan.id,
-          billing_cycle: billingCycle,
-        }])
+        .insert([communityData])
         .select()
         .single()
 
-      if (communityError) throw communityError
+      if (communityError) {
+        console.error('Community creation error:', communityError)
+        console.error('Community error details:', JSON.stringify(communityError, null, 2))
+        console.error('Community error message:', communityError.message)
+        console.error('Community error code:', communityError.code)
+        console.error('Community error details:', communityError.details)
+        throw communityError
+      }
+      console.log('Community created successfully:', community.id)
 
       // Create payment receipt
       setUploadProgress(90)
+      console.log('Creating payment receipt...')
       const { error: receiptError } = await supabase
         .from('payment_receipts')
         .insert([{
@@ -164,7 +240,11 @@ export default function CreateCommunityPage() {
           receipt_url: receiptUrl,
         }])
 
-      if (receiptError) throw receiptError
+      if (receiptError) {
+        console.error('Payment receipt creation error:', receiptError)
+        throw receiptError
+      }
+      console.log('Payment receipt created successfully')
 
       setUploadProgress(100)
       
@@ -174,7 +254,43 @@ export default function CreateCommunityPage() {
       }, 500)
     } catch (error) {
       console.error('Error creating community:', error)
-      alert('Failed to create community. Please try again.')
+      console.error('Error type:', typeof error)
+      console.error('Error constructor:', error?.constructor?.name)
+      
+      // Try to extract more details from the error
+      let errorMessage = 'Unknown error occurred'
+      let errorDetails = ''
+      
+      if (error instanceof Error) {
+        errorMessage = error.message
+        errorDetails = error.stack || ''
+      } else if (error && typeof error === 'object') {
+        // Handle Supabase errors
+        if ('message' in error) {
+          errorMessage = String(error.message)
+        }
+        if ('code' in error) {
+          errorDetails += `Code: ${error.code}\n`
+        }
+        if ('details' in error) {
+          errorDetails += `Details: ${error.details}\n`
+        }
+        if ('hint' in error) {
+          errorDetails += `Hint: ${error.hint}\n`
+        }
+        
+        // Try to stringify the entire error object
+        try {
+          errorDetails += `Full error: ${JSON.stringify(error, null, 2)}`
+        } catch (e) {
+          errorDetails += `Error object: ${String(error)}`
+        }
+      }
+      
+      console.error('Parsed error message:', errorMessage)
+      console.error('Parsed error details:', errorDetails)
+      
+      alert(`Failed to create community: ${errorMessage}`)
       setSubmitting(false)
       setUploadProgress(0)
     }
@@ -182,11 +298,11 @@ export default function CreateCommunityPage() {
 
   if (isLoading || loading) {
     return (
-      <div className="relative min-h-[calc(100vh-8rem)] w-full overflow-x-hidden">
+      <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
         <div className="fixed inset-0 z-0 overflow-hidden">
           <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
         </div>
-        <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-8rem)]">
+        <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-white">Loading...</div>
         </div>
       </div>
@@ -202,12 +318,12 @@ export default function CreateCommunityPage() {
     : 0
 
   return (
-    <div className="relative min-h-[calc(100vh-8rem)] w-full overflow-x-hidden">
+    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
         <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
       </div>
       
-      <div className="relative z-10 max-w-4xl mx-auto space-y-6">
+      <div className="relative z-10 space-y-6 pb-8">
         {/* Header */}
         <div className="flex items-center gap-4">
           <Button
@@ -219,25 +335,46 @@ export default function CreateCommunityPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-white">Create Your Community</h1>
-            <p className="text-white/80 mt-1">
-              Step {step} of 3
-            </p>
+            <h1 className="text-xl sm:text-3xl font-bold text-white">Create Your Community</h1>
           </div>
         </div>
 
         {/* Progress Bar */}
-        <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-sm ${step >= 1 ? 'text-white' : 'text-white/40'}`}>
-              1. Choose Plan
-            </span>
-            <span className={`text-sm ${step >= 2 ? 'text-white' : 'text-white/40'}`}>
-              2. Community Details
-            </span>
-            <span className={`text-sm ${step >= 3 ? 'text-white' : 'text-white/40'}`}>
-              3. Payment
-            </span>
+        <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                step >= 1 ? 'bg-primary text-white' : 'bg-white/20 text-white/60'
+              }`}>
+                <Package className="h-4 w-4 sm:hidden" />
+                <span className="text-sm font-semibold hidden sm:block">1</span>
+              </div>
+              <span className={`text-xs sm:text-sm hidden sm:block ${step >= 1 ? 'text-white' : 'text-white/40'}`}>
+                Choose Plan
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                step >= 2 ? 'bg-primary text-white' : 'bg-white/20 text-white/60'
+              }`}>
+                <FileText className="h-4 w-4 sm:hidden" />
+                <span className="text-sm font-semibold hidden sm:block">2</span>
+              </div>
+              <span className={`text-xs sm:text-sm hidden sm:block ${step >= 2 ? 'text-white' : 'text-white/40'}`}>
+                Community Details
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                step >= 3 ? 'bg-primary text-white' : 'bg-white/20 text-white/60'
+              }`}>
+                <CreditCard className="h-4 w-4 sm:hidden" />
+                <span className="text-sm font-semibold hidden sm:block">3</span>
+              </div>
+              <span className={`text-xs sm:text-sm hidden sm:block ${step >= 3 ? 'text-white' : 'text-white/40'}`}>
+                Payment
+              </span>
+            </div>
           </div>
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
             <div 
@@ -250,45 +387,91 @@ export default function CreateCommunityPage() {
         {/* Step 1: Select Plan */}
         {step === 1 && (
           <div className="space-y-4">
-            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Choose Your Plan</h2>
+            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 sm:p-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-6">Choose Your Plan</h2>
               
               {plans.length === 0 ? (
                 <p className="text-white/60">No plans available. Please contact support.</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {plans.map((plan) => (
-                    <button
-                      key={plan.id}
-                      onClick={() => setSelectedPlan(plan)}
-                      className={`rounded-lg p-6 text-left transition-all ${
-                        selectedPlan?.id === plan.id
-                          ? 'bg-primary/20 border-2 border-primary'
-                          : 'bg-white/5 border-2 border-transparent hover:bg-white/10'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <Package className="h-8 w-8 text-white" />
-                        {selectedPlan?.id === plan.id && (
-                          <Check className="h-5 w-5 text-primary" />
-                        )}
-                      </div>
-                      <h3 className="text-lg font-bold text-white mb-2">{plan.name}</h3>
-                      {plan.description && (
-                        <p className="text-white/60 text-sm mb-3">{plan.description}</p>
-                      )}
-                      <div className="space-y-1 text-sm text-white/80">
-                        <p>Max {plan.max_tree} members</p>
-                        <p className="font-semibold text-white">
-                          TTD ${plan.monthly_price}/month
-                        </p>
-                        <p className="text-white/60">
-                          or TTD ${plan.annual_price}/year
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                <Tabs value={billingCycle} onValueChange={(value) => setBillingCycle(value as BillingCycle)} className="w-full">
+                  <div className="flex justify-center">
+                    <TabsList className="inline-flex">
+                      <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                      <TabsTrigger value="annual">Annual</TabsTrigger>
+                    </TabsList>
+                  </div>
+                  
+                  <TabsContent value="monthly" className="mt-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {plans.map((plan) => (
+                        <button
+                          key={plan.id}
+                          onClick={() => setSelectedPlan(plan)}
+                          className={`group relative rounded-xl p-6 sm:p-8 text-left transition-all duration-300 transform hover:scale-105 cursor-pointer ${
+                            selectedPlan?.id === plan.id
+                              ? 'bg-gradient-to-br from-primary/30 to-primary/10 border-2 border-primary shadow-lg shadow-primary/20'
+                              : 'bg-gradient-to-br from-white/10 to-white/5 border-2 border-transparent hover:bg-gradient-to-br hover:from-white/15 hover:to-white/10 hover:border-white/20 hover:shadow-lg hover:shadow-white/10'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2 mb-6">
+                            <h3 className="text-lg sm:text-xl font-bold text-white flex-1">{plan.name}</h3>
+                            {plan.tags && plan.tags.length > 0 && (
+                              <span className="px-2 py-1 rounded-md bg-primary/30 text-white text-xs font-semibold">
+                                {plan.tags[0]}
+                              </span>
+                            )}
+                          </div>
+                          {plan.description && (
+                            <p className="text-white/70 text-sm sm:text-base mb-4 leading-relaxed">{plan.description}</p>
+                          )}
+                          <div className="space-y-2">
+                            <p className="text-2xl sm:text-3xl font-bold text-white">
+                              TTD ${plan.monthly_price}
+                              <span className="text-base sm:text-lg font-normal text-white/60">/month</span>
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="annual" className="mt-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {plans.map((plan) => (
+                        <button
+                          key={plan.id}
+                          onClick={() => setSelectedPlan(plan)}
+                          className={`group relative rounded-xl p-6 sm:p-8 text-left transition-all duration-300 transform hover:scale-105 cursor-pointer ${
+                            selectedPlan?.id === plan.id
+                              ? 'bg-gradient-to-br from-primary/30 to-primary/10 border-2 border-primary shadow-lg shadow-primary/20'
+                              : 'bg-gradient-to-br from-white/10 to-white/5 border-2 border-transparent hover:bg-gradient-to-br hover:from-white/15 hover:to-white/10 hover:border-white/20 hover:shadow-lg hover:shadow-white/10'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2 mb-6">
+                            <h3 className="text-lg sm:text-xl font-bold text-white flex-1">{plan.name}</h3>
+                            {plan.tags && plan.tags.length > 0 && (
+                              <span className="px-2 py-1 rounded-md bg-primary/30 text-white text-xs font-semibold">
+                                {plan.tags[0]}
+                              </span>
+                            )}
+                          </div>
+                          {plan.description && (
+                            <p className="text-white/70 text-sm sm:text-base mb-4 leading-relaxed">{plan.description}</p>
+                          )}
+                          <div className="space-y-2">
+                            <p className="text-2xl sm:text-3xl font-bold text-white">
+                              TTD ${plan.annual_price}
+                              <span className="text-base sm:text-lg font-normal text-white/60">/year</span>
+                            </p>
+                            <p className="text-sm font-medium text-white bg-primary/20 px-2 py-1 rounded-md inline-block">
+                              2 months free
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </TabsContent>
+                </Tabs>
               )}
             </div>
             
@@ -296,7 +479,7 @@ export default function CreateCommunityPage() {
               <Button
                 onClick={() => setStep(2)}
                 disabled={!selectedPlan}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
               >
                 Continue
               </Button>
@@ -307,8 +490,8 @@ export default function CreateCommunityPage() {
         {/* Step 2: Community Details */}
         {step === 2 && (
           <div className="space-y-4">
-            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6 space-y-4">
-              <h2 className="text-xl font-semibold text-white mb-4">Community Details</h2>
+            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 sm:p-6 space-y-4">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-4">Community Details</h2>
               
               <div>
                 <Label htmlFor="name" className="text-white">Community Name *</Label>
@@ -334,66 +517,20 @@ export default function CreateCommunityPage() {
                 />
               </div>
               
-              <div>
-                <Label className="text-white">Billing Cycle *</Label>
-                <div className="grid grid-cols-2 gap-4 mt-2">
-                  <button
-                    onClick={() => setBillingCycle('monthly')}
-                    className={`rounded-lg p-4 text-left transition-all ${
-                      billingCycle === 'monthly'
-                        ? 'bg-primary/20 border-2 border-primary'
-                        : 'bg-white/5 border-2 border-transparent hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-white">Monthly</span>
-                      {billingCycle === 'monthly' && (
-                        <Check className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <p className="text-2xl font-bold text-white">
-                      TTD ${selectedPlan?.monthly_price.toFixed(2)}
-                    </p>
-                    <p className="text-white/60 text-sm">per month</p>
-                  </button>
-                  
-                  <button
-                    onClick={() => setBillingCycle('annual')}
-                    className={`rounded-lg p-4 text-left transition-all ${
-                      billingCycle === 'annual'
-                        ? 'bg-primary/20 border-2 border-primary'
-                        : 'bg-white/5 border-2 border-transparent hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-white">Annual</span>
-                      {billingCycle === 'annual' && (
-                        <Check className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <p className="text-2xl font-bold text-white">
-                      TTD ${selectedPlan?.annual_price.toFixed(2)}
-                    </p>
-                    <p className="text-white/60 text-sm">
-                      Save TTD ${selectedPlan ? ((selectedPlan.monthly_price * 12) - selectedPlan.annual_price).toFixed(2) : 0}
-                    </p>
-                  </button>
-                </div>
-              </div>
             </div>
             
-            <div className="flex justify-between">
+            <div className="flex flex-col sm:flex-row justify-between gap-3">
               <Button
                 variant="outline"
                 onClick={() => setStep(1)}
-                className="border-white/20 text-white hover:bg-white/10"
+                className="border-white/20 text-white hover:bg-white/10 w-full sm:w-auto"
               >
                 Back
               </Button>
               <Button
                 onClick={() => setStep(3)}
                 disabled={!communityName.trim()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
               >
                 Continue to Payment
               </Button>
@@ -404,28 +541,8 @@ export default function CreateCommunityPage() {
         {/* Step 3: Payment */}
         {step === 3 && (
           <div className="space-y-4">
-            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6 space-y-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Payment Details</h2>
-              
-              {/* Order Summary */}
-              <div className="rounded-lg bg-white/5 p-4 space-y-2">
-                <h3 className="font-semibold text-white mb-3">Order Summary</h3>
-                <div className="flex justify-between text-white/80">
-                  <span>Community: {communityName}</span>
-                </div>
-                <div className="flex justify-between text-white/80">
-                  <span>Plan: {selectedPlan?.name}</span>
-                </div>
-                <div className="flex justify-between text-white/80">
-                  <span>Billing: {billingCycle === 'monthly' ? 'Monthly' : 'Annual'}</span>
-                </div>
-                <div className="border-t border-white/20 pt-2 mt-2">
-                  <div className="flex justify-between text-lg font-bold text-white">
-                    <span>Total</span>
-                    <span>TTD ${price.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
+            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 sm:p-6 space-y-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-white mb-4">Payment Details</h2>
               
               {/* Bank Account Selection */}
               <div>
@@ -433,37 +550,93 @@ export default function CreateCommunityPage() {
                 {bankAccounts.length === 0 ? (
                   <p className="text-white/60 mt-2">No bank accounts available. Please contact support.</p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 mt-2">
-                    {bankAccounts.map((account) => (
-                      <button
-                        key={account.id}
-                        onClick={() => setSelectedBankAccount(account)}
-                        className={`rounded-lg p-4 text-left transition-all ${
-                          selectedBankAccount?.id === account.id
-                            ? 'bg-primary/20 border-2 border-primary'
-                            : 'bg-white/5 border-2 border-transparent hover:bg-white/10'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex gap-3">
-                            <Building2 className="h-5 w-5 text-white mt-1" />
-                            <div>
-                              <p className="font-semibold text-white">{account.account_name}</p>
-                              <p className="text-white/80 text-sm">{account.bank_name}</p>
-                              <p className="text-white/60 text-sm">
-                                {account.account_number} • {account.account_type}
-                              </p>
-                            </div>
-                          </div>
-                          {selectedBankAccount?.id === account.id && (
-                            <Check className="h-5 w-5 text-primary" />
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                  <div className="mt-2">
+                    <Select
+                      value={selectedBankAccount?.id || ""}
+                      onValueChange={(value) => {
+                        const account = bankAccounts.find(acc => acc.id === value)
+                        setSelectedBankAccount(account || null)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a bank account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.account_name} - {account.bank_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
               </div>
+
+              {/* Bank Account Details */}
+              {selectedBankAccount && (
+                <div className="rounded-lg bg-white/5 p-4 space-y-4">
+                  <h3 className="font-semibold text-white">Bank Account Details</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/80">Account Name:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">{selectedBankAccount.account_name}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copyToClipboard(selectedBankAccount.account_name)}
+                          className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/10"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/80">Bank Name:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">{selectedBankAccount.bank_name}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copyToClipboard(selectedBankAccount.bank_name)}
+                          className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/10"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/80">Account Number:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">{selectedBankAccount.account_number}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copyToClipboard(selectedBankAccount.account_number)}
+                          className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/10"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/80">Account Type:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white capitalize">{selectedBankAccount.account_type}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copyToClipboard(selectedBankAccount.account_type)}
+                          className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/10"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Receipt Upload */}
               <div>
@@ -514,19 +687,19 @@ export default function CreateCommunityPage() {
               )}
             </div>
             
-            <div className="flex justify-between">
+            <div className="flex flex-col sm:flex-row justify-between gap-3">
               <Button
                 variant="outline"
                 onClick={() => setStep(2)}
                 disabled={submitting}
-                className="border-white/20 text-white hover:bg-white/10"
+                className="border-white/20 text-white hover:bg-white/10 w-full sm:w-auto"
               >
                 Back
               </Button>
               <Button
                 onClick={handleSubmit}
                 disabled={!selectedBankAccount || !receiptFile || submitting}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
               >
                 {submitting ? 'Creating...' : 'Create Community'}
               </Button>

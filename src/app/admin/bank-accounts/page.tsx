@@ -164,12 +164,12 @@ export default function BankAccountsPage() {
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden pt-4">
+    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
         <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
       </div>
       
-      <div className="relative z-10 space-y-6 px-4 sm:px-6 lg:px-8">
+      <div className="relative z-10 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <Breadcrumb items={[{ label: "Bank Accounts", icon: Building2 }]} />

@@ -10,7 +10,7 @@ export default function Home() {
   const colorStops = useAuroraColors()
   
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] w-full overflow-x-hidden">
+    <div className="relative flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       {/* Aurora Background */}
       <div className="fixed inset-0 z-0 overflow-hidden">
         <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
@@ -18,7 +18,7 @@ export default function Home() {
       
       {/* Content */}
       <div className="relative z-10">
-        <div className="text-center space-y-6 max-w-2xl px-6 mx-auto">
+        <div className="text-center space-y-6 max-w-2xl mx-auto">
           {/* Hero Title */}
           <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
             Welcome to
@@ -35,12 +35,16 @@ export default function Home() {
 
           {/* Call to Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center pt-2">
-            <Button size="default" className="group gap-2">
-              Get Started
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            <Button size="default" className="group gap-2" asChild>
+              <a href="/create-community">
+                Create Community
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </a>
             </Button>
-            <Button size="default" variant="outline">
-              Learn More
+            <Button size="default" variant="outline" asChild>
+              <a href="/communities">
+                Explore Communities
+              </a>
             </Button>
           </div>
         </div>

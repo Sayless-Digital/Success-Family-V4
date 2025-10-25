@@ -57,9 +57,10 @@ export interface SubscriptionPlan {
   id: string
   name: string
   description?: string
-  max_tree: number
   monthly_price: number
   annual_price: number
+  tags: string[]
+  sort_order: number
   is_active: boolean
   created_at: string
   updated_at: string

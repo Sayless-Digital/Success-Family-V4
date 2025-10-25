@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS public.subscription_plans (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   description TEXT,
-  max_tree INTEGER NOT NULL CHECK (max_tree > 0),
   monthly_price DECIMAL(10, 2) NOT NULL CHECK (monthly_price >= 0),
   annual_price DECIMAL(10, 2) NOT NULL CHECK (annual_price >= 0),
   is_active BOOLEAN DEFAULT true,

@@ -19,7 +19,6 @@ interface CommunityViewProps {
     }
     plan: {
       name: string
-      max_tree: number
       monthly_price: number
       annual_price: number
     }
@@ -92,7 +91,7 @@ export default function CommunityView({
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-8rem)] w-full overflow-x-hidden">
+    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
         <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
       </div>
@@ -119,7 +118,7 @@ export default function CommunityView({
               <div className="flex items-center gap-6 text-white/60 text-sm">
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  <span>{community.members?.length || 0} / {community.plan.max_tree} members</span>
+                  <span>{community.members?.length || 0} members</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Package className="h-4 w-4" />
@@ -163,7 +162,7 @@ export default function CommunityView({
             </div>
             <p className="text-3xl font-bold text-white">{community.members?.length || 0}</p>
             <p className="text-white/60 text-sm mt-1">
-              {community.plan.max_tree - (community.members?.length || 0)} slots remaining
+              Unlimited growth potential
             </p>
           </div>
           
