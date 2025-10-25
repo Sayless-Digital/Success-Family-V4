@@ -135,6 +135,11 @@ export async function getCurrentUser() {
  */
 export async function getUserProfile(userId: string) {
   try {
+    if (!userId) {
+      console.warn("getUserProfile called with empty userId")
+      return null
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -142,11 +147,13 @@ export async function getUserProfile(userId: string) {
       .single()
 
     if (error) {
+      console.error("Error fetching user profile:", error)
       return null
     }
 
     return data
   } catch (error) {
+    console.error("Exception in getUserProfile:", error)
     return null
   }
 }

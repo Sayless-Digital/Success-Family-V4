@@ -16,7 +16,7 @@
     --muted-foreground: oklch(0.4568 0 0);
     --accent: oklch(0.9761 0 0);
     --accent-foreground: oklch(0 0 0);
-    --destructive: oklch(0.5814 0.2381 294.8265);
+    --destructive: oklch(0.6284 0.2577 29.2340);
     --destructive-foreground: oklch(1.0000 0 0);
     --border: oklch(0.9551 0 0);
     --input: oklch(0.9761 0 0);
@@ -71,8 +71,8 @@
     --muted-foreground: oklch(0.7476 0 0);
     --accent: oklch(0.3290 0 0);
     --accent-foreground: oklch(1.0000 0 0);
-    --destructive: oklch(0.6635 0.2092 298.9034);
-    --destructive-foreground: oklch(0 0 0);
+    --destructive: oklch(0.6284 0.2577 29.2340);
+    --destructive-foreground: oklch(1.0000 0 0);
     --border: oklch(0.2686 0 0);
     --input: oklch(0.3290 0 0);
     --ring: oklch(0.7476 0 0);
@@ -170,5 +170,61 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
+  }
+  
+  /* Custom Glass-Styled Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  
+  *::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 10px;
+  }
+  
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
+  }
+  
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+    background-clip: content-box;
+  }
+  
+  *::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.4);
+    background-clip: content-box;
+  }
+  
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  
+  /* Dark mode scrollbar adjustments */
+  .dark *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    background-clip: content-box;
+  }
+  
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+    background-clip: content-box;
+  }
+  
+  .dark *::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.35);
+    background-clip: content-box;
   }
 }

@@ -1,10 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { X, Home, Users, Settings, BarChart3, MessageSquare, Calendar, Shield, Database, FileText, ArrowLeft } from "lucide-react"
+import React, { useState, useEffect } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { X, Home, Users, Settings, BarChart3, MessageSquare, Calendar, Shield, Database, FileText, ArrowLeft, Building2, Package, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/components/auth-provider"
 
 interface GlobalSidebarProps {
   isOpen: boolean
@@ -27,6 +30,8 @@ const navigationItems = [
 
 const adminNavigationItems = [
   { icon: BarChart3, label: "Dashboard", href: "/admin" },
+  { icon: Building2, label: "Bank Accounts", href: "/admin/bank-accounts" },
+  { icon: Package, label: "Subscription Plans", href: "/admin/plans" },
   { icon: Users, label: "Manage Users", href: "/admin/users" },
   { icon: Shield, label: "Roles & Permissions", href: "/admin/roles" },
   { icon: Database, label: "Database", href: "/admin/database" },
@@ -36,6 +41,21 @@ const adminNavigationItems = [
 
 export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverChange, isMobile }: GlobalSidebarProps) {
   const [isHoverTriggerActive, setIsHoverTriggerActive] = useState(false)
+  const { userProfile, isLoading } = useAuth()
+  const pathname = usePathname()
+  
+  // Check if user is admin and on admin route
+  const isAdmin = React.useMemo(() => {
+    return userProfile?.role === 'admin'
+  }, [userProfile?.role])
+  
+  const isOnAdminRoute = React.useMemo(() => {
+    return pathname.startsWith('/admin')
+  }, [pathname])
+  
+  // Show admin menu only if user is admin AND on admin route
+  const showAdminMenu = isAdmin && isOnAdminRoute
+  
 
   // Notify parent when hover trigger is activated (for auto-opening)
   const handleHoverEnter = () => {
@@ -90,25 +110,64 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       >
         <div className="h-full flex flex-col">
           {/* Navigation */}
-          <nav className="flex-1 p-4 pt-6">
+          <nav className="flex-1 p-4 pt-6 overflow-y-auto">
             <ul className="space-y-2">
-              {navigationItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <li key={item.href}>
+              {showAdminMenu ? (
+                // Admin users see only admin navigation with back to site button (only on admin routes)
+                <>
+                  {/* Back to Site Button */}
+                  <li>
                     <Button
                       variant="ghost"
                       className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
                       asChild
                     >
-                      <a href={item.href}>
-                        <Icon className="h-4 w-4" />
-                        <span>{item.label}</span>
-                      </a>
+                      <Link href="/" onClick={() => isMobile && onClose()}>
+                        <LogOut className="h-4 w-4" />
+                        <span>Back to Site</span>
+                      </Link>
                     </Button>
                   </li>
-                )
-              })}
+                  
+                  {/* Admin navigation items */}
+                  {adminNavigationItems.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <li key={item.href}>
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                          asChild
+                        >
+                          <Link href={item.href} onClick={() => isMobile && onClose()}>
+                            <Icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </Button>
+                      </li>
+                    )
+                  })}
+                </>
+              ) : (
+                // Regular users see standard navigation (or admin users on non-admin routes)
+                navigationItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <li key={item.href}>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                        asChild
+                      >
+                        <Link href={item.href} onClick={() => isMobile && onClose()}>
+                          <Icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </Button>
+                    </li>
+                  )
+                })
+              )}
             </ul>
           </nav>
 

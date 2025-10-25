@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { GlobalHeader } from "./global-header"
 import { GlobalSidebar } from "./global-sidebar"
 import { cn } from "@/lib/utils"
+import { Toaster } from "sonner"
 
 interface GlobalLayoutProps {
   children: React.ReactNode
@@ -103,6 +104,22 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
           {children}
         </div>
       </main>
+      
+      <Toaster 
+        position="bottom-center"
+        toastOptions={{
+          style: {
+            background: 'rgba(255, 255, 255, 0.15)',
+            color: 'white',
+            backdropFilter: 'blur(16px)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            // Adjust position based on sidebar state
+            marginLeft: isSidebarPinned && !isMobile ? '8rem' : '0',
+          },
+        }}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { Sidebar, LogOut, Shield } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -15,6 +16,7 @@ import {
 import { cn } from "@/lib/utils"
 import { AuthDialog } from "@/components/auth-dialog"
 import { useAuth } from "@/components/auth-provider"
+import { toast } from "sonner"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -26,6 +28,14 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
   const { user, userProfile, signOut, isLoading } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
+  
+  // Memoize user initials to prevent unnecessary re-renders
+  const userInitials = React.useMemo(() => {
+    if (!userProfile) return "U"
+    const firstInitial = userProfile.first_name?.[0] || ""
+    const lastInitial = userProfile.last_name?.[0] || ""
+    return (firstInitial + lastInitial).toUpperCase() || "U"
+  }, [userProfile?.first_name, userProfile?.last_name])
 
   const handleSignInClick = () => {
     setAuthDialogTab("signin")
@@ -39,15 +49,9 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
 
   const handleSignOut = async () => {
     await signOut()
+    toast.success("Signed out successfully!")
   }
 
-  // Get user initials for avatar fallback
-  const getUserInitials = () => {
-    if (!userProfile) return "U"
-    const firstInitial = userProfile.first_name?.[0] || ""
-    const lastInitial = userProfile.last_name?.[0] || ""
-    return (firstInitial + lastInitial).toUpperCase() || "U"
-  }
 
   return (
     <>
@@ -68,7 +72,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
           )}
           
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-md flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
+            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
               SF
             </div>
             <span className="font-semibold text-white hidden sm:block">
@@ -79,7 +83,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
 
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
         <div className="flex items-center gap-2">
-          {!isLoading && !user ? (
+          {isLoading ? (
+            // Show loading state to prevent flash
+            <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+          ) : !user ? (
             <>
               <Button
                 variant="ghost"
@@ -114,13 +121,15 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                 Sign Up
               </Button>
             </>
-          ) : user && !isLoading ? (
+          ) : user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full" disabled={!userProfile}>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
-                    <AvatarFallback className="text-xs">{getUserInitials()}</AvatarFallback>
+                    <AvatarFallback className="text-xs">
+                      {userProfile ? userInitials : "..."}
+                    </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
@@ -141,10 +150,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <a href="/admin" className="cursor-pointer">
+                      <Link href="/admin" className="cursor-pointer">
                         <Shield className="mr-2 h-4 w-4" />
                         <span>Admin Dashboard</span>
-                      </a>
+                      </Link>
                     </DropdownMenuItem>
                   </>
                 )}

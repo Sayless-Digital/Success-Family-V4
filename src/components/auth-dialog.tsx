@@ -14,8 +14,8 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { signIn, signUp } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Mail, ArrowRight } from "lucide-react"
-import Orb from "@/components/Orb"
+import { CheckCircle2, Mail, ArrowRight, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 interface AuthDialogProps {
   open: boolean
@@ -27,7 +27,6 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
   const [activeTab, setActiveTab] = React.useState(defaultTab)
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [success, setSuccess] = React.useState<string | null>(null)
   const [showSignUpSuccess, setShowSignUpSuccess] = React.useState(false)
 
   // Update active tab when defaultTab changes
@@ -35,7 +34,6 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     if (open) {
       setActiveTab(defaultTab)
       setError(null)
-      setSuccess(null)
       setShowSignUpSuccess(false)
     }
   }, [open, defaultTab])
@@ -58,7 +56,6 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     e.preventDefault()
     setIsLoading(true)
     setError(null)
-    setSuccess(null)
 
     const result = await signIn({
       email: signInData.email,
@@ -68,13 +65,11 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     setIsLoading(false)
 
     if (result.success) {
-      setSuccess("Successfully signed in!")
-      setTimeout(() => {
-        onOpenChange(false)
-        // Reset form
-        setSignInData({ email: "", password: "" })
-        setSuccess(null)
-      }, 1000)
+      // Close dialog immediately without showing success message
+      onOpenChange(false)
+      // Reset form
+      setSignInData({ email: "", password: "" })
+      toast.success("Welcome back! Signed in successfully!")
     } else {
       setError(result.error?.message || "Failed to sign in")
     }
@@ -84,7 +79,6 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     e.preventDefault()
     setIsLoading(true)
     setError(null)
-    setSuccess(null)
 
     const result = await signUp({
       email: signUpData.email,
@@ -98,6 +92,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     if (result.success) {
       // Show success screen instead of auto-closing
       setShowSignUpSuccess(true)
+      toast.success("Account created! Check your email.")
     } else {
       setError(result.error?.message || "Failed to sign up")
     }
@@ -111,7 +106,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] p-6">
         {showSignUpSuccess ? (
           // Success Screen
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center space-y-6">
@@ -167,17 +162,26 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
         ) : (
           // Regular Auth Forms
           <>
-            <DialogHeader>
-              <DialogTitle>Welcome to Success Family</DialogTitle>
-              <DialogDescription>
-                Sign in to your account or create a new one to get started.
-              </DialogDescription>
+            <DialogHeader className="text-center space-y-4 px-0">
+              {/* Site Logo */}
+              <div className="flex justify-center">
+                <div className="h-12 w-12 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-lg border border-white/20 shadow-lg backdrop-blur-md">
+                  SF
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-center">
+                <DialogTitle className="text-2xl font-semibold text-center">Welcome back</DialogTitle>
+                <DialogDescription className="text-base text-muted-foreground text-center">
+                  Sign in to your account or create a new one
+                </DialogDescription>
+              </div>
             </DialogHeader>
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "signin" | "signup")} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="signin">Sign In</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-1 h-auto">
+            <TabsTrigger value="signin" className="data-[state=active]:bg-white/20 data-[state=active]:text-white px-6 py-2">Sign In</TabsTrigger>
+            <TabsTrigger value="signup" className="data-[state=active]:bg-white/20 data-[state=active]:text-white px-6 py-2">Sign Up</TabsTrigger>
           </TabsList>
 
           {/* Sign In Tab */}
@@ -215,18 +219,11 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                 </div>
               )}
 
-              {success && (
-                <div className="text-sm text-green-600">
-                  {success}
-                </div>
-              )}
-
               <Button type="submit" className="w-full relative" disabled={isLoading}>
                 {isLoading ? (
                   <span className="flex items-center gap-2 justify-center">
-                    <span className="w-5 h-5 inline-block">
-                      <Orb hue={270} hoverIntensity={0} rotateOnHover={false} forceHoverState={true} />
-                    </span>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Signing in...</span>
                   </span>
                 ) : "Sign In"}
               </Button>
@@ -300,18 +297,11 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                 </div>
               )}
 
-              {success && (
-                <div className="text-sm text-green-600">
-                  {success}
-                </div>
-              )}
-
               <Button type="submit" className="w-full relative" disabled={isLoading}>
                 {isLoading ? (
                   <span className="flex items-center gap-2 justify-center">
-                    <span className="w-5 h-5 inline-block">
-                      <Orb hue={270} hoverIntensity={0} rotateOnHover={false} forceHoverState={true} />
-                    </span>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Creating account...</span>
                   </span>
                 ) : "Sign Up"}
               </Button>
