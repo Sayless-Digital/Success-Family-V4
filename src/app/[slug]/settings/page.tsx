@@ -22,7 +22,11 @@ export default async function CommunitySettingsPage({ params }: CommunitySetting
       description,
       owner_id,
       plan_id,
-      is_active
+      is_active,
+      pricing_type,
+      one_time_price,
+      monthly_price,
+      annual_price
     `)
     .eq('slug', slug)
     .single()

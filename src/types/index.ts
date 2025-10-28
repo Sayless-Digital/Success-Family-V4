@@ -86,6 +86,9 @@ export interface SubscriptionPlan {
   updated_at: string
 }
 
+// Community pricing types
+export type CommunityPricingType = 'free' | 'one_time' | 'recurring'
+
 // Community types
 export interface Community {
   id: string
@@ -104,6 +107,11 @@ export interface Community {
   is_active: boolean
   created_at: string
   updated_at: string
+  // Community pricing fields
+  pricing_type?: CommunityPricingType
+  one_time_price?: number
+  monthly_price?: number
+  annual_price?: number
 }
 
 // Community member types

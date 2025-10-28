@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
-import { useRouter } from "next/navigation"
-import { Receipt, Calendar, Package, DollarSign, ExternalLink, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileText, TrendingUp, CreditCard, ChevronRight, MoreVertical, ChevronDown } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Receipt, Calendar, Package, DollarSign, ExternalLink, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileText, TrendingUp, CreditCard, ChevronRight, MoreVertical, ChevronDown, Building2, Users } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { supabase } from "@/lib/supabase"
 import type { PaymentReceipt, Subscription, SubscriptionStatus } from "@/types"
 import { toast } from "sonner"
@@ -41,15 +42,20 @@ interface CommunityPayments {
 export default function BillingPage() {
   const { user, userProfile, isLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const colorStops = useAuroraColors()
   
-  const [groupedPayments, setGroupedPayments] = useState<CommunityPayments[]>([])
+  const [platformPayments, setPlatformPayments] = useState<CommunityPayments[]>([])
+  const [communityPayments, setCommunityPayments] = useState<CommunityPayments[]>([])
   const [loading, setLoading] = useState(true)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [selectedCommunity, setSelectedCommunity] = useState<CommunityPayments | null>(null)
   const [cancellationReason, setCancellationReason] = useState("")
   const [processing, setProcessing] = useState(false)
   const [expandedSubscriptions, setExpandedSubscriptions] = useState<Set<string>>(new Set())
+  
+  // Get active tab from URL, default to 'platform'
+  const activeTab = searchParams.get('tab') || 'platform'
 
   // Redirect if not logged in
   useEffect(() => {
@@ -70,9 +76,21 @@ export default function BillingPage() {
       const { data, error } = await supabase
         .from('payment_receipts')
         .select(`
-          *,
-          communities!payment_receipts_community_id_fkey(name, slug),
-          subscription_plans!payment_receipts_plan_id_fkey(name)
+          id,
+          community_id,
+          user_id,
+          plan_id,
+          billing_cycle,
+          amount,
+          receipt_url,
+          status,
+          verified_by,
+          verified_at,
+          rejection_reason,
+          created_at,
+          updated_at,
+          communities!payment_receipts_community_id_fkey(id, name, slug, owner_id),
+          subscription_plans!payment_receipts_plan_id_fkey(id, name)
         `)
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false })
@@ -86,39 +104,85 @@ export default function BillingPage() {
         plan: payment.subscription_plans
       }))
 
-      // Get unique community IDs
-      const communityIds = [...new Set(mappedData.map((p: any) => p.community_id))]
+      // Separate platform payments (where user is community owner) from community payments (where user is a subscriber)
+      const platform = mappedData.filter((p: any) => p.community && p.community.owner_id === user?.id)
+      const community = mappedData.filter((p: any) => p.community && p.community.owner_id !== user?.id)
+
+      // Group platform payments by community
+      const platformCommunityIds = [...new Set(platform.map((p: any) => p.community_id).filter(Boolean))]
+
+      // Fetch active subscriptions for platform payments
+      if (platformCommunityIds.length > 0) {
+        const { data: platformSubscriptions, error: platformSubError } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .in('community_id', platformCommunityIds)
+          .in('status', ['active', 'cancelled'])
+          .order('created_at', { ascending: false })
+
+        if (platformSubError) throw platformSubError
+
+        // Group platform payments by community and attach subscription
+        const platformGrouped = (platform as PaymentWithDetails[] || []).reduce((acc, payment) => {
+          const existing = acc.find(g => g.communityId === payment.community_id)
+          const subscription = (platformSubscriptions || []).find(s => s.community_id === payment.community_id)
+          
+          if (existing) {
+            existing.payments.push(payment)
+          } else {
+            acc.push({
+              communityId: payment.community_id,
+              communityName: payment.community.name,
+              slug: payment.community.slug,
+              payments: [payment],
+              subscription
+            })
+          }
+          return acc
+        }, [] as CommunityPayments[])
+
+        setPlatformPayments(platformGrouped)
+      } else {
+        setPlatformPayments([])
+      }
+
+      // Group community payments by community
+      const communityIds = [...new Set(community.map((p: any) => p.community_id).filter(Boolean))]
 
       // Fetch active subscriptions for these communities
-      const { data: subscriptions, error: subError } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .in('community_id', communityIds)
-        .in('status', ['active', 'cancelled'])
-        .order('created_at', { ascending: false })
+      if (communityIds.length > 0) {
+        const { data: subscriptions, error: subError } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .in('community_id', communityIds)
+          .in('status', ['active', 'cancelled'])
+          .order('created_at', { ascending: false })
 
-      if (subError) throw subError
+        if (subError) throw subError
 
-      // Group payments by community and attach subscription
-      const grouped = (mappedData as PaymentWithDetails[] || []).reduce((acc, payment) => {
-        const existing = acc.find(g => g.communityId === payment.community_id)
-        const subscription = (subscriptions || []).find(s => s.community_id === payment.community_id)
-        
-        if (existing) {
-          existing.payments.push(payment)
-        } else {
-          acc.push({
-            communityId: payment.community_id,
-            communityName: payment.community.name,
-            slug: payment.community.slug,
-            payments: [payment],
-            subscription
-          })
-        }
-        return acc
-      }, [] as CommunityPayments[])
+        // Group payments by community and attach subscription
+        const grouped = (community as PaymentWithDetails[] || []).reduce((acc, payment) => {
+          const existing = acc.find(g => g.communityId === payment.community_id)
+          const subscription = (subscriptions || []).find(s => s.community_id === payment.community_id)
+          
+          if (existing) {
+            existing.payments.push(payment)
+          } else {
+            acc.push({
+              communityId: payment.community_id,
+              communityName: payment.community.name,
+              slug: payment.community.slug,
+              payments: [payment],
+              subscription
+            })
+          }
+          return acc
+        }, [] as CommunityPayments[])
 
-      setGroupedPayments(grouped)
+        setCommunityPayments(grouped)
+      } else {
+        setCommunityPayments([])
+      }
     } catch (error) {
       console.error('Error fetching payments:', error)
     } finally {
@@ -281,6 +345,10 @@ export default function BillingPage() {
   if (!user) return null
 
 
+  const handleTabChange = (value: string) => {
+    router.push(`/billing?tab=${value}`)
+  }
+
   return (
     <div className="relative min-h-[calc(100vh-8rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
@@ -290,21 +358,32 @@ export default function BillingPage() {
       <div className="relative z-10 space-y-8">
         <PageHeader
           title="Billing & Payments"
-          subtitle="Manage your community subscriptions and payment history"
+          subtitle="Manage your platform and community subscription payments"
         />
 
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+          <TabsList className="w-full inline-flex overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory">
+            <TabsTrigger value="platform" className="snap-start shrink-0">
+              <Building2 className="h-4 w-4 mr-2" />
+              Platform Subscriptions
+            </TabsTrigger>
+            <TabsTrigger value="communities" className="snap-start shrink-0">
+              <Users className="h-4 w-4 mr-2" />
+              Community Subscriptions
+            </TabsTrigger>
+          </TabsList>
 
-
-        {/* Payments by Community */}
-        {groupedPayments.length === 0 ? (
+          <TabsContent value="platform" className="space-y-6">
+        {/* Platform Payments */}
+        {platformPayments.length === 0 ? (
           <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20">
             <CardContent className="p-12 text-center">
               <div className="mx-auto w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-6">
                 <Receipt className="h-8 w-8 text-white/60" />
               </div>
-              <h3 className="text-xl font-semibold text-white mb-2">No Payment History</h3>
+              <h3 className="text-xl font-semibold text-white mb-2">No Platform Payment History</h3>
               <p className="text-white/60 mb-6 max-w-md mx-auto">
-                You haven't made any payments yet. Create your first community to get started with our platform.
+                You haven't made any platform payments yet. Create your first community to get started.
             </p>
             <Button
               onClick={() => router.push('/create-community')}
@@ -317,7 +396,474 @@ export default function BillingPage() {
           </Card>
         ) : (
           <div className="space-y-8">
-            {groupedPayments.map((group) => (
+            {platformPayments.map((group) => (
+              <div key={group.communityId} className="space-y-4">
+                {/* Community Header */}
+                <div className="space-y-4">
+                  {/* Desktop Layout */}
+                  <div className="hidden md:flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center">
+                        <Package className="h-6 w-6 text-white/70" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-semibold text-white">{group.communityName}</h2>
+                        <p className="text-white/60">
+                          {group.payments.length} payment{group.payments.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      {group.subscription && (
+                        <Badge variant="outline" className={getSubscriptionStatusColor(group.subscription.status)}>
+                            {group.subscription.status.charAt(0).toUpperCase() + group.subscription.status.slice(1)}
+                        </Badge>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="admin-ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => router.push(`/${group.slug}`)}>
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            View Community
+                          </DropdownMenuItem>
+                       {group.subscription?.status === 'active' && (
+                              <DropdownMenuItem 
+                           onClick={() => {
+                             setSelectedCommunity(group)
+                             setCancelDialogOpen(true)
+                           }}
+                                className="text-orange-500 focus:text-orange-500"
+                         >
+                           <XCircle className="h-4 w-4 mr-2" />
+                           Cancel Subscription
+                              </DropdownMenuItem>
+                       )}
+                       {group.subscription?.status === 'cancelled' && (
+                              <DropdownMenuItem 
+                           onClick={() => handleReactivateSubscription(group.communityId)}
+                                className="text-green-500 focus:text-green-500"
+                         >
+                           <RefreshCw className="h-4 w-4 mr-2" />
+                           Reactivate
+                              </DropdownMenuItem>
+                            )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* Mobile Layout */}
+                  <div className="block md:hidden space-y-3">
+                    {/* Community Name and Icon */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
+                        <Package className="h-5 w-5 text-white/70" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-lg font-semibold text-white truncate">{group.communityName}</h2>
+                        <p className="text-white/60 text-sm">
+                          {group.payments.length} payment{group.payments.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Status Badge and Actions */}
+                    <div className="flex items-center justify-between">
+                      {group.subscription && (
+                        <Badge variant="outline" className={getSubscriptionStatusColor(group.subscription.status)}>
+                            {group.subscription.status.charAt(0).toUpperCase() + group.subscription.status.slice(1)}
+                        </Badge>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="admin-ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => router.push(`/${group.slug}`)}>
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            View Community
+                          </DropdownMenuItem>
+                         {group.subscription?.status === 'active' && (
+                                <DropdownMenuItem 
+                             onClick={() => {
+                               setSelectedCommunity(group)
+                               setCancelDialogOpen(true)
+                             }}
+                                  className="text-orange-500 focus:text-orange-500"
+                           >
+                             <XCircle className="h-4 w-4 mr-2" />
+                             Cancel Subscription
+                                </DropdownMenuItem>
+                         )}
+                         {group.subscription?.status === 'cancelled' && (
+                                <DropdownMenuItem 
+                             onClick={() => handleReactivateSubscription(group.communityId)}
+                                  className="text-green-500 focus:text-green-500"
+                           >
+                             <RefreshCw className="h-4 w-4 mr-2" />
+                             Reactivate
+                                </DropdownMenuItem>
+                              )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Mobile Cards - Reuse the same card structure from community payments */}
+                <div className="block md:hidden">
+                  {/* Latest Payment */}
+                  <ContextMenu key={group.payments[0].id}>
+                    <ContextMenuTrigger asChild>
+                      <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6 cursor-context-menu">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-3">
+                              {getStatusIcon(group.payments[0].status)}
+                              <Badge variant="outline" className={getStatusColor(group.payments[0].status)}>
+                                {group.payments[0].status.charAt(0).toUpperCase() + group.payments[0].status.slice(1)}
+                              </Badge>
+                              <Badge variant="outline" className="text-blue-400 border-blue-400/30 bg-blue-400/10">Latest</Badge>
+                            </div>
+                            <div className="text-2xl font-bold text-white mb-4">
+                              TTD ${group.payments[0].amount.toFixed(2)}
+                            </div>
+                            </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="admin-ghost" size="icon" className="shrink-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => viewReceipt(group.payments[0].receipt_url)}>
+                                <FileText className="h-4 w-4 mr-2" />
+                                View Receipt
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                            </div>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-white/60 text-sm">Plan:</span>
+                            <span className="text-white text-sm font-medium">{group.payments[0].plan.name}</span>
+                              </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-white/60 text-sm">Billing Cycle:</span>
+                            <span className="text-white text-sm font-medium capitalize">{group.payments[0].billing_cycle}</span>
+                            </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-white/60 text-sm">Payment Date:</span>
+                            <span className="text-white text-sm font-medium">
+                              {new Date(group.payments[0].created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          {group.payments[0].status === 'verified' && group.payments[0].verified_at && (
+                            <div className="mt-3 p-3 rounded-md bg-green-500/10 border border-green-500/30">
+                              <p className="text-xs text-green-400">
+                                <span className="font-medium">Verified:</span> {new Date(group.payments[0].verified_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          )}
+                          {group.payments[0].status === 'rejected' && group.payments[0].rejection_reason && (
+                            <div className="mt-3 p-3 rounded-md bg-red-500/10 border border-red-500/30">
+                              <p className="text-xs text-red-400">
+                                <span className="font-medium">Rejected:</span> {group.payments[0].rejection_reason}
+                              </p>
+                            </div>
+                          )}
+                          {group.payments[0].status === 'pending' && (
+                            <div className="mt-3 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/30">
+                              <p className="text-xs text-yellow-400">
+                                Payment verification in progress (24-48 hours)
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => viewReceipt(group.payments[0].receipt_url)}>
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Receipt
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+
+                  {/* Expand/Collapse Button */}
+                  {group.payments.length > 1 && (
+                    <div className="flex justify-center mt-4">
+                        <Button
+                        variant="outline"
+                        onClick={() => toggleSubscriptionExpansion(group.communityId)}
+                        className="text-white border-white/20 hover:bg-white/10 px-6 py-2"
+                      >
+                        {expandedSubscriptions.has(group.communityId) ? (
+                          <>
+                            <ChevronDown className="h-4 w-4 mr-2 rotate-180" />
+                            Hide {group.payments.length - 1} Older Payment{group.payments.length - 1 !== 1 ? 's' : ''}
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4 mr-2" />
+                            Show {group.payments.length - 1} Older Payment{group.payments.length - 1 !== 1 ? 's' : ''}
+                          </>
+                        )}
+                        </Button>
+                      </div>
+                  )}
+
+                  {/* Older Payments */}
+                  {expandedSubscriptions.has(group.communityId) && (
+                    <div className="mt-4 space-y-4">
+                      {group.payments.slice(1).map((payment) => (
+                        <ContextMenu key={payment.id}>
+                          <ContextMenuTrigger asChild>
+                            <div className="rounded-lg bg-gradient-to-br from-white/5 to-transparent backdrop-blur-md p-6 cursor-context-menu border border-white/10">
+                              <div className="flex items-start justify-between mb-4">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    {getStatusIcon(payment.status)}
+                                    <Badge variant="outline" className={getStatusColor(payment.status)}>
+                                      {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-2xl font-bold text-white mb-4">
+                                    TTD ${payment.amount.toFixed(2)}
+                                  </div>
+                                </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="admin-ghost" size="icon" className="shrink-0">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => viewReceipt(payment.receipt_url)}>
+                                      <FileText className="h-4 w-4 mr-2" />
+                                      View Receipt
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-white/60 text-sm">Plan:</span>
+                                  <span className="text-white text-sm font-medium">{payment.plan.name}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-white/60 text-sm">Billing Cycle:</span>
+                                  <span className="text-white text-sm font-medium capitalize">{payment.billing_cycle}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-white/60 text-sm">Payment Date:</span>
+                                  <span className="text-white text-sm font-medium">
+                                    {new Date(payment.created_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                {payment.status === 'verified' && payment.verified_at && (
+                                  <div className="mt-3 p-3 rounded-md bg-green-500/10 border border-green-500/30">
+                                    <p className="text-xs text-green-400">
+                                      <span className="font-medium">Verified:</span> {new Date(payment.verified_at).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                )}
+                                {payment.status === 'rejected' && payment.rejection_reason && (
+                                  <div className="mt-3 p-3 rounded-md bg-red-500/10 border border-red-500/30">
+                                    <p className="text-xs text-red-400">
+                                      <span className="font-medium">Rejected:</span> {payment.rejection_reason}
+                                    </p>
+                                  </div>
+                                )}
+                                {payment.status === 'pending' && (
+                                  <div className="mt-3 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/30">
+                                    <p className="text-xs text-yellow-400">
+                                      Payment verification in progress (24-48 hours)
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem onClick={() => viewReceipt(payment.receipt_url)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              View Receipt
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Billing Cycle</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Payment Date</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {/* Latest Payment */}
+                      <ContextMenu key={group.payments[0].id}>
+                        <ContextMenuTrigger asChild>
+                          <TableRow className="cursor-context-menu">
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {group.payments[0].plan.name}
+                                <Badge variant="outline" className="text-blue-400 border-blue-400/30 bg-blue-400/10">Latest</Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-semibold">TTD ${group.payments[0].amount.toFixed(2)}</TableCell>
+                            <TableCell className="capitalize">{group.payments[0].billing_cycle}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {getStatusIcon(group.payments[0].status)}
+                                <Badge variant="outline" className={getStatusColor(group.payments[0].status)}>
+                                  {group.payments[0].status.charAt(0).toUpperCase() + group.payments[0].status.slice(1)}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>{new Date(group.payments[0].created_at).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="admin-ghost" size="icon">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => viewReceipt(group.payments[0].receipt_url)}>
+                                    <FileText className="h-4 w-4 mr-2" />
+                                    View Receipt
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem onClick={() => viewReceipt(group.payments[0].receipt_url)}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            View Receipt
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+
+                      {/* Expand/Collapse Button Row */}
+                      {group.payments.length > 1 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-4">
+                            <Button
+                              variant="outline"
+                              onClick={() => toggleSubscriptionExpansion(group.communityId)}
+                              className="text-white border-white/20 hover:bg-white/10"
+                            >
+                              {expandedSubscriptions.has(group.communityId) ? (
+                                <>
+                                  <ChevronDown className="h-4 w-4 mr-2 rotate-180" />
+                                  Hide {group.payments.length - 1} Older Payment{group.payments.length - 1 !== 1 ? 's' : ''}
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-4 w-4 mr-2" />
+                                  Show {group.payments.length - 1} Older Payment{group.payments.length - 1 !== 1 ? 's' : ''}
+                                </>
+                              )}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )}
+
+                      {/* Older Payments */}
+                      {expandedSubscriptions.has(group.communityId) && group.payments.slice(1).map((payment) => (
+                        <ContextMenu key={payment.id}>
+                          <ContextMenuTrigger asChild>
+                            <TableRow className="cursor-context-menu">
+                              <TableCell className="font-medium">{payment.plan.name}</TableCell>
+                              <TableCell className="font-semibold">TTD ${payment.amount.toFixed(2)}</TableCell>
+                              <TableCell className="capitalize">{payment.billing_cycle}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {getStatusIcon(payment.status)}
+                                  <Badge variant="outline" className={getStatusColor(payment.status)}>
+                                    {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell>{new Date(payment.created_at).toLocaleDateString()}</TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="admin-ghost" size="icon">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => viewReceipt(payment.receipt_url)}>
+                                      <FileText className="h-4 w-4 mr-2" />
+                                      View Receipt
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem onClick={() => viewReceipt(payment.receipt_url)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              View Receipt
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+          </TabsContent>
+
+          <TabsContent value="communities" className="space-y-6">
+        {/* Community Payments */}
+        {communityPayments.length === 0 ? (
+          <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20">
+            <CardContent className="p-12 text-center">
+              <div className="mx-auto w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-6">
+                <Users className="h-8 w-8 text-white/60" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">No Community Subscription Payments</h3>
+              <p className="text-white/60 mb-6 max-w-md mx-auto">
+                You haven't subscribed to any communities yet. Explore communities to get started.
+            </p>
+            <Button
+              onClick={() => router.push('/communities')}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+                <Users className="h-4 w-4 mr-2" />
+                Explore Communities
+            </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-8">
+            {communityPayments.map((group) => (
               <div key={group.communityId} className="space-y-4">
                 {/* Community Header */}
                 <div className="space-y-4">
@@ -759,6 +1305,8 @@ export default function BillingPage() {
             ))}
           </div>
         )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Cancel Subscription Dialog */}

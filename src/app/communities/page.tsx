@@ -14,6 +14,10 @@ export default async function CommunitiesPage() {
       description,
       created_at,
       is_active,
+      pricing_type,
+      one_time_price,
+      monthly_price,
+      annual_price,
       owner:users!communities_owner_id_fkey(id, username, first_name, last_name)
     `)
     .eq('is_active', true)

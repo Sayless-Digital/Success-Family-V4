@@ -141,16 +141,38 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-64" align="start" forceMount>
-                <DropdownMenuLabel>Your Communities</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  {communitiesLoading 
+                    ? "Your Communities" 
+                    : userCommunities.length > 0 
+                      ? "Your Communities"
+                      : "Communities"
+                  }
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {communitiesLoading ? (
                   <DropdownMenuItem disabled>
                     <span className="text-sm text-muted-foreground">Loading...</span>
                   </DropdownMenuItem>
                 ) : userCommunities.length === 0 ? (
-                  <DropdownMenuItem disabled>
-                    <span className="text-sm text-muted-foreground">No communities yet</span>
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem disabled>
+                      <span className="text-sm text-muted-foreground">No communities yet</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/communities" className="cursor-pointer">
+                        <Home className="mr-2 h-4 w-4" />
+                        <span>Browse All Communities</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/create-community" className="cursor-pointer">
+                        <Users className="mr-2 h-4 w-4" />
+                        <span>Create Community</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
                 ) : (
                   <>
                     {userCommunities.map((community) => (

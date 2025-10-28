@@ -1,29 +1,25 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useAuth } from "@/components/auth-provider"
-import { useRouter } from "next/navigation"
-import { CheckCircle2, XCircle, Eye, Search, MoreVertical, CreditCard } from "lucide-react"
+import { CheckCircle2, XCircle, Eye, Search, MoreVertical, CreditCard, FileText } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Badge } from "@/components/ui/badge"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/components/auth-provider"
 import type { PaymentReceipt, PaymentStatus } from "@/types"
+import { toast } from "sonner"
 
 interface PaymentWithDetails extends PaymentReceipt {
-  community: {
-    name: string
-    slug: string
-  }
   user: {
     first_name: string
     last_name: string
@@ -38,9 +34,14 @@ interface PaymentWithDetails extends PaymentReceipt {
   }
 }
 
-export default function PaymentsPage() {
-  const { user, userProfile, isLoading } = useAuth()
-  const router = useRouter()
+interface CommunityPaymentsViewProps {
+  communityId: string
+  communityName: string
+  ownerId: string
+}
+
+export default function CommunityPaymentsView({ communityId, communityName, ownerId }: CommunityPaymentsViewProps) {
+  const { user } = useAuth()
   const colorStops = useAuroraColors()
   
   const [payments, setPayments] = useState<PaymentWithDetails[]>([])
@@ -52,19 +53,10 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all")
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Redirect non-admin users
+  // Fetch payments for this community
   useEffect(() => {
-    if (!isLoading && (!user || userProfile?.role !== 'admin')) {
-      router.push('/')
-    }
-  }, [user, userProfile, isLoading, router])
-
-  // Fetch payments
-  useEffect(() => {
-    if (userProfile?.role === 'admin') {
-      fetchPayments()
-    }
-  }, [userProfile])
+    fetchPayments()
+  }, [communityId])
 
   // Filter and search payments
   useEffect(() => {
@@ -79,7 +71,6 @@ export default function PaymentsPage() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(p => 
-        p.community.name.toLowerCase().includes(query) ||
         p.user.first_name.toLowerCase().includes(query) ||
         p.user.last_name.toLowerCase().includes(query) ||
         p.user.email.toLowerCase().includes(query) ||
@@ -110,31 +101,29 @@ export default function PaymentsPage() {
           rejection_reason,
           created_at,
           updated_at,
-          communities!payment_receipts_community_id_fkey(id, name, slug),
           users!payment_receipts_user_id_fkey(id, first_name, last_name, email),
           subscription_plans!payment_receipts_plan_id_fkey(id, name),
           bank_accounts!payment_receipts_bank_account_id_fkey(id, account_name, bank_name)
         `)
+        .eq('community_id', communityId)
+        .neq('user_id', ownerId)  // Exclude payments from the community owner (platform subscription)
         .order('created_at', { ascending: false })
 
-      if (error) {
-        console.error('Supabase error:', error)
-        throw error
-      }
+      if (error) throw error
 
       // Map the data to match our interface
       const mappedData = (data || []).map((payment: any) => ({
         ...payment,
-        community: payment.communities,
         user: payment.users,
         plan: payment.subscription_plans,
         bank_account: payment.bank_accounts
       }))
 
-      setPayments(mappedData as PaymentWithDetails[] || [])
-      setFilteredPayments(mappedData as PaymentWithDetails[] || [])
+      setPayments(mappedData as PaymentWithDetails[])
+      setFilteredPayments(mappedData as PaymentWithDetails[])
     } catch (error) {
       console.error('Error fetching payments:', error)
+      toast.error("Failed to load payments")
     } finally {
       setLoading(false)
     }
@@ -142,68 +131,28 @@ export default function PaymentsPage() {
 
   const handleVerify = async (paymentId: string) => {
     try {
-      const payment = payments.find(p => p.id === paymentId)
-      if (!payment) throw new Error('Payment not found')
-
-      const now = new Date()
-      const startDate = now.toISOString()
-      
-      // Calculate next billing date based on billing cycle
-      const nextBillingDate = new Date(now)
-      if (payment.billing_cycle === 'monthly') {
-        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1)
-      } else {
-        nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1)
-      }
-
-      // Update the existing pending subscription to active
-      const { error: subscriptionError } = await supabase
-        .from('subscriptions')
-        .update({
-          status: 'active',
-          start_date: startDate,
-          next_billing_date: nextBillingDate.toISOString()
-        })
-        .eq('community_id', payment.community_id)
-        .eq('status', 'pending')
-
-      if (subscriptionError) throw subscriptionError
-
-      // Update payment receipt and mark as verified
-      const { error: paymentError } = await supabase
+      const { error } = await supabase
         .from('payment_receipts')
         .update({
           status: 'verified',
           verified_by: user?.id,
-          verified_at: now.toISOString(),
-          rejection_reason: null
+          verified_at: new Date().toISOString()
         })
         .eq('id', paymentId)
 
-      if (paymentError) throw paymentError
+      if (error) throw error
 
-      // Activate the community
-      await supabase
-        .from('communities')
-        .update({
-          is_active: true,
-          subscription_status: 'active',
-          subscription_start_date: startDate,
-          next_billing_date: nextBillingDate.toISOString()
-        })
-        .eq('id', payment.community_id)
-
+      toast.success("Payment verified successfully!")
       fetchPayments()
-      setDialogOpen(false)
     } catch (error) {
       console.error('Error verifying payment:', error)
-      alert('Failed to verify payment')
+      toast.error("Failed to verify payment")
     }
   }
 
   const handleReject = async (paymentId: string) => {
     if (!rejectionReason.trim()) {
-      alert('Please provide a rejection reason')
+      toast.error("Please provide a rejection reason")
       return
     }
 
@@ -220,12 +169,13 @@ export default function PaymentsPage() {
 
       if (error) throw error
 
+      toast.success("Payment rejected")
       fetchPayments()
       setDialogOpen(false)
       setRejectionReason("")
     } catch (error) {
       console.error('Error rejecting payment:', error)
-      alert('Failed to reject payment')
+      toast.error("Failed to reject payment")
     }
   }
 
@@ -233,21 +183,17 @@ export default function PaymentsPage() {
     window.open(url, '_blank')
   }
 
-  if (isLoading || loading) {
+  if (loading) {
     return (
-      <div className="relative min-h-[calc(100vh-8rem)] w-full overflow-x-hidden">
+      <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
         <div className="fixed inset-0 z-0 overflow-hidden">
           <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
         </div>
-        <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-8rem)]">
+        <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-white">Loading...</div>
         </div>
       </div>
     )
-  }
-
-  if (!user || userProfile?.role !== 'admin') {
-    return null
   }
 
   const pendingCount = payments.filter(p => p.status === 'pending').length
@@ -257,15 +203,17 @@ export default function PaymentsPage() {
   return (
     <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
+        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
       </div>
       
       <div className="relative z-10 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <Breadcrumb items={[{ label: "Payment Verification", icon: CreditCard }]} />
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Payment Management</h1>
+            <p className="text-white/60 text-sm mt-1">Manage payments for {communityName}</p>
+          </div>
         </div>
-
 
         {/* Search and Filter */}
         <div className="flex flex-col sm:flex-row gap-4">
@@ -275,7 +223,7 @@ export default function PaymentsPage() {
                 <Search className="h-4 w-4 text-white/60" />
               </InputGroupAddon>
               <InputGroupInput
-                placeholder="Search payments by community, user, plan, or bank..."
+                placeholder="Search by user, plan, or bank..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="text-white placeholder:text-white/60"
@@ -287,7 +235,7 @@ export default function PaymentsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Payments ({payments.length})</SelectItem>
+              <SelectItem value="all">All ({payments.length})</SelectItem>
               <SelectItem value="pending">Pending ({pendingCount})</SelectItem>
               <SelectItem value="verified">Verified ({verifiedCount})</SelectItem>
               <SelectItem value="rejected">Rejected ({rejectedCount})</SelectItem>
@@ -302,7 +250,7 @@ export default function PaymentsPage() {
             <p className="text-white/80">No payments found</p>
             <p className="text-white/60 text-sm mt-1">
               {searchQuery || statusFilter !== "all" 
-                ? "No payment receipts match your current search or filter"
+                ? "No payments match your filters"
                 : "No payment receipts have been submitted yet"
               }
             </p>
@@ -317,17 +265,14 @@ export default function PaymentsPage() {
                     <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 cursor-context-menu">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
-                          <h3 className="font-medium text-white text-lg">{payment.community.name}</h3>
-                          <p className="text-white/60 text-sm">
-                            {payment.user.first_name} {payment.user.last_name} ({payment.user.email})
-                          </p>
+                          <h3 className="font-medium text-white text-lg">
+                            {payment.user.first_name} {payment.user.last_name}
+                          </h3>
+                          <p className="text-white/60 text-sm">{payment.user.email}</p>
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="admin-ghost"
-                              size="icon"
-                            >
+                            <Button variant="ghost" size="icon" className="text-white/70">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -359,44 +304,27 @@ export default function PaymentsPage() {
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between">
-                          <span className="text-white/60 text-sm">Plan:</span>
-                          <span className="text-white text-sm">{payment.plan.name} ({payment.billing_cycle})</span>
+                          <span className="text-white/60 text-sm">Amount:</span>
+                          <span className="text-white font-mono text-sm">${payment.amount}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-white/60 text-sm">Amount:</span>
-                          <span className="text-white text-sm">TTD ${payment.amount.toFixed(2)}</span>
+                          <span className="text-white/60 text-sm">Plan:</span>
+                          <span className="text-white text-sm">{payment.plan.name}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-white/60 text-sm">Bank:</span>
                           <span className="text-white text-sm">{payment.bank_account.bank_name}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-white/60 text-sm">Submitted:</span>
-                          <span className="text-white text-sm">
-                            {new Date(payment.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
                         <div className="flex justify-between items-center">
                           <span className="text-white/60 text-sm">Status:</span>
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              payment.status === 'pending'
-                                ? 'bg-yellow-500/20 text-yellow-500'
-                                : payment.status === 'verified'
-                                ? 'bg-green-500/20 text-green-500'
-                                : 'bg-red-500/20 text-red-500'
-                            }`}
-                          >
-                            {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            payment.status === 'verified' ? 'bg-green-500/20 text-green-400' :
+                            payment.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                            'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {payment.status}
                           </span>
                         </div>
-                        {payment.rejection_reason && (
-                          <div className="mt-2 p-2 rounded-md bg-red-500/10 border border-red-500/30">
-                            <p className="text-xs text-red-400">
-                              <span className="font-medium">Rejection Reason:</span> {payment.rejection_reason}
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </ContextMenuTrigger>
@@ -433,13 +361,12 @@ export default function PaymentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Community</TableHead>
                     <TableHead>User</TableHead>
-                    <TableHead>Plan</TableHead>
                     <TableHead>Amount</TableHead>
-                    <TableHead>Bank</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Bank Account</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
+                    <TableHead>Date</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -448,42 +375,29 @@ export default function PaymentsPage() {
                     <ContextMenu key={payment.id}>
                       <ContextMenuTrigger asChild>
                         <TableRow className="cursor-context-menu">
-                          <TableCell className="font-medium">{payment.community.name}</TableCell>
                           <TableCell>
                             <div>
-                              <div className="text-sm">{payment.user.first_name} {payment.user.last_name}</div>
-                              <div className="text-xs text-muted-foreground">{payment.user.email}</div>
+                              <div className="font-medium">{payment.user.first_name} {payment.user.last_name}</div>
+                              <div className="text-sm text-white/60">{payment.user.email}</div>
                             </div>
                           </TableCell>
-                          <TableCell>{payment.plan.name} ({payment.billing_cycle})</TableCell>
-                          <TableCell>TTD ${payment.amount.toFixed(2)}</TableCell>
+                          <TableCell className="font-mono">${payment.amount}</TableCell>
+                          <TableCell>{payment.plan.name}</TableCell>
+                          <TableCell>{payment.bank_account.bank_name}</TableCell>
                           <TableCell>
-                            <div>
-                              <div className="text-sm">{payment.bank_account.bank_name}</div>
-                              <div className="text-xs text-muted-foreground">{payment.bank_account.account_name}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                payment.status === 'pending'
-                                  ? 'bg-yellow-500/20 text-yellow-500'
-                                  : payment.status === 'verified'
-                                  ? 'bg-green-500/20 text-green-500'
-                                  : 'bg-red-500/20 text-red-500'
-                              }`}
-                            >
-                              {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              payment.status === 'verified' ? 'bg-green-500/20 text-green-400' :
+                              payment.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {payment.status}
                             </span>
                           </TableCell>
                           <TableCell>{new Date(payment.created_at).toLocaleDateString()}</TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="admin-ghost"
-                                  size="icon"
-                                >
+                                <Button variant="ghost" size="icon" className="text-white/70">
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -550,33 +464,31 @@ export default function PaymentsPage() {
 
       {/* Rejection Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="bg-background border-border">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Reject Payment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="reason">Rejection Reason *</Label>
-              <textarea
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="reason">Rejection Reason</Label>
+              <Textarea
                 id="reason"
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
                 placeholder="Please provide a reason for rejecting this payment..."
-                className="w-full min-h-[100px] rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                rows={4}
+                className="min-h-[100px]"
               />
             </div>
-            
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-4">
               <Button
                 onClick={() => selectedPayment && handleReject(selectedPayment.id)}
-                variant="destructive"
-                className="flex-1"
+                disabled={!rejectionReason.trim()}
+                className="flex-1 bg-red-500 text-white hover:bg-red-600"
               >
+                <XCircle className="h-4 w-4 mr-2" />
                 Reject Payment
               </Button>
               <Button
-                type="button"
                 variant="outline"
                 onClick={() => {
                   setDialogOpen(false)
@@ -592,3 +504,4 @@ export default function PaymentsPage() {
     </div>
   )
 }
+

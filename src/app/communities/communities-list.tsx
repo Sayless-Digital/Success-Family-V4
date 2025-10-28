@@ -18,6 +18,10 @@ interface Community {
   description?: string
   created_at: string
   is_active: boolean
+  pricing_type?: string
+  one_time_price?: number
+  monthly_price?: number
+  annual_price?: number
   owner: {
     id: string
     username: string
@@ -121,15 +125,44 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                       )}
 
                       {/* Stats */}
-                      <div className="flex items-center gap-3 text-white/60 text-sm border-t border-white/10 pt-3">
-                        <Badge variant="secondary" className="text-xs bg-white/10 text-white/80">
-                          <Users className="h-3 w-3 mr-1" />
-                          {community.memberCount}
-                        </Badge>
-                        <div className="flex items-center gap-1 text-white/50 text-xs">
-                          <Calendar className="h-3 w-3" />
-                          <span>{new Date(community.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                      <div className="border-t border-white/10 pt-3 space-y-2">
+                        <div className="flex items-center gap-3 text-white/60 text-sm">
+                          <Badge variant="secondary" className="text-xs bg-white/10 text-white/80">
+                            <Users className="h-3 w-3 mr-1" />
+                            {community.memberCount}
+                          </Badge>
+                          <div className="flex items-center gap-1 text-white/50 text-xs">
+                            <Calendar className="h-3 w-3" />
+                            <span>{new Date(community.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                          </div>
                         </div>
+                        
+                        {/* Pricing Badge */}
+                        {community.pricing_type && community.pricing_type !== 'free' && (
+                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                            {community.pricing_type === 'one_time' && community.one_time_price && (
+                              <span>${community.one_time_price.toFixed(2)}</span>
+                            )}
+                            {community.pricing_type === 'recurring' && (
+                              <>
+                                {community.monthly_price && community.monthly_price > 0 && (
+                                  <span>${community.monthly_price.toFixed(2)}/mo</span>
+                                )}
+                                {community.annual_price && community.annual_price > 0 && community.monthly_price && (
+                                  <span className="mx-1">•</span>
+                                )}
+                                {community.annual_price && community.annual_price > 0 && (
+                                  <span>${community.annual_price.toFixed(2)}/yr</span>
+                                )}
+                              </>
+                            )}
+                          </Badge>
+                        )}
+                        {(!community.pricing_type || community.pricing_type === 'free') && (
+                          <Badge className="bg-white/10 text-white/80 border-white/20">
+                            Free
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </CardContent>

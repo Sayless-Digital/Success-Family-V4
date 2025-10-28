@@ -4,11 +4,11 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogContent,
+  BaseDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/base-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -106,7 +106,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] p-6">
+      <BaseDialogContent className="sm:max-w-[425px]">
         {showSignUpSuccess ? (
           // Success Screen
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center space-y-6">
@@ -310,7 +310,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
         </Tabs>
           </>
         )}
-      </DialogContent>
+      </BaseDialogContent>
     </Dialog>
   )
 }

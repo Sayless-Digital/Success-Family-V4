@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, MessageSquare, Calendar, Shield, Database, FileText, ArrowLeft, Building2, Package, LogOut, UserCheck } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, MessageSquare, Calendar, Shield, Database, FileText, ArrowLeft, Building2, Package, LogOut, UserCheck, CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -28,6 +28,7 @@ const baseNavigationItems = [
 const communityNavigationItems = [
   { icon: Users, label: "Community Home", href: "#", isDynamic: true },
   { icon: UserCheck, label: "Members", href: "/members", isDynamic: true },
+  { icon: CreditCard, label: "Payments", href: "/payments", isDynamic: true, ownerOnly: true },
   { icon: Settings, label: "Settings", href: "/settings", isDynamic: true },
   { icon: MessageSquare, label: "Messages", href: "#", isDynamic: true },
   { icon: Calendar, label: "Events", href: "#", isDynamic: true },
@@ -224,8 +225,8 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                   {/* Community navigation items */}
                   {communityNavigationItems
                     .filter((item) => {
-                      // Only show Settings link if user is the community owner
-                      if (item.label === 'Settings') {
+                      // Only show owner-only items if user is the community owner
+                      if ((item as any).ownerOnly) {
                         return isCommunityOwner
                       }
                       return true

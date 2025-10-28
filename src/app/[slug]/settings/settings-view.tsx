@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search } from "lucide-react"
+import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search, DollarSign } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,7 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
-import type { BankAccount, AccountType } from "@/types"
+import type { BankAccount, AccountType, CommunityPricingType } from "@/types"
 
 interface CommunitySettingsViewProps {
   community: {
@@ -31,6 +31,10 @@ interface CommunitySettingsViewProps {
     owner_id: string
     plan_id: string
     is_active: boolean
+    pricing_type?: string
+    one_time_price?: number
+    monthly_price?: number
+    annual_price?: number
   }
   isOwner: boolean
 }
@@ -64,6 +68,15 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
     bank_name: "",
     account_number: "",
     account_type: "savings" as AccountType,
+  })
+
+  // Pricing state
+  const [isSavingPricing, setIsSavingPricing] = useState(false)
+  const [pricingData, setPricingData] = useState({
+    pricing_type: (community.pricing_type || 'free') as CommunityPricingType,
+    one_time_price: community.one_time_price || 0,
+    monthly_price: community.monthly_price || 0,
+    annual_price: community.annual_price || 0,
   })
 
   // Handle tab change
@@ -308,6 +321,31 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
     }
   }
 
+  const handlePricingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSavingPricing(true)
+
+    try {
+      const { error } = await supabase
+        .from('communities')
+        .update({
+          ...pricingData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', community.id)
+
+      if (error) throw error
+
+      toast.success("Pricing settings updated successfully!")
+      router.refresh()
+    } catch (error: any) {
+      console.error('Error updating pricing:', error)
+      toast.error(error.message || "Failed to update pricing settings")
+    } finally {
+      setIsSavingPricing(false)
+    }
+  }
+
   return (
     <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       {/* Aurora Background */}
@@ -322,14 +360,18 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
         />
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="general">
+          <TabsList className="w-full overflow-x-auto">
+            <TabsTrigger value="general" className="whitespace-nowrap snap-start">
               <Settings className="h-4 w-4 mr-2" />
               General
             </TabsTrigger>
-            <TabsTrigger value="bank-accounts">
+            <TabsTrigger value="bank-accounts" className="whitespace-nowrap snap-start">
               <Building2 className="h-4 w-4 mr-2" />
               Bank Accounts
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="whitespace-nowrap snap-start">
+              <DollarSign className="h-4 w-4 mr-2" />
+              Billing
             </TabsTrigger>
           </TabsList>
 
@@ -725,6 +767,115 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
                     </div>
                   </>
                 )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="billing">
+            {!isOwner ? (
+              <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-12 text-center">
+                <p className="text-white/60 text-sm">
+                  Only community owners can manage billing settings.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Header */}
+                <div>
+                  <h3 className="text-xl font-semibold text-white">Billing & Pricing</h3>
+                  <p className="text-white/60 text-sm mt-1">Set up pricing for users to access your community</p>
+                </div>
+
+                <form onSubmit={handlePricingSubmit}>
+                  <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+                    <CardContent className="pt-6 space-y-6">
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="pricing_type" className="text-white">
+                            Pricing Model
+                          </Label>
+                          <Select
+                            value={pricingData.pricing_type}
+                            onValueChange={(value) => setPricingData({ ...pricingData, pricing_type: value as CommunityPricingType })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select pricing type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="free">Free</SelectItem>
+                              <SelectItem value="one_time">One-Time Payment</SelectItem>
+                              <SelectItem value="recurring">Recurring Subscription</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {pricingData.pricing_type === 'one_time' && (
+                          <div className="space-y-2">
+                            <Label htmlFor="one_time_price" className="text-white">
+                              One-Time Price ($)
+                            </Label>
+                            <Input
+                              id="one_time_price"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={pricingData.one_time_price}
+                              onChange={(e) => setPricingData({ ...pricingData, one_time_price: parseFloat(e.target.value) || 0 })}
+                              placeholder="0.00"
+                              required
+                              className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+                            />
+                          </div>
+                        )}
+
+                        {pricingData.pricing_type === 'recurring' && (
+                          <>
+                            <div className="space-y-2">
+                              <Label htmlFor="monthly_price" className="text-white">
+                                Monthly Price ($)
+                              </Label>
+                              <Input
+                                id="monthly_price"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={pricingData.monthly_price}
+                                onChange={(e) => setPricingData({ ...pricingData, monthly_price: parseFloat(e.target.value) || 0 })}
+                                placeholder="0.00"
+                                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="annual_price" className="text-white">
+                                Annual Price ($)
+                              </Label>
+                              <Input
+                                id="annual_price"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={pricingData.annual_price}
+                                onChange={(e) => setPricingData({ ...pricingData, annual_price: parseFloat(e.target.value) || 0 })}
+                                placeholder="0.00"
+                                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <Button
+                        type="submit"
+                        disabled={isSavingPricing}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        {isSavingPricing ? 'Saving...' : 'Save Pricing Settings'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </form>
               </div>
             )}
           </TabsContent>

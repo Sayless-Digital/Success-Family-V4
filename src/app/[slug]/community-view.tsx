@@ -1,15 +1,21 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart } from "lucide-react"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, CreditCard, Upload, FileText, Loader2 } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import type { Community, CommunityMember, PaymentStatus } from "@/types"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import type { Community, CommunityMember, PaymentStatus, BillingCycle } from "@/types"
 
 interface CommunityViewProps {
   community: Community & {
@@ -59,6 +65,167 @@ export default function CommunityView({
   const isOwner = currentUserId === community.owner_id
   const isMember = !!userMembership
   const isActive = community.is_active
+  
+  // Subscription dialog state
+  const [subscribeDialogOpen, setSubscribeDialogOpen] = useState(false)
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+
+  const handleJoinFree = async () => {
+    if (!currentUserId) {
+      toast.error("Please sign in to join this community")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('community_members')
+        .insert([{
+          community_id: community.id,
+          user_id: currentUserId,
+          role: 'member'
+        }])
+
+      if (error) throw error
+
+      toast.success("Successfully joined the community!")
+      router.refresh()
+    } catch (error: any) {
+      console.error('Error joining community:', error)
+      toast.error(error.message || "Failed to join community")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0])
+    }
+  }
+
+  const handleSubscribe = async () => {
+    if (!currentUserId) {
+      toast.error("Please sign in to subscribe")
+      return
+    }
+
+    if (!selectedFile && community.pricing_type !== 'free') {
+      toast.error("Please upload a payment receipt")
+      return
+    }
+
+    setIsSubmitting(true)
+    
+    try {
+      // Upload receipt file if provided
+      let receiptUrl = ''
+      if (selectedFile) {
+        // Path must start with user_id for RLS policies
+        const fileName = `${currentUserId}/${community.id}/${Date.now()}-${selectedFile.name}`
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('payment-receipts')
+          .upload(fileName, selectedFile)
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('payment-receipts')
+          .getPublicUrl(fileName)
+        
+        receiptUrl = publicUrl
+      }
+
+      // Determine amount based on pricing type and billing cycle
+      let amount = 0
+      if (community.pricing_type === 'one_time') {
+        amount = community.one_time_price || 0
+      } else if (community.pricing_type === 'recurring') {
+        amount = billingCycle === 'monthly' ? (community.monthly_price || 0) : (community.annual_price || 0)
+      }
+
+      // Create payment receipt for paid communities
+      if (community.pricing_type && community.pricing_type !== 'free') {
+        // Get community's bank account
+        const { data: bankAccounts, error: bankError } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('community_id', community.id)
+          .eq('is_active', true)
+          .limit(1)
+        
+        if (bankError) {
+          console.error('Error fetching bank account:', bankError)
+          throw new Error('Failed to fetch bank account: ' + bankError.message)
+        }
+        
+        const bankAccountId = bankAccounts && bankAccounts.length > 0 ? bankAccounts[0].id : null
+        
+        if (!bankAccountId) {
+          throw new Error('No active bank account found for this community')
+        }
+
+        const { error: receiptError } = await supabase
+          .from('payment_receipts')
+          .insert([{
+            community_id: community.id,
+            user_id: currentUserId,
+            plan_id: community.plan_id,
+            billing_cycle: billingCycle,
+            amount: amount,
+            bank_account_id: bankAccountId,
+            receipt_url: receiptUrl,
+            status: 'pending'
+          }])
+
+        if (receiptError) {
+          console.error('Error creating payment receipt:', receiptError)
+          throw new Error('Failed to create payment receipt: ' + receiptError.message)
+        }
+      }
+
+      // Add user as member
+      const { error: memberError } = await supabase
+        .from('community_members')
+        .insert([{
+          community_id: community.id,
+          user_id: currentUserId,
+          role: 'member'
+        }])
+
+      if (memberError) {
+        console.error('Error adding member:', memberError)
+        
+        // If it's a unique constraint error, user is already a member
+        if (memberError.code === '23505') {
+          toast.error("You are already a member of this community")
+          setSubscribeDialogOpen(false)
+          return
+        }
+        
+        throw new Error('Failed to join community: ' + memberError.message)
+      }
+
+      if (community.pricing_type && community.pricing_type !== 'free') {
+        toast.success("Subscription request submitted! Awaiting payment verification.")
+      } else {
+        toast.success("Successfully joined the community!")
+      }
+      
+      setSubscribeDialogOpen(false)
+      setSelectedFile(null)
+      router.refresh()
+    } catch (error: any) {
+      console.error('Error subscribing:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
+      const errorMessage = error?.message || error?.details || error?.hint || JSON.stringify(error)
+      toast.error(errorMessage || "Failed to process subscription")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
@@ -110,6 +277,80 @@ export default function CommunityView({
             </div>
           </div>
           
+          {/* Pricing & Subscribe Section */}
+          {!isOwner && (community.pricing_type && community.pricing_type !== 'free') && (
+            <div className="mt-6 p-6 rounded-lg bg-gradient-to-br from-primary/10 to-transparent backdrop-blur-md border border-primary/20">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-white mb-1">Join This Community</h3>
+                  <div className="flex items-center gap-4 text-white/80">
+                    {community.pricing_type === 'one_time' && community.one_time_price && (
+                      <span className="text-2xl font-bold text-white">
+                        ${community.one_time_price.toFixed(2)}
+                      </span>
+                    )}
+                    {community.pricing_type === 'recurring' && (
+                      <div className="space-y-1">
+                        {community.monthly_price && community.monthly_price > 0 && (
+                          <span className="text-2xl font-bold text-white block">
+                            ${community.monthly_price.toFixed(2)}/mo
+                          </span>
+                        )}
+                        {community.annual_price && community.annual_price > 0 && (
+                          <span className="text-sm text-white/70">
+                            or ${community.annual_price.toFixed(2)}/year
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {!isMember && (
+                  <Button 
+                    size="lg" 
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={() => setSubscribeDialogOpen(true)}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Subscribe
+                  </Button>
+                )}
+                {isMember && (
+                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Member
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!isOwner && (!community.pricing_type || community.pricing_type === 'free') && !isMember && (
+            <div className="mt-6 p-6 rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-white mb-1">Join This Community</h3>
+                  <p className="text-white/70">Free to join</p>
+                </div>
+                <Button 
+                  size="lg" 
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleJoinFree}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Joining...
+                    </>
+                  ) : (
+                    'Join Community'
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Inactive Warning */}
           {!isActive && (
             <div className="flex items-start gap-3 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
@@ -396,6 +637,104 @@ export default function CommunityView({
           </Card>
         )}
       </div>
+
+      {/* Subscription Dialog */}
+      <Dialog open={subscribeDialogOpen} onOpenChange={setSubscribeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Subscribe to {community.name}</DialogTitle>
+            <DialogDescription>
+              {community.pricing_type === 'one_time' 
+                ? `One-time payment of $${community.one_time_price?.toFixed(2)}`
+                : community.pricing_type === 'recurring'
+                ? `Recurring subscription`
+                : 'Free to join'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {community.pricing_type === 'recurring' && (
+              <div className="space-y-2">
+                <Label>Billing Cycle</Label>
+                <Select value={billingCycle} onValueChange={(value) => setBillingCycle(value as BillingCycle)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {community.monthly_price && community.monthly_price > 0 && (
+                      <SelectItem value="monthly">
+                        Monthly - ${community.monthly_price.toFixed(2)}/mo
+                      </SelectItem>
+                    )}
+                    {community.annual_price && community.annual_price > 0 && (
+                      <SelectItem value="annual">
+                        Annual - ${community.annual_price.toFixed(2)}/year
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {community.pricing_type && community.pricing_type !== 'free' && (
+              <div className="space-y-2">
+                <Label htmlFor="receipt">Upload Payment Receipt</Label>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="receipt"
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/20 rounded-lg cursor-pointer bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="h-8 w-8 mb-2 text-white/60" />
+                      {selectedFile ? (
+                        <p className="mb-2 text-sm text-white">{selectedFile.name}</p>
+                      ) : (
+                        <>
+                          <p className="mb-2 text-sm text-white/80">Click to upload or drag and drop</p>
+                          <p className="text-xs text-white/60">PNG, JPG, GIF or PDF</p>
+                        </>
+                      )}
+                    </div>
+                    <input 
+                      id="receipt" 
+                      type="file" 
+                      className="hidden" 
+                      onChange={handleFileSelect}
+                      accept="image/*,.pdf"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-4">
+              <Button
+                onClick={handleSubscribe}
+                disabled={isSubmitting}
+                className="flex-1"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {community.pricing_type === 'free' ? 'Joining...' : 'Submitting...'}
+                  </>
+                ) : community.pricing_type === 'free' ? (
+                  'Join Community'
+                ) : (
+                  'Submit Payment'
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setSubscribeDialogOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

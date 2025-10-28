@@ -93,6 +93,32 @@ This document lists all database migrations in the order they should be applied.
   - Adds index on `community_id` for efficient lookups
 - **Use Case:** Allows community owners to manage their own payment accounts in the community settings
 
+### 10. Add Community Pricing Fields
+**File:** `supabase/migrations/add_community_pricing_fields.sql`
+**Status:** ✅ Applied
+**Description:** Enables community owners to set pricing for users to access/post to their communities:
+- **Purpose:** Allows communities to monetize by charging users for access
+- **Changes:**
+  - Adds `pricing_enabled` (boolean) to communities table
+  - Adds `pricing_type` (free, one_time, recurring) with check constraint
+  - Adds `one_time_price` for one-time payment option
+  - Adds `monthly_price` and `annual_price` for recurring subscription options
+  - Existing communities default to free pricing
+  - Adds indexes for efficient pricing queries
+- **Use Case:** Community owners can set up their own pricing in settings, similar to platform subscription plans
+
+### 11. Allow Users to Join Communities
+**File:** `supabase/migrations/allow_users_to_join_communities.sql`
+**Status:** ✅ Applied
+**Description:** Enables users to join communities themselves through the subscription flow:
+- **Purpose:** Allows subscription/join functionality for users
+- **Changes:**
+  - Adds RLS policy "Users can join communities as members"
+  - Users can INSERT into community_members when adding themselves
+  - Users can only set their own user_id
+  - Users can only set role as 'member' (not 'owner')
+- **Use Case:** Users can subscribe to paid communities or join free communities
+
 ## Benefits of Current Schema
 
 ### Separate Subscriptions Table
