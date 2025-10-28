@@ -10,6 +10,7 @@
   },
   "packageManager": "pnpm@10.16.0",
   "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -26,6 +27,7 @@
     "lucide-react": "^0.547.0",
     "next": "^16.0.0",
     "ogl": "^1.0.11",
+    "overlayscrollbars": "^2.12.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sonner": "^2.0.7",

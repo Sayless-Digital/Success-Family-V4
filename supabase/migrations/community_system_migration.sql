@@ -138,26 +138,36 @@ CREATE TABLE IF NOT EXISTS public.community_members (
 ALTER TABLE public.community_members ENABLE ROW LEVEL SECURITY;
 
 -- Policies for community members
-CREATE POLICY "Community members can view other members"
+-- Note: We check the communities table to avoid infinite recursion in RLS policies
+CREATE POLICY "Anyone can view community members"
   ON public.community_members
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.community_members cm
-      WHERE cm.community_id = community_members.community_id
-        AND cm.user_id = auth.uid()
-    )
-  );
+  USING (true);
+
+CREATE POLICY "Users can view their own memberships"
+  ON public.community_members
+  FOR SELECT
+  USING (user_id = auth.uid());
 
 CREATE POLICY "Community owners can manage members"
   ON public.community_members
   FOR ALL
   USING (
     EXISTS (
-      SELECT 1 FROM public.community_members cm
-      WHERE cm.community_id = community_members.community_id
-        AND cm.user_id = auth.uid()
-        AND cm.role = 'owner'
+      SELECT 1 FROM public.communities c
+      WHERE c.id = community_members.community_id
+        AND c.owner_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Community owners can add members"
+  ON public.community_members
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.communities c
+      WHERE c.id = community_members.community_id
+        AND c.owner_id = auth.uid()
     )
   );
 

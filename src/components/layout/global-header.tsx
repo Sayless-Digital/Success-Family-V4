@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Sidebar, LogOut, Shield } from "lucide-react"
+import { Sidebar, LogOut, Shield, CreditCard, Users, ChevronDown, Home, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils"
 import { AuthDialog } from "@/components/auth-dialog"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
+import { supabase } from "@/lib/supabase"
+import type { Community } from "@/types"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -28,6 +30,8 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
   const { user, userProfile, signOut, isLoading } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
+  const [userCommunities, setUserCommunities] = React.useState<Community[]>([])
+  const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
   
   // Memoize user initials to prevent unnecessary re-renders
   const userInitials = React.useMemo(() => {
@@ -36,6 +40,52 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
     const lastInitial = userProfile.last_name?.[0] || ""
     return (firstInitial + lastInitial).toUpperCase() || "U"
   }, [userProfile?.first_name, userProfile?.last_name])
+
+  // Fetch user's communities
+  React.useEffect(() => {
+    if (user && userProfile) {
+      fetchUserCommunities()
+    } else {
+      setUserCommunities([])
+    }
+  }, [user, userProfile])
+
+  const fetchUserCommunities = async () => {
+    if (!user) return
+    
+    setCommunitiesLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('community_members')
+        .select(`
+          community_id,
+          communities (
+            id,
+            name,
+            slug,
+            description,
+            is_active
+          )
+        `)
+        .eq('user_id', user.id)
+
+      if (error) {
+        console.error('Error fetching user communities:', error)
+        return
+      }
+
+      // Transform the data to extract communities
+      const communities = data
+        ?.map((item: any) => item.communities)
+        .filter(Boolean) || []
+      
+      setUserCommunities(communities)
+    } catch (error) {
+      console.error('Error fetching user communities:', error)
+    } finally {
+      setCommunitiesLoading(false)
+    }
+  }
 
   const handleSignInClick = () => {
     setAuthDialogTab("signin")
@@ -55,7 +105,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
 
   return (
     <>
-    <header className="fixed top-0 left-0 right-0 z-50 h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg">
+    <header className="fixed top-0 left-0 right-0 z-[9999] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg">
       <div className="h-full px-2 flex items-center justify-between">
         {/* Left side - Menu Button (desktop only) and Logo */}
         <div className="flex items-center gap-2">
@@ -71,14 +121,86 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
             </Button>
           )}
           
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
-              SF
-            </div>
-            <span className="font-semibold text-white hidden sm:block">
-              Success Family
-            </span>
-          </div>
+          {/* Logo / Communities Dropdown */}
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
+                      SF
+                    </div>
+                    <span className="font-semibold text-white text-sm">
+                      Success Family
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-white" />
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-64" align="start" forceMount>
+                <DropdownMenuLabel>Your Communities</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {communitiesLoading ? (
+                  <DropdownMenuItem disabled>
+                    <span className="text-sm text-muted-foreground">Loading...</span>
+                  </DropdownMenuItem>
+                ) : userCommunities.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    <span className="text-sm text-muted-foreground">No communities yet</span>
+                  </DropdownMenuItem>
+                ) : (
+                  <>
+                    {userCommunities.map((community) => (
+                      <DropdownMenuItem key={community.id} asChild>
+                        <Link 
+                          href={`/${community.slug}`} 
+                          className="cursor-pointer"
+                          onClick={() => isMobile && onMenuClick()}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
+                              {community.name[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{community.name}</p>
+                              {!community.is_active && (
+                                <p className="text-xs text-muted-foreground">Inactive</p>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/communities" className="cursor-pointer">
+                        <Home className="mr-2 h-4 w-4" />
+                        <span>Browse All Communities</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/create-community" className="cursor-pointer">
+                        <Users className="mr-2 h-4 w-4" />
+                        <span>Create Community</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Link href="/" className="flex items-center gap-2">
+              <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
+                SF
+              </div>
+              <span className="font-semibold text-white hidden sm:block">
+                Success Family
+              </span>
+            </Link>
+          )}
         </div>
 
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
@@ -146,6 +268,19 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                     </p>
                   </div>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/account" className="cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Account</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/billing" className="cursor-pointer">
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    <span>Billing & Payments</span>
+                  </Link>
+                </DropdownMenuItem>
                 {userProfile?.role === 'admin' && (
                   <>
                     <DropdownMenuSeparator />

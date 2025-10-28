@@ -33,7 +33,7 @@ export default function AdminDashboard() {
     <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       {/* Aurora Background */}
       <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
+        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
       </div>
       
       {/* Content */}
@@ -140,7 +140,10 @@ export default function AdminDashboard() {
             </p>
           </button>
 
-          <button className="group rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-3 sm:p-4 text-left transition-all hover:bg-white/20 hover:scale-105 cursor-pointer">
+          <button
+            onClick={() => router.push('/admin/payments')}
+            className="group rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-3 sm:p-4 text-left transition-all hover:bg-white/20 hover:scale-105 cursor-pointer"
+          >
             <h3 className="font-semibold text-white mb-1 sm:mb-2 text-sm sm:text-base">
               Payment Verification
               <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none ml-2">

@@ -18,7 +18,7 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
     .select(`
       *,
       owner:users!communities_owner_id_fkey(id, username, first_name, last_name, profile_picture),
-      plan:subscription_plans(name, max_tree, monthly_price, annual_price),
+      plan:subscription_plans(name, monthly_price, annual_price),
       members:community_members(
         id,
         role,
@@ -29,7 +29,19 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
     .eq('slug', slug)
     .single()
 
-  if (error || !community) {
+  if (error) {
+    console.error('Community fetch error:', JSON.stringify(error, null, 2))
+    console.error('Error details:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    })
+    notFound()
+  }
+
+  if (!community) {
+    console.error('No community found for slug:', slug)
     notFound()
   }
 

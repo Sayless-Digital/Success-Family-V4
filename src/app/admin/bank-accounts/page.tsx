@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
-import { Plus, Edit, Trash2, Building2, MoreVertical, Loader2 } from "lucide-react"
+import { Plus, Edit, Trash2, Building2, MoreVertical, Loader2, Search } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { supabase } from "@/lib/supabase"
 import type { BankAccount, AccountType } from "@/types"
 import { toast } from "sonner"
@@ -25,10 +26,12 @@ export default function BankAccountsPage() {
   const colorStops = useAuroraColors()
   
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [filteredAccounts, setFilteredAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   
   // Form state
   const [formData, setFormData] = useState({
@@ -61,12 +64,29 @@ export default function BankAccountsPage() {
 
       if (error) throw error
       setBankAccounts(data || [])
+      setFilteredAccounts(data || [])
     } catch (error) {
       console.error('Error fetching bank accounts:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  // Filter bank accounts based on search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredAccounts(bankAccounts)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = bankAccounts.filter(account =>
+        account.account_name.toLowerCase().includes(query) ||
+        account.bank_name.toLowerCase().includes(query) ||
+        account.account_number.toLowerCase().includes(query) ||
+        account.account_type.toLowerCase().includes(query)
+      )
+      setFilteredAccounts(filtered)
+    }
+  }, [searchQuery, bankAccounts])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -166,7 +186,7 @@ export default function BankAccountsPage() {
   return (
     <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
+        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
       </div>
       
       <div className="relative z-10 space-y-6">
@@ -186,7 +206,7 @@ export default function BankAccountsPage() {
                     account_type: "savings",
                   })
                 }}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
+                className="w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Add Bank Account</span>
@@ -277,20 +297,40 @@ export default function BankAccountsPage() {
           </Dialog>
         </div>
 
+        {/* Search */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <InputGroup className="bg-white/10 border-white/20 text-white">
+              <InputGroupAddon>
+                <Search className="h-4 w-4 text-white/60" />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder="Search bank accounts by name, bank, or account number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="text-white placeholder:text-white/60"
+              />
+            </InputGroup>
+          </div>
+        </div>
+
         {/* Bank Accounts - Cards on Mobile, Table on Desktop */}
-        {bankAccounts.length === 0 ? (
+        {filteredAccounts.length === 0 ? (
           <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-12 text-center">
             <Building2 className="h-12 w-12 text-white/60 mx-auto mb-4" />
-            <p className="text-white/80">No bank accounts yet</p>
+            <p className="text-white/80">No bank accounts found</p>
             <p className="text-white/60 text-sm mt-1">
-              Add your first bank account to start accepting payments
+              {searchQuery 
+                ? "No bank accounts match your search"
+                : "Add your first bank account to start accepting payments"
+              }
             </p>
           </div>
         ) : (
           <>
             {/* Mobile Cards */}
             <div className="block md:hidden space-y-4">
-              {bankAccounts.map((account) => (
+              {filteredAccounts.map((account) => (
                 <ContextMenu key={account.id}>
                   <ContextMenuTrigger asChild>
                     <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 cursor-context-menu">
@@ -302,9 +342,8 @@ export default function BankAccountsPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
-                              variant="ghost"
+                              variant="admin-ghost"
                               size="icon"
-                              className="text-white bg-white/10 hover:bg-white/20 h-8 w-8"
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
@@ -319,7 +358,7 @@ export default function BankAccountsPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => handleDelete(account.id)}
-                              className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                              className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete Account
@@ -361,7 +400,7 @@ export default function BankAccountsPage() {
                     </ContextMenuItem>
                     <ContextMenuItem 
                       onClick={() => handleDelete(account.id)}
-                      className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                      className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete Account
@@ -385,7 +424,7 @@ export default function BankAccountsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bankAccounts.map((account) => (
+                  {filteredAccounts.map((account) => (
                     <ContextMenu key={account.id}>
                       <ContextMenuTrigger asChild>
                         <TableRow className="cursor-context-menu">
@@ -408,9 +447,8 @@ export default function BankAccountsPage() {
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="admin-ghost"
                                   size="icon"
-                                  className="text-white bg-white/10 hover:bg-white/20 h-8 w-8"
                                 >
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
@@ -425,7 +463,7 @@ export default function BankAccountsPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   onClick={() => handleDelete(account.id)}
-                                  className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                                  className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Delete Account
@@ -445,7 +483,7 @@ export default function BankAccountsPage() {
                         </ContextMenuItem>
                         <ContextMenuItem 
                           onClick={() => handleDelete(account.id)}
-                          className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                          className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete Account

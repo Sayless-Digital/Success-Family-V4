@@ -43,7 +43,7 @@ export const emailTemplates = {
         <h1 style="color: #333;">Welcome to Success Family, ${name}!</h1>
         <p>We're excited to have you join our community of success-driven individuals.</p>
         <p>Get ready to connect, learn, and grow with like-minded people on their journey to success.</p>
-        <a href="${env.NEXT_PUBLIC_APP_URL}" style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Get Started</a>
+        <a href="https://successfamily.com" style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Get Started</a>
       </div>
     `,
   }),

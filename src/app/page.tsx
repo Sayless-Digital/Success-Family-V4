@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import Aurora from "@/components/Aurora"
@@ -13,7 +14,7 @@ export default function Home() {
     <div className="relative flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       {/* Aurora Background */}
       <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
+        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={1.5} />
       </div>
       
       {/* Content */}
@@ -36,15 +37,15 @@ export default function Home() {
           {/* Call to Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center pt-2">
             <Button size="default" className="group gap-2" asChild>
-              <a href="/create-community">
+              <Link href="/create-community">
                 Create Community
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </a>
+              </Link>
             </Button>
             <Button size="default" variant="outline" asChild>
-              <a href="/communities">
+              <Link href="/communities">
                 Explore Communities
-              </a>
+              </Link>
             </Button>
           </div>
         </div>

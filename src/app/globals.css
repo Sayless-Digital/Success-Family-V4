@@ -172,59 +172,62 @@
     color: var(--foreground);
   }
   
-  /* Custom Glass-Styled Scrollbar */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  /* Hide native scrollbar to use OverlayScrollbars */
+  body {
+    overflow: hidden !important;
   }
-  
-  /* Webkit browsers (Chrome, Safari, Edge) */
-  *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+
+  /* Custom Glass-Styled Scrollbar for OverlayScrollbars */
+  .os-scrollbar {
+    padding: 0 !important;
+    margin: 0 !important;
   }
-  
-  *::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 10px;
+
+  .os-scrollbar-vertical {
+    position: absolute !important;
+    right: 0 !important;
+    top: 48px !important;
+    bottom: 0 !important;
+    width: 8px !important;
+    z-index: 900 !important;
   }
-  
-  *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
-    border: 2px solid transparent;
-    background-clip: content-box;
-    backdrop-filter: blur(10px);
-    transition: all 0.2s ease;
+
+  .os-scrollbar > .os-scrollbar-track {
+    background: transparent !important;
+    width: 8px !important;
+    padding: 0 !important;
   }
-  
-  *::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-    background-clip: content-box;
+
+  .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle {
+    background: rgba(255, 255, 255, 0.3) !important;
+    border-radius: 10px !important;
+    backdrop-filter: blur(10px) !important;
+    width: 8px !important;
+    min-height: 40px !important;
   }
-  
-  *::-webkit-scrollbar-thumb:active {
-    background: rgba(255, 255, 255, 0.4);
-    background-clip: content-box;
+
+  .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle:hover {
+    background: rgba(255, 255, 255, 0.5) !important;
   }
-  
-  *::-webkit-scrollbar-corner {
-    background: transparent;
+
+  .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle:active {
+    background: rgba(255, 255, 255, 0.6) !important;
   }
-  
-  /* Dark mode scrollbar adjustments */
-  .dark *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-    background-clip: content-box;
+
+  .os-viewport {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
   }
-  
-  .dark *::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
-    background-clip: content-box;
+
+  .os-host {
+    padding-right: 0 !important;
   }
-  
-  .dark *::-webkit-scrollbar-thumb:active {
-    background: rgba(255, 255, 255, 0.35);
-    background-clip: content-box;
+
+  .os-content-glue {
+    display: none !important;
+  }
+
+  .os-host-overflow {
+    margin-right: 0 !important;
   }
 }

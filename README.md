@@ -45,20 +45,34 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## 📖 Documentation
+
+- **[Setup Guide](SETUP.md)** - Quick setup instructions
+- **[Database Migrations](docs/MIGRATIONS.md)** - Database schema and migration history
+- **[Authentication Setup](docs/AUTH_SETUP_GUIDE.md)** - Authentication system setup
+- **[Sidebar Navigation](docs/SIDEBAR_NAVIGATION.md)** - Navigation architecture
+
 ## Project Structure
 
 ```
-src/
-├── app/                 # Next.js App Router
-│   ├── globals.css     # Global styles
-│   ├── layout.tsx      # Root layout
-│   └── page.tsx        # Home page
-├── components/         # React components
-│   └── ui/            # shadcn/ui components
-├── lib/               # Utility functions
-│   ├── supabase.ts    # Supabase client
-│   └── utils.ts       # Utility functions
-└── types/             # TypeScript type definitions
+.
+├── src/                    # Source code
+│   ├── app/               # Next.js App Router
+│   │   ├── globals.css    # Global styles
+│   │   ├── layout.tsx     # Root layout
+│   │   └── page.tsx       # Home page
+│   ├── components/        # React components
+│   │   └── ui/           # shadcn/ui components
+│   ├── lib/              # Utility functions
+│   │   ├── supabase.ts   # Supabase client
+│   │   └── utils.ts      # Utility functions
+│   └── types/            # TypeScript type definitions
+├── supabase/
+│   └── migrations/       # Database migration files
+├── docs/                 # Documentation files
+├── README.md             # This file
+├── SETUP.md              # Quick setup guide
+└── package.json          # Dependencies
 ```
 
 ## Available Scripts
@@ -77,14 +91,17 @@ src/
 - 🌙 Dark mode support
 - 📊 Real-time data with Supabase
 - 🚀 Latest Tailwind CSS v4 with PostCSS integration
+- 🧭 Context-aware sidebar navigation
+- 👥 Community management and membership
+- 💳 Subscription-based communities
+- 🏦 Payment receipt verification system
 
 ## Next Steps
 
-1. Set up Supabase database schema
-2. Implement authentication
-3. Add community features
-4. Set up file storage
-5. Deploy to production
+1. Follow the [Setup Guide](SETUP.md) to configure your environment
+2. Apply database migrations from `supabase/migrations/`
+3. Review the [Authentication Setup](docs/AUTH_SETUP_GUIDE.md)
+4. Start building your community features!
 
 ## Contributing
 

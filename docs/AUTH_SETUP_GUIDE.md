@@ -23,7 +23,7 @@ You need to execute the SQL migration in your Supabase project. You have two opt
 1. Go to your Supabase project dashboard
 2. Navigate to **SQL Editor** in the sidebar
 3. Click **New Query**
-4. Copy the entire contents of `supabase-migration.sql` from the project root
+4. Copy the entire contents of `supabase/migrations/supabase-migration.sql`
 5. Paste it into the SQL editor
 6. Click **Run** to execute the migration
 
@@ -123,7 +123,9 @@ src/
 └── types/
     └── index.ts                # Updated User type definitions
 
-supabase-migration.sql          # Database schema and triggers
+supabase/
+└── migrations/
+    └── supabase-migration.sql  # Database schema and triggers
 ```
 
 ## 🎨 Features

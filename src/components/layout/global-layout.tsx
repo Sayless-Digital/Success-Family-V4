@@ -99,8 +99,17 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
         isMobile={isMobile}
       />
 
+      {/* Mobile Overlay with Blur */}
+      {isMobile && isSidebarOpen && (
+        <div 
+          className="fixed inset-0 backdrop-blur-sm z-[950] transition-opacity duration-300"
+          onClick={handleSidebarClose}
+          aria-hidden="true"
+        />
+      )}
+
       <main className={pageAreaClasses}>
-        <div className="pt-4 px-4 sm:px-6 lg:px-8">
+        <div className="pt-4 pb-8 px-4 sm:px-6 lg:px-8">
           {children}
         </div>
       </main>

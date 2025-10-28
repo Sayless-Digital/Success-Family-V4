@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PageHeader } from "@/components/ui/page-header"
 import { supabase } from "@/lib/supabase"
 import type { SubscriptionPlan, BankAccount, BillingCycle } from "@/types"
 
@@ -136,102 +137,60 @@ export default function CreateCommunityPage() {
     setSubmitting(true)
 
     try {
-      console.log('Starting community creation process...')
-      console.log('User:', user.id)
-      console.log('User email:', user.email)
-      console.log('Selected plan:', selectedPlan.id)
-      console.log('Selected bank account:', selectedBankAccount.id)
-      console.log('Receipt file:', receiptFile.name)
-      console.log('Community name:', communityName)
-      
-      // Check authentication status
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      console.log('Current session:', session?.user?.id)
-      console.log('Session error:', sessionError)
-      console.log('Session user ID type:', typeof session?.user?.id)
-      console.log('Auth context user ID:', user.id)
-      console.log('Auth context user ID type:', typeof user.id)
-      console.log('Session and auth context match:', session?.user?.id === user.id)
-
-      // Test database access with current session
-      console.log('Testing database access...')
-      const { data: testData, error: testError } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('id', user.id)
-        .single()
-      
-      console.log('Test query result:', testData)
-      console.log('Test query error:', testError)
-      
-      if (testError) {
-        console.error('Database access test failed:', testError)
-        throw new Error(`Database access failed: ${testError.message}`)
-      }
-
       // Upload receipt
       setUploadProgress(30)
-      console.log('Uploading receipt...')
       const receiptUrl = await uploadReceipt()
-      console.log('Receipt uploaded successfully:', receiptUrl)
       
       // Generate slug
       setUploadProgress(50)
-      console.log('Generating slug...')
       const { data: slugData, error: slugError } = await supabase
         .rpc('generate_community_slug', { community_name: communityName })
       
-      if (slugError) {
-        console.error('Slug generation error:', slugError)
-        throw slugError
-      }
+      if (slugError) throw slugError
       const slug = slugData as string
-      console.log('Slug generated:', slug)
 
       // Calculate amount
       const amount = billingCycle === 'monthly' ? selectedPlan.monthly_price : selectedPlan.annual_price
-      console.log('Amount calculated:', amount)
 
-      // Create community
-      setUploadProgress(70)
-      console.log('Creating community...')
-      
-      const communityData = {
-        name: communityName,
-        slug,
-        description: communityDescription || null,
-        owner_id: user.id,
-        plan_id: selectedPlan.id,
-        billing_cycle: billingCycle,
-      }
-      
-      console.log('Community data to insert:', communityData)
-      console.log('User ID from auth context:', user.id)
-      console.log('User ID type:', typeof user.id)
-      
+      // Create community (will be inactive until payment verified)
+      setUploadProgress(60)
       const { data: community, error: communityError } = await supabase
         .from('communities')
-        .insert([communityData])
+        .insert([{
+          name: communityName,
+          slug,
+          description: communityDescription || null,
+          owner_id: user.id,
+          plan_id: selectedPlan.id,
+          billing_cycle: billingCycle,
+        }])
         .select()
         .single()
 
-      if (communityError) {
-        console.error('Community creation error:', communityError)
-        console.error('Community error details:', JSON.stringify(communityError, null, 2))
-        console.error('Community error message:', communityError.message)
-        console.error('Community error code:', communityError.code)
-        console.error('Community error details:', communityError.details)
-        throw communityError
-      }
-      console.log('Community created successfully:', community.id)
+      if (communityError) throw communityError
 
-      // Create payment receipt
+      // Create pending subscription immediately
+      setUploadProgress(75)
+      const { data: subscription, error: subscriptionError } = await supabase
+        .from('subscriptions')
+        .insert([{
+          community_id: community.id,
+          plan_id: selectedPlan.id,
+          billing_cycle: billingCycle,
+          status: 'pending'
+        }])
+        .select()
+        .single()
+
+      if (subscriptionError) throw subscriptionError
+
+      // Create payment receipt and link to subscription
       setUploadProgress(90)
-      console.log('Creating payment receipt...')
       const { error: receiptError } = await supabase
         .from('payment_receipts')
         .insert([{
           community_id: community.id,
+          subscription_id: subscription.id,
           user_id: user.id,
           plan_id: selectedPlan.id,
           billing_cycle: billingCycle,
@@ -240,56 +199,17 @@ export default function CreateCommunityPage() {
           receipt_url: receiptUrl,
         }])
 
-      if (receiptError) {
-        console.error('Payment receipt creation error:', receiptError)
-        throw receiptError
-      }
-      console.log('Payment receipt created successfully')
+      if (receiptError) throw receiptError
 
       setUploadProgress(100)
       
-      // Redirect to community page (will be created next)
+      // Redirect to community page
       setTimeout(() => {
         router.push(`/${slug}`)
       }, 500)
     } catch (error) {
       console.error('Error creating community:', error)
-      console.error('Error type:', typeof error)
-      console.error('Error constructor:', error?.constructor?.name)
-      
-      // Try to extract more details from the error
-      let errorMessage = 'Unknown error occurred'
-      let errorDetails = ''
-      
-      if (error instanceof Error) {
-        errorMessage = error.message
-        errorDetails = error.stack || ''
-      } else if (error && typeof error === 'object') {
-        // Handle Supabase errors
-        if ('message' in error) {
-          errorMessage = String(error.message)
-        }
-        if ('code' in error) {
-          errorDetails += `Code: ${error.code}\n`
-        }
-        if ('details' in error) {
-          errorDetails += `Details: ${error.details}\n`
-        }
-        if ('hint' in error) {
-          errorDetails += `Hint: ${error.hint}\n`
-        }
-        
-        // Try to stringify the entire error object
-        try {
-          errorDetails += `Full error: ${JSON.stringify(error, null, 2)}`
-        } catch (e) {
-          errorDetails += `Error object: ${String(error)}`
-        }
-      }
-      
-      console.error('Parsed error message:', errorMessage)
-      console.error('Parsed error details:', errorDetails)
-      
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred'
       alert(`Failed to create community: ${errorMessage}`)
       setSubmitting(false)
       setUploadProgress(0)
@@ -300,7 +220,7 @@ export default function CreateCommunityPage() {
     return (
       <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
         <div className="fixed inset-0 z-0 overflow-hidden">
-          <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
+          <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
         </div>
         <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-white">Loading...</div>
@@ -323,7 +243,7 @@ export default function CreateCommunityPage() {
         <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
       </div>
       
-      <div className="relative z-10 space-y-6 pb-8">
+      <div className="relative z-10 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
           <Button
@@ -334,10 +254,11 @@ export default function CreateCommunityPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-xl sm:text-3xl font-bold text-white">Create Your Community</h1>
-          </div>
         </div>
+        <PageHeader
+          title="Create Your Community"
+          subtitle="Set up your community with subscription plans and payment verification"
+        />
 
         {/* Progress Bar */}
         <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 sm:p-6">
@@ -672,14 +593,14 @@ export default function CreateCommunityPage() {
               
               {/* Upload Progress */}
               {submitting && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm text-white/80">
-                    <span>Creating your community...</span>
-                    <span>{uploadProgress}%</span>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center space-x-3">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-white/20 border-t-white"></div>
+                    <span className="text-white font-medium">Creating your community</span>
                   </div>
-                  <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="w-full bg-white/10 rounded-full h-1 overflow-hidden">
                     <div 
-                      className="h-full bg-primary transition-all duration-300"
+                      className="h-full bg-gradient-to-r from-primary to-primary/60 transition-all duration-500 ease-out"
                       style={{ width: `${uploadProgress}%` }}
                     />
                   </div>

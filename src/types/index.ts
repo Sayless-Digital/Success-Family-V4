@@ -25,6 +25,25 @@ export type BillingCycle = 'monthly' | 'annual'
 // Payment status types
 export type PaymentStatus = 'pending' | 'verified' | 'rejected'
 
+// Subscription status types
+export type SubscriptionStatus = 'pending' | 'active' | 'cancelled' | 'expired'
+
+// Subscription types
+export interface Subscription {
+  id: string
+  community_id: string
+  plan_id: string
+  billing_cycle: BillingCycle
+  status: SubscriptionStatus
+  start_date?: string
+  end_date?: string
+  next_billing_date?: string
+  cancelled_at?: string
+  cancellation_reason?: string
+  created_at: string
+  updated_at: string
+}
+
 // User types
 export interface User {
   id: string
@@ -47,6 +66,7 @@ export interface BankAccount {
   bank_name: string
   account_number: string
   account_type: AccountType
+  community_id?: string
   is_active: boolean
   created_at: string
   updated_at: string
@@ -77,6 +97,10 @@ export interface Community {
   billing_cycle: BillingCycle
   subscription_start_date?: string
   subscription_end_date?: string
+  next_billing_date?: string
+  subscription_status: SubscriptionStatus
+  cancelled_at?: string
+  cancellation_reason?: string
   is_active: boolean
   created_at: string
   updated_at: string
@@ -101,6 +125,7 @@ export interface PaymentReceipt {
   amount: number
   bank_account_id: string
   receipt_url: string
+  subscription_id?: string
   status: PaymentStatus
   verified_by?: string
   verified_at?: string
@@ -160,6 +185,11 @@ export interface Database {
         Row: CommunityMember
         Insert: Omit<CommunityMember, 'id' | 'joined_at'>
         Update: Partial<Omit<CommunityMember, 'id' | 'joined_at'>>
+      }
+      subscriptions: {
+        Row: Subscription
+        Insert: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Subscription, 'id' | 'created_at' | 'updated_at'>>
       }
       payment_receipts: {
         Row: PaymentReceipt

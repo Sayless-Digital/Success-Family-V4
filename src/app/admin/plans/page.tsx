@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
-import { Plus, Edit, Trash2, Package, MoreVertical, Loader2 } from "lucide-react"
+import { Plus, Edit, Trash2, Package, MoreVertical, Loader2, Search } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import type { SubscriptionPlan } from "@/types"
@@ -24,10 +25,12 @@ export default function PlansPage() {
   const colorStops = useAuroraColors()
   
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
+  const [filteredPlans, setFilteredPlans] = useState<SubscriptionPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   
   // Form state
   const [formData, setFormData] = useState({
@@ -64,12 +67,28 @@ export default function PlansPage() {
 
       if (error) throw error
       setPlans(data || [])
+      setFilteredPlans(data || [])
     } catch (error) {
       console.error('Error fetching plans:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  // Filter plans based on search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredPlans(plans)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = plans.filter(plan =>
+        plan.name.toLowerCase().includes(query) ||
+        plan.description?.toLowerCase().includes(query) ||
+        plan.tags?.some(tag => tag.toLowerCase().includes(query))
+      )
+      setFilteredPlans(filtered)
+    }
+  }, [searchQuery, plans])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -174,7 +193,7 @@ export default function PlansPage() {
   return (
     <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
       <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
+        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
       </div>
       
       <div className="relative z-10 space-y-6">
@@ -197,7 +216,7 @@ export default function PlansPage() {
                   })
                   setTagInput("")
                 }}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
+                className="w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Plan
@@ -322,7 +341,7 @@ export default function PlansPage() {
                                   tags: formData.tags.filter((_, i) => i !== index)
                                 })
                               }}
-                              className="hover:text-primary/80"
+                              className="hover:text-primary/80 cursor-pointer"
                             >
                               ×
                             </button>
@@ -362,20 +381,40 @@ export default function PlansPage() {
           </Dialog>
         </div>
 
+        {/* Search */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <InputGroup className="bg-white/10 border-white/20 text-white">
+              <InputGroupAddon>
+                <Search className="h-4 w-4 text-white/60" />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder="Search plans by name, description, or tags..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="text-white placeholder:text-white/60"
+              />
+            </InputGroup>
+          </div>
+        </div>
+
         {/* Plans - Cards on Mobile, Table on Desktop */}
-        {plans.length === 0 ? (
+        {filteredPlans.length === 0 ? (
           <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-12 text-center">
             <Package className="h-12 w-12 text-white/60 mx-auto mb-4" />
-            <p className="text-white/80">No subscription plans yet</p>
+            <p className="text-white/80">No subscription plans found</p>
             <p className="text-white/60 text-sm mt-1">
-              Create your first plan to allow community creation
+              {searchQuery 
+                ? "No plans match your search"
+                : "Create your first plan to allow community creation"
+              }
             </p>
           </div>
         ) : (
           <>
             {/* Mobile Cards */}
             <div className="block md:hidden space-y-4">
-              {plans.map((plan) => (
+              {filteredPlans.map((plan) => (
                 <ContextMenu key={plan.id}>
                   <ContextMenuTrigger asChild>
                     <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 cursor-context-menu">
@@ -389,9 +428,8 @@ export default function PlansPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
-                              variant="ghost"
+                              variant="admin-ghost"
                               size="icon"
-                              className="text-white bg-white/10 hover:bg-white/20 h-8 w-8"
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
@@ -406,7 +444,7 @@ export default function PlansPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => handleDelete(plan.id)}
-                              className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                              className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete Plan
@@ -448,7 +486,7 @@ export default function PlansPage() {
                     </ContextMenuItem>
                     <ContextMenuItem 
                       onClick={() => handleDelete(plan.id)}
-                      className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                      className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete Plan
@@ -472,7 +510,7 @@ export default function PlansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {plans.map((plan) => (
+                  {filteredPlans.map((plan) => (
                     <ContextMenu key={plan.id}>
                       <ContextMenuTrigger asChild>
                         <TableRow className="cursor-context-menu">
@@ -495,9 +533,8 @@ export default function PlansPage() {
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="admin-ghost"
                                   size="icon"
-                                  className="text-white bg-white/10 hover:bg-white/20 h-8 w-8"
                                 >
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
@@ -512,7 +549,7 @@ export default function PlansPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   onClick={() => handleDelete(plan.id)}
-                                  className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                                  className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Delete Plan
@@ -532,7 +569,7 @@ export default function PlansPage() {
                         </ContextMenuItem>
                         <ContextMenuItem 
                           onClick={() => handleDelete(plan.id)}
-                          className="text-white bg-destructive/20 hover:bg-destructive/30 focus:bg-destructive/30 focus:text-white"
+                          className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete Plan

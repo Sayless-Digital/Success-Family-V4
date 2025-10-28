@@ -4,6 +4,7 @@ import "./globals.css";
 import { GlobalLayout } from "@/components/layout/global-layout";
 import { AuthProvider } from "@/components/auth-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ScrollbarProvider } from "@/components/scrollbar-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,11 +21,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={inter.className}>
-        <AuthProvider>
-          <GlobalLayout>
-            {children}
-          </GlobalLayout>
-        </AuthProvider>
+        <ScrollbarProvider>
+          <AuthProvider>
+            <GlobalLayout>
+              {children}
+            </GlobalLayout>
+          </AuthProvider>
+        </ScrollbarProvider>
       </body>
     </html>
   );
