@@ -16,6 +16,7 @@ Migrations should be applied in the following order:
 8. **add_community_id_to_bank_accounts.sql** - Adds community_id to bank_accounts for community-specific payment accounts
 9. **add_community_pricing_fields.sql** - Adds pricing fields to communities for community owners to charge users
 10. **allow_users_to_join_communities.sql** - Allows users to add themselves as members to communities
+11. **add_recurring_billing_fields.sql** - Adds invoice tracking and recurring billing support for automatic invoice generation
 
 ## Applying Migrations
 

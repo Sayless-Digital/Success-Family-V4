@@ -19,30 +19,7 @@ export type AccountType = 'savings' | 'checking'
 // Community member roles
 export type CommunityMemberRole = 'owner' | 'member'
 
-// Billing cycle types
-export type BillingCycle = 'monthly' | 'annual'
-
-// Payment status types
-export type PaymentStatus = 'pending' | 'verified' | 'rejected'
-
-// Subscription status types
-export type SubscriptionStatus = 'pending' | 'active' | 'cancelled' | 'expired'
-
-// Subscription types
-export interface Subscription {
-  id: string
-  community_id: string
-  plan_id: string
-  billing_cycle: BillingCycle
-  status: SubscriptionStatus
-  start_date?: string
-  end_date?: string
-  next_billing_date?: string
-  cancelled_at?: string
-  cancellation_reason?: string
-  created_at: string
-  updated_at: string
-}
+// Removed legacy subscription and billing types
 
 // User types
 export interface User {
@@ -72,22 +49,9 @@ export interface BankAccount {
   updated_at: string
 }
 
-// Subscription plan types
-export interface SubscriptionPlan {
-  id: string
-  name: string
-  description?: string
-  monthly_price: number
-  annual_price: number
-  tags: string[]
-  sort_order: number
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+// Removed legacy subscription plan types
 
-// Community pricing types
-export type CommunityPricingType = 'free' | 'one_time' | 'recurring'
+// Removed legacy community pricing types
 
 // Community types
 export interface Community {
@@ -96,22 +60,9 @@ export interface Community {
   slug: string
   description?: string
   owner_id: string
-  plan_id: string
-  billing_cycle: BillingCycle
-  subscription_start_date?: string
-  subscription_end_date?: string
-  next_billing_date?: string
-  subscription_status: SubscriptionStatus
-  cancelled_at?: string
-  cancellation_reason?: string
   is_active: boolean
   created_at: string
   updated_at: string
-  // Community pricing fields
-  pricing_type?: CommunityPricingType
-  one_time_price?: number
-  monthly_price?: number
-  annual_price?: number
 }
 
 // Community member types
@@ -123,23 +74,39 @@ export interface CommunityMember {
   joined_at: string
 }
 
-// Payment receipt types
-export interface PaymentReceipt {
-  id: string
-  community_id: string
+// Removed legacy payment receipt types
+
+// New balance system types
+export interface PlatformSettings {
+  id: number
+  buy_price_per_point: number
+  user_value_per_point: number
+  updated_at: string
+}
+
+export interface Wallet {
   user_id: string
-  plan_id: string
-  billing_cycle: BillingCycle
-  amount: number
-  bank_account_id: string
-  receipt_url: string
-  subscription_id?: string
-  status: PaymentStatus
+  points_balance: number
+  last_topup_at?: string
+  updated_at: string
+}
+
+export type TransactionType = 'top_up' | 'payout' | 'point_spend' | 'point_refund'
+export type TransactionStatus = 'pending' | 'verified' | 'rejected'
+
+export interface Transaction {
+  id: string
+  user_id: string
+  type: TransactionType
+  amount_ttd?: number
+  points_delta: number
+  status: TransactionStatus
+  bank_account_id?: string
+  receipt_url?: string
   verified_by?: string
   verified_at?: string
   rejection_reason?: string
   created_at: string
-  updated_at: string
 }
 
 // Post types
@@ -179,11 +146,6 @@ export interface Database {
         Insert: Omit<BankAccount, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<BankAccount, 'id' | 'created_at' | 'updated_at'>>
       }
-      subscription_plans: {
-        Row: SubscriptionPlan
-        Insert: Omit<SubscriptionPlan, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<SubscriptionPlan, 'id' | 'created_at' | 'updated_at'>>
-      }
       communities: {
         Row: Community
         Insert: Omit<Community, 'id' | 'created_at' | 'updated_at'>
@@ -194,15 +156,20 @@ export interface Database {
         Insert: Omit<CommunityMember, 'id' | 'joined_at'>
         Update: Partial<Omit<CommunityMember, 'id' | 'joined_at'>>
       }
-      subscriptions: {
-        Row: Subscription
-        Insert: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Subscription, 'id' | 'created_at' | 'updated_at'>>
+      platform_settings: {
+        Row: PlatformSettings
+        Insert: Partial<PlatformSettings>
+        Update: Partial<PlatformSettings>
       }
-      payment_receipts: {
-        Row: PaymentReceipt
-        Insert: Omit<PaymentReceipt, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<PaymentReceipt, 'id' | 'created_at' | 'updated_at'>>
+      wallets: {
+        Row: Wallet
+        Insert: Omit<Wallet, 'updated_at'>
+        Update: Partial<Wallet>
+      }
+      transactions: {
+        Row: Transaction
+        Insert: Omit<Transaction, 'id' | 'created_at'>
+        Update: Partial<Transaction>
       }
       posts: {
         Row: Post

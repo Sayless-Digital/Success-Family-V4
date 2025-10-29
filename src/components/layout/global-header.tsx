@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Sidebar, LogOut, Shield, CreditCard, Users, ChevronDown, Home, User } from "lucide-react"
+import { Sidebar, LogOut, Shield, Users, ChevronDown, Home, User, Wallet as WalletIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -19,6 +19,7 @@ import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import type { Community } from "@/types"
+import { CreateCommunityDialog } from "@/components/create-community-dialog"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -30,8 +31,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
   const { user, userProfile, signOut, isLoading } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
+  const [createOpen, setCreateOpen] = React.useState(false)
   const [userCommunities, setUserCommunities] = React.useState<Community[]>([])
   const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
+  const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
   
   // Memoize user initials to prevent unnecessary re-renders
   const userInitials = React.useMemo(() => {
@@ -49,6 +52,25 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
       setUserCommunities([])
     }
   }, [user, userProfile])
+
+  // Fetch wallet balance
+  React.useEffect(() => {
+    const fetchWallet = async () => {
+      if (!user) {
+        setWalletBalance(null)
+        return
+      }
+      const { data, error } = await supabase
+        .from('wallets')
+        .select('points_balance')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!error) {
+        setWalletBalance(Number(data?.points_balance ?? 0))
+      }
+    }
+    fetchWallet()
+  }, [user])
 
   const fetchUserCommunities = async () => {
     if (!user) return
@@ -166,11 +188,9 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                         <span>Browse All Communities</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/create-community" className="cursor-pointer">
-                        <Users className="mr-2 h-4 w-4" />
-                        <span>Create Community</span>
-                      </Link>
+                    <DropdownMenuItem onClick={() => (user ? setCreateOpen(true) : (setAuthDialogTab("signin"), setAuthDialogOpen(true)))}>
+                      <Users className="mr-2 h-4 w-4" />
+                      <span>Create Community</span>
                     </DropdownMenuItem>
                   </>
                 ) : (
@@ -203,11 +223,9 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                         <span>Browse All Communities</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/create-community" className="cursor-pointer">
-                        <Users className="mr-2 h-4 w-4" />
-                        <span>Create Community</span>
-                      </Link>
+                    <DropdownMenuItem onClick={() => (user ? setCreateOpen(true) : (setAuthDialogTab("signin"), setAuthDialogOpen(true)))}>
+                      <Users className="mr-2 h-4 w-4" />
+                      <span>Create Community</span>
                     </DropdownMenuItem>
                   </>
                 )}
@@ -297,12 +315,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                     <span>Account</span>
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/billing" className="cursor-pointer">
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    <span>Billing & Payments</span>
-                  </Link>
-                </DropdownMenuItem>
                 {userProfile?.role === 'admin' && (
                   <>
                     <DropdownMenuSeparator />
@@ -322,6 +334,15 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+
+          {user && (
+            <Link href="/wallet" className="ml-1">
+              <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80">
+                <WalletIcon className="h-4 w-4 mr-1" />
+                <span className="text-sm">{walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}</span>
+              </Button>
+            </Link>
+          )}
           
           {/* Mobile menu button - far right */}
           {isMobile && (
@@ -344,6 +365,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
       onOpenChange={setAuthDialogOpen}
       defaultTab={authDialogTab}
     />
+    <CreateCommunityDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   )
 }

@@ -5,10 +5,17 @@ import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import Aurora from "@/components/Aurora"
 import { useAuroraColors } from "@/lib/use-aurora-colors"
+import * as React from "react"
+import { useAuth } from "@/components/auth-provider"
+import { CreateCommunityDialog } from "@/components/create-community-dialog"
+import { AuthDialog } from "@/components/auth-dialog"
 
 export default function Home() {
   // Get colors from global CSS custom properties
   const colorStops = useAuroraColors()
+  const { user } = useAuth()
+  const [createOpen, setCreateOpen] = React.useState(false)
+  const [authOpen, setAuthOpen] = React.useState(false)
   
   return (
     <div className="relative flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
@@ -36,11 +43,9 @@ export default function Home() {
 
           {/* Call to Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center pt-2">
-            <Button size="default" className="group gap-2" asChild>
-              <Link href="/create-community">
-                Create Community
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Link>
+            <Button size="default" className="group gap-2" onClick={() => (user ? setCreateOpen(true) : setAuthOpen(true))}>
+              Create Community
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Button>
             <Button size="default" variant="outline" asChild>
               <Link href="/communities">
@@ -49,7 +54,9 @@ export default function Home() {
             </Button>
           </div>
         </div>
-      </div>
+    </div>
+    <CreateCommunityDialog open={createOpen} onOpenChange={setCreateOpen} />
+    <AuthDialog open={authOpen} onOpenChange={setAuthOpen} defaultTab="signin" />
     </div>
   )
 }

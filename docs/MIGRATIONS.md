@@ -190,9 +190,61 @@ payment_receipts
   ├── plan_id → subscription_plans
   ├── bank_account_id → bank_accounts
   ├── receipt_url (storage)
-  ├── status (pending/verified/rejected)
+  ├── status (unpaid/pending/verified/rejected)
+    │   ├── unpaid - Invoice generated, no receipt uploaded yet
+    │   ├── pending - Receipt uploaded, awaiting verification
+    │   ├── verified - Payment confirmed
+    │   └── rejected - Payment rejected
+  ├── invoice_number (NEW) - Unique identifier for recurring invoices
+  ├── is_recurring (NEW) - Flag for recurring subscription payments
+  ├── next_billing_date (NEW) - Due date for recurring billing
   └── verified_by, verified_at, rejection_reason
 ```
+
+### 11. Recurring Billing Fields
+**File:** `supabase/migrations/add_recurring_billing_fields.sql`
+**Status:** ✅ Applied via Supabase MCP
+**Description:** Adds support for recurring billing and automatic invoice generation:
+- Adds `invoice_number` to payment_receipts for unique invoice identification
+- Adds `is_recurring` flag to mark recurring subscription payments
+- Adds `next_billing_date` to track when next payment is due
+- Creates `generate_invoice_number()` function for automatic invoice numbering (format: INV-YYYY-MM-######)
+- Creates trigger to auto-generate invoice numbers for recurring payments
+- Adds indexes for efficient invoice queries
+- Enables automatic generation of monthly/annual invoices with unique invoice numbers
+
+**Use Cases:**
+- Generate new invoice every month for active subscriptions
+- Send reminder emails 7 days, 3 days, and on due date
+- Track pending payments by next_billing_date
+- Link recurring payments through invoice numbers
+
+### 12. Remove Subscriptions and Introduce Wallets (Points) and Platform Settings
+**File:** `supabase/migrations/2025-10-29_remove_subscriptions_and_add_balance_system.sql`
+**Status:** ✅ Applied via Supabase MCP
+**Description:** Removes legacy subscription system and introduces platform-level configuration for points.
+- Drops `subscriptions`, `subscription_plans`, `payment_receipts`
+- Removes all subscription-related columns from `communities`
+- Adds `platform_settings` with `point_value_ttd_per_point` and `platform_fee_percent`
+- Adds initial points balance/topups (superseded by wallets/transactions in next migration)
+
+### 13. Refactor to Wallets and Unified Transactions
+**File:** `supabase/migrations/2025-10-29_refactor_wallets_and_transactions_schema.sql`
+**Status:** ✅ Applied via Supabase MCP
+**Description:** Replaces per-user balance and topups with a unified wallet and transactions model.
+- Creates `wallets` with `points_balance`, `last_topup_at`
+- Creates `transactions` with `type` ('top_up','payout','point_spend','point_refund'), `amount_ttd`, `platform_fee_ttd`, `points_delta`
+- Rewrites `apply_topup` to credit via `transactions` and update `wallets`
+- Migrates data from old balance/topups tables, drops them
+
+### 14. Receipts and Verification Flow
+**File:** `supabase/migrations/2025-10-29_add_receipts_and_verification_flow.sql`
+**Status:** ✅ Applied via Supabase MCP
+**Description:** Adds bank transfer receipt uploads integrated with wallet top-ups.
+- Creates `receipts` with linkage to `transactions`
+- Adds `verify_receipt(receipt_id)` to create a 'top_up' transaction and credit wallet
+- Adds `reject_receipt(receipt_id, reason)`
+- RLS policies for user visibility and admin management
 
 ## Important Notes
 

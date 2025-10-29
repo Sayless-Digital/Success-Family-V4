@@ -10,6 +10,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { CreateCommunityDialog } from "@/components/create-community-dialog"
+import { useAuth } from "@/components/auth-provider"
+import { AuthDialog } from "@/components/auth-dialog"
 
 interface Community {
   id: string
@@ -18,10 +21,6 @@ interface Community {
   description?: string
   created_at: string
   is_active: boolean
-  pricing_type?: string
-  one_time_price?: number
-  monthly_price?: number
-  annual_price?: number
   owner: {
     id: string
     username: string
@@ -38,6 +37,9 @@ interface CommunitiesListProps {
 export default function CommunitiesList({ communities }: CommunitiesListProps) {
   const colorStops = useAuroraColors()
   const [searchQuery, setSearchQuery] = useState("")
+  const { user } = useAuth()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
 
   // Filter communities based on search query
   const filteredCommunities = communities.filter((community) =>
@@ -82,10 +84,8 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                 ? 'Try adjusting your search terms'
                 : 'Be the first to create a community!'}
             </p>
-            <Button asChild>
-              <Link href="/create-community">
-                Create Community
-              </Link>
+            <Button onClick={() => (user ? setCreateOpen(true) : setAuthOpen(true))}>
+              Create Community
             </Button>
           </div>
         ) : (
@@ -137,32 +137,10 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                           </div>
                         </div>
                         
-                        {/* Pricing Badge */}
-                        {community.pricing_type && community.pricing_type !== 'free' && (
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                            {community.pricing_type === 'one_time' && community.one_time_price && (
-                              <span>${community.one_time_price.toFixed(2)}</span>
-                            )}
-                            {community.pricing_type === 'recurring' && (
-                              <>
-                                {community.monthly_price && community.monthly_price > 0 && (
-                                  <span>${community.monthly_price.toFixed(2)}/mo</span>
-                                )}
-                                {community.annual_price && community.annual_price > 0 && community.monthly_price && (
-                                  <span className="mx-1">•</span>
-                                )}
-                                {community.annual_price && community.annual_price > 0 && (
-                                  <span>${community.annual_price.toFixed(2)}/yr</span>
-                                )}
-                              </>
-                            )}
-                          </Badge>
-                        )}
-                        {(!community.pricing_type || community.pricing_type === 'free') && (
-                          <Badge className="bg-white/10 text-white/80 border-white/20">
-                            Free
-                          </Badge>
-                        )}
+                        {/* Free Badge */}
+                        <Badge className="bg-white/10 text-white/80 border-white/20">
+                          Free
+                        </Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -182,15 +160,15 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                 <p className="text-white/80 mb-6 leading-relaxed">
                   Start a community and connect with others who share your interests and goals.
                 </p>
-                <Button asChild size="lg">
-                  <Link href="/create-community">
-                    Create Community
-                  </Link>
+                <Button size="lg" onClick={() => (user ? setCreateOpen(true) : setAuthOpen(true))}>
+                  Create Community
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
+        <CreateCommunityDialog open={createOpen} onOpenChange={setCreateOpen} />
+        <AuthDialog open={authOpen} onOpenChange={setAuthOpen} defaultTab="signin" />
       </div>
     </div>
   )

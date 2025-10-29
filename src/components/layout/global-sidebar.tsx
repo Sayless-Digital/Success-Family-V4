@@ -28,7 +28,6 @@ const baseNavigationItems = [
 const communityNavigationItems = [
   { icon: Users, label: "Community Home", href: "#", isDynamic: true },
   { icon: UserCheck, label: "Members", href: "/members", isDynamic: true },
-  { icon: CreditCard, label: "Payments", href: "/payments", isDynamic: true, ownerOnly: true },
   { icon: Settings, label: "Settings", href: "/settings", isDynamic: true },
   { icon: MessageSquare, label: "Messages", href: "#", isDynamic: true },
   { icon: Calendar, label: "Events", href: "#", isDynamic: true },
@@ -38,12 +37,11 @@ const communityNavigationItems = [
 const adminNavigationItems = [
   { icon: BarChart3, label: "Dashboard", href: "/admin" },
   { icon: Building2, label: "Bank Accounts", href: "/admin/bank-accounts" },
-  { icon: Package, label: "Subscription Plans", href: "/admin/plans" },
   { icon: Users, label: "Manage Users", href: "/admin/users" },
-  { icon: BarChart3, label: "Payments", href: "/admin/payments" },
   { icon: Shield, label: "Roles & Permissions", href: "/admin/roles" },
   { icon: Database, label: "Database", href: "/admin/database" },
   { icon: FileText, label: "Reports", href: "/admin/reports" },
+  { icon: CreditCard, label: "Transactions", href: "/admin/transactions" },
   { icon: Settings, label: "Platform Settings", href: "/admin/settings" },
 ]
 
@@ -66,7 +64,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   // Check if on a community page (dynamic route like /[slug])
   const isOnCommunityRoute = React.useMemo(() => {
     // Match any route that's not admin, and is not /, /communities, /settings, /account, etc.
-    const nonCommunityRoutes = ['/', '/communities', '/create-community', '/account', '/billing', '/profile', '/admin']
+    const nonCommunityRoutes = ['/', '/communities', '/create-community', '/account', '/profile', '/admin']
     return !nonCommunityRoutes.some(route => pathname === route || pathname.startsWith(route + '/')) && 
            !pathname.startsWith('/admin')
   }, [pathname])

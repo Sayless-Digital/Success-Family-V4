@@ -8,6 +8,7 @@ export function validateEnv() {
   const optionalEnvVars = {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    CRON_SECRET: process.env.CRON_SECRET,
   }
 
   const missingVars = Object.entries(requiredEnvVars)
