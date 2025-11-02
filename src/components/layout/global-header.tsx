@@ -152,7 +152,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                   className="h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
+                    <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
                       SF
                     </div>
                     <span className="font-semibold text-white text-sm">
@@ -203,7 +203,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                           onClick={() => isMobile && onMenuClick()}
                         >
                           <div className="flex items-center gap-2 w-full">
-                            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
+                            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
                               {community.name[0]}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -233,7 +233,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
             </DropdownMenu>
           ) : (
             <Link href="/" className="flex items-center gap-2">
-              <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
+              <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
                 SF
               </div>
               <span className="font-semibold text-white hidden sm:block">
@@ -287,7 +287,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
+                  <Avatar className="h-8 w-8 border-4 border-white/20">
                     <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
                     <AvatarFallback className="text-xs">
                       {userProfile ? userInitials : "..."}

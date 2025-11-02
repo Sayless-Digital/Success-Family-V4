@@ -27,9 +27,9 @@ const baseNavigationItems = [
 
 const communityNavigationItems = [
   { icon: Users, label: "Community Home", href: "#", isDynamic: true },
+  { icon: MessageSquare, label: "Feed", href: "/feed", isDynamic: true },
   { icon: UserCheck, label: "Members", href: "/members", isDynamic: true },
   { icon: Settings, label: "Settings", href: "/settings", isDynamic: true },
-  { icon: MessageSquare, label: "Messages", href: "#", isDynamic: true },
   { icon: Calendar, label: "Events", href: "#", isDynamic: true },
   { icon: BarChart3, label: "Analytics", href: "#", isDynamic: true },
 ]

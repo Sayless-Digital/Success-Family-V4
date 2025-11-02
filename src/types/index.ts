@@ -109,16 +109,31 @@ export interface Transaction {
   created_at: string
 }
 
-// Post types
+// Post system types
+export type MediaType = 'image' | 'video' | 'document'
+
 export interface Post {
   id: string
-  title: string
-  content: string
-  author_id: string
   community_id: string
+  author_id: string
+  content: string
+  is_pinned: boolean
+  view_count: number
   created_at: string
   updated_at: string
-  published: boolean
+  published_at?: string
+}
+
+export interface PostMedia {
+  id: string
+  post_id: string
+  media_type: MediaType
+  storage_path: string
+  file_name: string
+  file_size?: number
+  mime_type?: string
+  display_order: number
+  created_at: string
 }
 
 // Comment types
@@ -173,8 +188,13 @@ export interface Database {
       }
       posts: {
         Row: Post
-        Insert: Omit<Post, 'id' | 'created_at' | 'updated_at'>
+        Insert: Omit<Post, 'id' | 'created_at' | 'updated_at' | 'published_at'>
         Update: Partial<Omit<Post, 'id' | 'created_at' | 'updated_at'>>
+      }
+      post_media: {
+        Row: PostMedia
+        Insert: Omit<PostMedia, 'id' | 'created_at'>
+        Update: Partial<Omit<PostMedia, 'id' | 'created_at'>>
       }
       comments: {
         Row: Comment
