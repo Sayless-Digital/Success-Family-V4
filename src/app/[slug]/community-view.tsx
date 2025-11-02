@@ -152,19 +152,13 @@ export default function CommunityView({
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
               {/* Community Avatar */}
               <div className="h-20 w-20 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-2xl border-4 border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
-                {community.name[0]}
+                {community.name.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase()}
               </div>
               
               {/* Community Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-2">
                   <h1 className="text-3xl font-bold text-white truncate">{community.name}</h1>
-                  {isOwner && (
-                    <Badge className="bg-primary/20 text-primary border-primary/30">
-                      <Crown className="h-3 w-3 mr-1" />
-                      Owner
-                    </Badge>
-                  )}
                   {isMember && !isOwner && (
                     <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
