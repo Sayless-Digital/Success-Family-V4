@@ -4,8 +4,11 @@ import { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { GlobalHeader } from "./global-header"
 import { GlobalSidebar } from "./global-sidebar"
+import { MobileBottomNav } from "./mobile-bottom-nav"
+import { ScrollToTop } from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
 import { Toaster } from "sonner"
+import Silk from "@/components/Silk"
 
 interface GlobalLayoutProps {
   children: React.ReactNode
@@ -13,22 +16,31 @@ interface GlobalLayoutProps {
 
 export function GlobalLayout({ children }: GlobalLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isSidebarPinned, setIsSidebarPinned] = useState(true) // Start with sidebar pinned on desktop
-  const [isMobile, setIsMobile] = useState(false)
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false)
+  const [isMobile, setIsMobile] = useState(true) // Assume mobile first to avoid flash
 
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768
+      const wasFirstRun = isMobile === true && isSidebarPinned === false && isSidebarOpen === false
+      
       setIsMobile(mobile)
       
-      // On mobile, sidebar is always unpinned and overlay
-      if (mobile) {
+      // Only set initial state on first run
+      if (wasFirstRun) {
+        if (mobile) {
+          // Mobile: keep closed
+          setIsSidebarPinned(false)
+          setIsSidebarOpen(false)
+        } else {
+          // Desktop: open pinned sidebar
+          setIsSidebarPinned(true)
+          setIsSidebarOpen(true)
+        }
+      } else if (mobile && !isMobile) {
+        // Switched from desktop to mobile
         setIsSidebarPinned(false)
         setIsSidebarOpen(false)
-      } else {
-        // On desktop, start with sidebar pinned and open
-        setIsSidebarPinned(true)
-        setIsSidebarOpen(true)
       }
     }
     
@@ -73,17 +85,32 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
 
   // Calculate page area classes based on sidebar state
   const pageAreaClasses = cn(
-    "pt-12 min-h-screen transition-all duration-300 ease-in-out",
+    "pt-12 transition-all duration-300 ease-in-out",
     {
       // Desktop pinned state - sidebar takes up space
       "ml-64": isSidebarPinned && !isMobile,
       // Desktop unpinned or mobile - no margin (sidebar is overlay)
       "ml-0": (!isSidebarPinned && !isMobile) || isMobile,
+      // Add bottom padding on mobile for bottom navigation (48px height)
+      "pb-12": isMobile,
     }
   )
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className="h-dvh bg-background overflow-x-hidden flex flex-col relative">
+      {/* Silk Background */}
+      <div className="fixed inset-0 z-0 overflow-hidden w-full h-full">
+        <div className="w-full h-full">
+          <Silk
+            speed={7.2}
+            scale={1}
+            color={isMobile ? "#0d041f" : "#0a0318"}
+            noiseIntensity={1}
+            rotation={0}
+          />
+        </div>
+      </div>
+      
       <GlobalHeader
         onMenuClick={handleMenuClick}
         isSidebarOpen={isSidebarOpen}
@@ -102,30 +129,39 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
       {/* Mobile Overlay with Blur */}
       {isMobile && isSidebarOpen && (
         <div 
-          className="fixed inset-0 backdrop-blur-sm z-[950] transition-opacity duration-300"
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[950] transition-opacity duration-300"
           onClick={handleSidebarClose}
           aria-hidden="true"
         />
       )}
 
-      <main className={pageAreaClasses}>
-        <div className="pt-4 pb-8 px-4 sm:px-6 lg:px-8">
+      <main className={cn(pageAreaClasses, "flex-1 relative z-10 overflow-y-auto min-h-0 flex flex-col")}>
+        <div className="pt-4 pb-4 px-4 sm:px-6 lg:px-8 flex-1 flex flex-col">
           {children}
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav isMobile={isMobile} />
       
-      <Toaster 
+      {/* Scroll to Top Button */}
+      <ScrollToTop />
+      
+      <Toaster
         position="bottom-center"
+        theme="dark"
         toastOptions={{
           style: {
-            background: 'rgba(255, 255, 255, 0.15)',
+            background: 'rgba(0, 0, 0, 0.8)',
             color: 'white',
             backdropFilter: 'blur(16px)',
             borderRadius: '12px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
             // Adjust position based on sidebar state
             marginLeft: isSidebarPinned && !isMobile ? '8rem' : '0',
+            // Adjust bottom margin on mobile for bottom navigation (48px + spacing)
+            marginBottom: isMobile ? '4rem' : '1rem',
           },
         }}
       />

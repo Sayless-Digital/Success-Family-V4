@@ -1,10 +1,10 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search, DollarSign } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
+import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search, DollarSign, Home, Users, MessageSquare, Shield } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
@@ -40,12 +40,15 @@ interface CommunitySettingsViewProps {
 }
 
 export default function CommunitySettingsView({ community, isOwner }: CommunitySettingsViewProps) {
-  const colorStops = useAuroraColors()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
   
   // Get active tab from URL params, default to 'general'
   const activeTab = searchParams.get('tab') || 'general'
+  
+  // Determine active navigation tab
+  const activeNavTab = pathname === `/${community.slug}/settings` ? "settings" : "home"
   
   const [isSaving, setIsSaving] = useState(false)
   
@@ -347,13 +350,40 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      {/* Aurora Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-      </div>
-
+    <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
+        {/* Navigation Tabs */}
+        <Tabs value={activeNavTab} className="w-full">
+          <TabsList className="w-full">
+            <TabsTrigger value="home" asChild>
+              <Link href={`/${community.slug}`} className="flex items-center gap-2">
+                <Home className="h-4 w-4" />
+                Home
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="feed" asChild>
+              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Feed
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="members" asChild>
+              <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Members
+              </Link>
+            </TabsTrigger>
+            {isOwner && (
+              <TabsTrigger value="settings" asChild>
+                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Settings
+                </Link>
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+
         <PageHeader
           title="Community Settings"
           subtitle="Manage your community details and configuration"

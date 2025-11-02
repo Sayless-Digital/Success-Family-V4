@@ -2,8 +2,6 @@
 
 import Link from "next/link"
 import { Users, Calendar, Globe, Building2, Search, Crown } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -35,7 +33,6 @@ interface CommunitiesListProps {
 }
 
 export default function CommunitiesList({ communities }: CommunitiesListProps) {
-  const colorStops = useAuroraColors()
   const [searchQuery, setSearchQuery] = useState("")
   const { user } = useAuth()
   const [createOpen, setCreateOpen] = useState(false)
@@ -48,12 +45,7 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
   )
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      {/* Aurora Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-      </div>
-      
+    <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         <PageHeader
           title="Explore Communities"

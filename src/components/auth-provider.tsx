@@ -9,9 +9,11 @@ import { getUserProfile } from "@/lib/auth"
 interface AuthContextType {
   user: SupabaseUser | null
   userProfile: User | null
+  walletBalance: number | null
   isLoading: boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+  refreshWalletBalance: () => Promise<void>
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
@@ -19,6 +21,7 @@ const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<SupabaseUser | null>(null)
   const [userProfile, setUserProfile] = React.useState<User | null>(null)
+  const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
 
   // Initialize auth state on mount
@@ -104,12 +107,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user])
 
+  const refreshWalletBalance = React.useCallback(async () => {
+    if (!user) {
+      setWalletBalance(null)
+      return
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('wallets')
+        .select('points_balance')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      
+      if (!error && data) {
+        setWalletBalance(Number(data.points_balance))
+      }
+    } catch (error) {
+      console.error('Error refreshing wallet balance:', error)
+    }
+  }, [user])
+
+  // Real-time subscription for wallet balance
+  React.useEffect(() => {
+    if (!user) {
+      setWalletBalance(null)
+      return
+    }
+
+    // Initial fetch
+    refreshWalletBalance()
+
+    // Subscribe to wallet changes
+    const channel = supabase
+      .channel(`wallet-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'wallets',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          const newBalance = (payload.new as any).points_balance
+          setWalletBalance(Number(newBalance))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user, refreshWalletBalance])
+
   const value = {
     user,
     userProfile,
+    walletBalance,
     isLoading,
     signOut: handleSignOut,
     refreshProfile,
+    refreshWalletBalance,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { User, Mail, Save, Loader2, Lock, Upload, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,7 +17,6 @@ import { toast } from "sonner"
 export default function AccountPage() {
   const { user, userProfile, isLoading, refreshProfile } = useAuth()
   const router = useRouter()
-  const colorStops = useAuroraColors()
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
@@ -237,11 +234,8 @@ export default function AccountPage() {
 
   if (isLoading) {
     return (
-      <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-        <div className="fixed inset-0 z-0 overflow-hidden">
-          <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-        </div>
-        <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+      <div className="relative w-full overflow-x-hidden">
+        <div className="relative z-10 flex items-center justify-center min-h-[60vh]">
           <Loader2 className="h-8 w-8 animate-spin text-white" />
         </div>
       </div>
@@ -251,11 +245,7 @@ export default function AccountPage() {
   if (!user) return null
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      {/* Aurora Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.8} />
-      </div>
+    <div className="relative w-full overflow-x-hidden">
       
       <div className="relative z-10">
         <PageHeader

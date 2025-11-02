@@ -44,13 +44,13 @@ const DialogContent = React.forwardRef<
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
         // Mobile: 8px from all edges (0.5rem = 8px)
         "top-2 left-2 right-2 bottom-2",
-        "w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)]",
+        "w-[calc(100vw-1rem)] h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)]",
         "overflow-y-auto",
         // Desktop: centered with max-width
         "sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto",
         "sm:w-full sm:max-w-lg",
         "sm:translate-x-[-50%] sm:translate-y-[-50%]",
-        "sm:max-h-[calc(100dvh-4rem)]",
+        "sm:h-auto sm:max-h-[calc(100dvh-4rem)]",
         "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
         "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
         className

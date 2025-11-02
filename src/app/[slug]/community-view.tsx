@@ -1,15 +1,15 @@
 "use client"
 
 import React, { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
+import { useRouter, usePathname } from "next/navigation"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
+import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import type { Community, CommunityMember } from "@/types"
@@ -46,11 +46,22 @@ export default function CommunityView({
   currentUserId 
 }: CommunityViewProps) {
   const router = useRouter()
-  const colorStops = useAuroraColors()
+  const pathname = usePathname()
   
   const isOwner = currentUserId === community.owner_id
   const isMember = !!userMembership
   const isActive = community.is_active
+
+  // Determine active tab based on pathname
+  const getActiveTab = () => {
+    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
+    if (pathname === `/${community.slug}/feed`) return "feed"
+    if (pathname === `/${community.slug}/members`) return "members"
+    if (pathname === `/${community.slug}/settings`) return "settings"
+    return "home"
+  }
+
+  const activeTab = getActiveTab()
   
   // Join dialog state
   const [joinDialogOpen, setJoinDialogOpen] = useState(false)
@@ -113,12 +124,8 @@ export default function CommunityView({
 
   if (!isActive) {
     return (
-      <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-        <div className="fixed inset-0 z-0 overflow-hidden">
-          <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-        </div>
-        
-        <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+      <div className="relative w-full overflow-x-hidden">
+        <div className="relative z-10 flex items-center justify-center min-h-[60vh]">
           <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 max-w-md mx-4">
             <CardContent className="p-8 text-center">
               <AlertCircle className="h-16 w-16 text-white/60 mx-auto mb-4" />
@@ -139,13 +146,40 @@ export default function CommunityView({
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      {/* Aurora Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-      </div>
-      
+    <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
+        {/* Navigation Tabs */}
+        <Tabs value={activeTab} className="w-full">
+          <TabsList className="w-full">
+            <TabsTrigger value="home" asChild>
+              <Link href={`/${community.slug}`} className="flex items-center gap-2">
+                <Home className="h-4 w-4" />
+                Home
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="feed" asChild>
+              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Feed
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="members" asChild>
+              <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Members
+              </Link>
+            </TabsTrigger>
+            {(isOwner || isMember) && (
+              <TabsTrigger value="settings" asChild>
+                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Settings
+                </Link>
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+
         {/* Community Header */}
         <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
           <CardContent className="p-6">

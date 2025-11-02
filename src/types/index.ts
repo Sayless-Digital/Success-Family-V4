@@ -118,22 +118,33 @@ export interface Post {
   author_id: string
   content: string
   is_pinned: boolean
-  view_count: number
   created_at: string
   updated_at: string
   published_at?: string
+  media?: PostMedia[]
+  boost_count?: number
+  user_has_boosted?: boolean
+  can_unboost?: boolean
+  user_has_saved?: boolean
+}
+
+export interface PostBoost {
+  id: string
+  post_id: string
+  user_id: string
+  created_at: string
 }
 
 export interface PostMedia {
   id: string
-  post_id: string
+  post_id?: string
   media_type: MediaType
   storage_path: string
   file_name: string
   file_size?: number
   mime_type?: string
   display_order: number
-  created_at: string
+  created_at?: string
 }
 
 // Comment types

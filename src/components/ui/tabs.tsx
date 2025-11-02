@@ -14,8 +14,10 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-auto items-center rounded-md bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-1 text-white overflow-x-auto scrollbar-hide",
+      "inline-flex h-auto items-center rounded-md bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-1 text-white",
+      "overflow-x-auto overflow-y-hidden scrollbar-hide",
       "scroll-smooth snap-x snap-mandatory",
+      "[&>*]:shrink-0",
       className
     )}
     {...props}
@@ -30,7 +32,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-6 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white/20 data-[state=active]:text-white cursor-pointer text-white/80 hover:text-white",
+      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 md:px-6 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white/20 data-[state=active]:text-white cursor-pointer text-white/80 hover:text-white shrink-0",
       className
     )}
     {...props}

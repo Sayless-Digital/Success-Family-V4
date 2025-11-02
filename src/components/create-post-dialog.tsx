@@ -34,6 +34,7 @@ export function CreatePostDialog({
   const [content, setContent] = React.useState("")
   const [mediaFiles, setMediaFiles] = React.useState<MediaFile[]>([])
   const [submitting, setSubmitting] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState<{ current: number; total: number } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -41,6 +42,7 @@ export function CreatePostDialog({
   const reset = () => {
     setContent("")
     setMediaFiles([])
+    setUploadProgress(null)
     setError(null)
   }
 
@@ -77,24 +79,39 @@ export function CreatePostDialog({
   const uploadMedia = async (postId: string): Promise<void> => {
     if (mediaFiles.length === 0) return
 
-    for (let i = 0; i < mediaFiles.length; i++) {
+    const totalFiles = mediaFiles.length
+    console.log(`Uploading ${totalFiles} media files for post ${postId}`)
+
+    for (let i = 0; i < totalFiles; i++) {
+      // Update progress
+      setUploadProgress({ current: i + 1, total: totalFiles })
+
       const { file, type } = mediaFiles[i]
       const fileExt = file.name.split('.').pop()
-      const fileName = `${postId}/${Date.now()}-${i}.${fileExt}`
-      const filePath = `${user!.id}/${fileName}`
+      const timestamp = Date.now()
+      const fileName = `${timestamp}-${i}.${fileExt}`
+      const filePath = `${user!.id}/${postId}/${fileName}`
+
+      console.log(`Uploading file ${i + 1}/${totalFiles}: ${filePath}`)
 
       // Upload to storage
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('post-media')
-        .upload(filePath, file)
+        .upload(filePath, file, {
+          contentType: file.type,
+          cacheControl: '3600',
+          upsert: false
+        })
 
       if (uploadError) {
         console.error('Media upload error:', uploadError)
-        throw uploadError
+        throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`)
       }
 
+      console.log(`Upload successful:`, uploadData)
+
       // Create media record
-      const { error: mediaError } = await supabase
+      const { data: mediaData, error: mediaError } = await supabase
         .from('post_media')
         .insert({
           post_id: postId,
@@ -105,12 +122,18 @@ export function CreatePostDialog({
           mime_type: file.type,
           display_order: i
         })
+        .select()
 
       if (mediaError) {
         console.error('Media record error:', mediaError)
-        throw mediaError
+        throw new Error(`Failed to create media record: ${mediaError.message}`)
       }
+
+      console.log(`Media record created:`, mediaData)
     }
+
+    console.log('All media uploaded successfully')
+    setUploadProgress(null)
   }
 
   const handleCreate = async () => {
@@ -129,6 +152,8 @@ export function CreatePostDialog({
     setError(null)
     
     try {
+      console.log('Creating post...')
+      
       // Create post
       const { data: post, error: postError } = await supabase
         .from('posts')
@@ -141,10 +166,19 @@ export function CreatePostDialog({
         .select('id')
         .single()
 
-      if (postError) throw postError
+      if (postError) {
+        console.error('Post creation error:', postError)
+        throw new Error(`Failed to create post: ${postError.message}`)
+      }
 
-      // Upload media
-      await uploadMedia(post.id)
+      console.log('Post created:', post)
+
+      // Upload media if any
+      if (mediaFiles.length > 0) {
+        await uploadMedia(post.id)
+      }
+
+      console.log('Post creation complete')
 
       reset()
       onOpenChange(false)
@@ -153,6 +187,8 @@ export function CreatePostDialog({
     } catch (e: any) {
       console.error('Error creating post:', e)
       setError(e?.message || 'Failed to create post')
+    } finally {
+      // CRITICAL: Always reset submitting state
       setSubmitting(false)
     }
   }
@@ -236,7 +272,11 @@ export function CreatePostDialog({
               Cancel
             </Button>
             <Button onClick={handleCreate} disabled={submitting || !content.trim()}>
-              {submitting ? 'Posting…' : 'Post'}
+              {submitting ? (
+                uploadProgress
+                  ? `Uploading image ${uploadProgress.current} of ${uploadProgress.total}`
+                  : 'Posting…'
+              ) : 'Post'}
             </Button>
           </div>
         </div>

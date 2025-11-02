@@ -20,7 +20,7 @@ export function ScrollbarProvider({ children }: ScrollbarProviderProps) {
   }, [])
 
   useEffect(() => {
-    if (!isClient || instanceRef.current) return
+    if (!isClient) return
 
     if (containerRef.current && !instanceRef.current) {
       instanceRef.current = OverlayScrollbars(containerRef.current, {

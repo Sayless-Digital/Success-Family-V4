@@ -3,29 +3,20 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
 import * as React from "react"
 import { useAuth } from "@/components/auth-provider"
 import { CreateCommunityDialog } from "@/components/create-community-dialog"
 import { AuthDialog } from "@/components/auth-dialog"
 
 export default function Home() {
-  // Get colors from global CSS custom properties
-  const colorStops = useAuroraColors()
   const { user } = useAuth()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [authOpen, setAuthOpen] = React.useState(false)
   
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      {/* Aurora Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={1.5} />
-      </div>
-      
+    <div className="relative flex flex-col items-center justify-center flex-1 w-full overflow-x-hidden -my-4">
       {/* Content */}
-      <div className="relative z-10">
+      <div className="relative z-10 w-full">
         <div className="text-center space-y-6 max-w-2xl mx-auto">
           {/* Hero Title */}
           <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">

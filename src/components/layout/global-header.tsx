@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Sidebar, LogOut, Shield, Users, ChevronDown, Home, User, Wallet as WalletIcon } from "lucide-react"
+import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -28,13 +28,12 @@ interface GlobalHeaderProps {
 }
 
 export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: GlobalHeaderProps) {
-  const { user, userProfile, signOut, isLoading } = useAuth()
+  const { user, userProfile, walletBalance, signOut, isLoading } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
   const [userCommunities, setUserCommunities] = React.useState<Community[]>([])
   const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
-  const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
   
   // Memoize user initials to prevent unnecessary re-renders
   const userInitials = React.useMemo(() => {
@@ -52,25 +51,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
       setUserCommunities([])
     }
   }, [user, userProfile])
-
-  // Fetch wallet balance
-  React.useEffect(() => {
-    const fetchWallet = async () => {
-      if (!user) {
-        setWalletBalance(null)
-        return
-      }
-      const { data, error } = await supabase
-        .from('wallets')
-        .select('points_balance')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!error) {
-        setWalletBalance(Number(data?.points_balance ?? 0))
-      }
-    }
-    fetchWallet()
-  }, [user])
 
   const fetchUserCommunities = async () => {
     if (!user) return
@@ -119,16 +99,12 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
     setAuthDialogOpen(true)
   }
 
-  const handleSignOut = async () => {
-    await signOut()
-    toast.success("Signed out successfully!")
-  }
 
 
   return (
     <>
-    <header className="fixed top-0 left-0 right-0 z-[9999] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg">
-      <div className="h-full px-2 flex items-center justify-between">
+    <header className="fixed top-0 left-0 right-0 z-[9999] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg border-b border-white/20">
+      <div className="h-full px-1 flex items-center justify-between">
         {/* Left side - Menu Button (desktop only) and Logo */}
         <div className="flex items-center gap-2">
           {!isMobile && (
@@ -136,7 +112,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-8 w-8"
+              className="h-8 w-8 hover:bg-white/20"
               aria-label="Toggle sidebar"
             >
               <Sidebar className="h-4 w-4" />
@@ -253,7 +229,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               <Button
                 variant="ghost"
                 size="sm"
-                className="hidden sm:inline-flex"
+                className="hidden sm:inline-flex hover:bg-white/20"
                 onClick={handleSignInClick}
               >
                 Sign In
@@ -270,7 +246,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               <Button
                 variant="ghost"
                 size="sm"
-                className="sm:hidden text-xs px-2"
+                className="sm:hidden text-xs px-2 hover:bg-white/20"
                 onClick={handleSignInClick}
               >
                 Sign In
@@ -284,9 +260,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               </Button>
             </>
           ) : user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+            // Hide user profile on mobile (shown in bottom nav)
+            <div className="hidden md:block">
+              <Link href={`/profile/${userProfile?.username || ''}`}>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
                   <Avatar className="h-8 w-8 border-4 border-white/20">
                     <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
                     <AvatarFallback className="text-xs">
@@ -294,49 +271,13 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                     </AvatarFallback>
                   </Avatar>
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {userProfile?.first_name && userProfile?.last_name
-                        ? `${userProfile.first_name} ${userProfile.last_name}`
-                        : user.email?.split('@')[0] || "User"}
-                    </p>
-                    <p className="text-xs leading-none text-muted-foreground">
-                      {user.email}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/account" className="cursor-pointer">
-                    <User className="mr-2 h-4 w-4" />
-                    <span>Account</span>
-                  </Link>
-                </DropdownMenuItem>
-                {userProfile?.role === 'admin' && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/admin" className="cursor-pointer">
-                        <Shield className="mr-2 h-4 w-4" />
-                        <span>Admin Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign Out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </Link>
+            </div>
           ) : null}
 
+          {/* Hide points/wallet on mobile (shown in bottom nav) */}
           {user && (
-            <Link href="/wallet" className="ml-1">
+            <Link href="/wallet" className="ml-1 hidden md:block">
               <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80">
                 <WalletIcon className="h-4 w-4 mr-1" />
                 <span className="text-sm">{walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}</span>
@@ -350,10 +291,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-8 w-8"
+              className="h-8 w-8 hover:bg-white/20"
               aria-label="Toggle sidebar"
             >
-              <Sidebar className="h-4 w-4" />
+              <Menu className="h-4 w-4" />
             </Button>
           )}
         </div>

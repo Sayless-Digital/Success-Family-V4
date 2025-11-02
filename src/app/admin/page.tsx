@@ -5,16 +5,11 @@ import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { Users, Shield, BarChart3, Settings } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 
 export default function AdminDashboard() {
   const { user, userProfile, isLoading } = useAuth()
   const router = useRouter()
-  
-  // Get colors from global CSS custom properties
-  const colorStops = useAuroraColors()
 
   // Redirect non-admin users
   useEffect(() => {
@@ -30,12 +25,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      {/* Aurora Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-      </div>
-      
+    <div className="relative w-full overflow-x-hidden">
       {/* Content */}
       <div className="relative z-10 space-y-6">
         {/* Breadcrumb */}

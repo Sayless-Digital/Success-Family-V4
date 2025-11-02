@@ -39,7 +39,7 @@ export default async function FeedPage({ params }: FeedPageProps) {
     isMember = !!membership
   }
 
-  // Fetch posts with author - all posts are public now
+  // Fetch posts with author and media - all posts are public now
   const { data: posts, error: postsError } = await supabase
     .from('posts')
     .select(`
@@ -50,6 +50,13 @@ export default async function FeedPage({ params }: FeedPageProps) {
         first_name,
         last_name,
         profile_picture
+      ),
+      media:post_media(
+        id,
+        media_type,
+        storage_path,
+        file_name,
+        display_order
       )
     `)
     .eq('community_id', community.id)
@@ -61,10 +68,48 @@ export default async function FeedPage({ params }: FeedPageProps) {
     console.error('Error fetching posts:', postsError)
   }
 
+  // Enrich posts with boost counts and user's boost status
+  const enrichedPosts = await Promise.all(
+    (posts || []).map(async (post) => {
+      // Get boost count
+      const { data: boostCountData } = await supabase
+        .rpc('get_post_boost_count', { p_post_id: post.id })
+
+      // Get user's boost status if authenticated
+      let userHasBoosted = false
+      let canUnboost = false
+      if (user) {
+        const { data: userBoostedData } = await supabase
+          .rpc('user_boosted_post', {
+            p_post_id: post.id,
+            p_user_id: user.id
+          })
+        userHasBoosted = userBoostedData || false
+
+        // Check if user can unboost (within 1 minute)
+        if (userHasBoosted) {
+          const { data: canUnboostData } = await supabase
+            .rpc('can_unboost_post', {
+              p_post_id: post.id,
+              p_user_id: user.id
+            })
+          canUnboost = canUnboostData || false
+        }
+      }
+
+      return {
+        ...post,
+        boost_count: boostCountData || 0,
+        user_has_boosted: userHasBoosted,
+        can_unboost: canUnboost
+      }
+    })
+  )
+
   return (
     <FeedView
       community={community}
-      posts={posts || []}
+      posts={enrichedPosts}
       isMember={isMember}
       currentUserId={user?.id}
     />

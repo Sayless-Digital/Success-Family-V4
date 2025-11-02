@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { Plus, Edit, Trash2, Users, MoreVertical, Loader2, Search } from "lucide-react"
-import Aurora from "@/components/Aurora"
-import { useAuroraColors } from "@/lib/use-aurora-colors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,7 +21,6 @@ import type { User } from "@/types"
 export default function UsersPage() {
   const { user, userProfile, isLoading } = useAuth()
   const router = useRouter()
-  const colorStops = useAuroraColors()
   
   const [users, setUsers] = useState<User[]>([])
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
@@ -173,11 +170,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] w-full overflow-x-hidden">
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <Aurora colorStops={colorStops} amplitude={1.5} blend={0.6} speed={0.3} />
-      </div>
-      
+    <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
