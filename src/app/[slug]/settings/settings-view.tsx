@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search, DollarSign, Home, Users, MessageSquare, Shield } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"

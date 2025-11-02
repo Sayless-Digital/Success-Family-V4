@@ -43,7 +43,7 @@ export default async function AdminSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Platform Settings" description="Configure point pricing and value." />
+      <PageHeader title="Platform Settings" subtitle="Configure point pricing and value." />
       <form action={updateSettings} className="space-y-6 max-w-xl">
         <div className="space-y-2">
           <Label htmlFor="buy_price_per_point" className="text-white/80">TTD per Point (Buy Price)</Label>

@@ -120,7 +120,7 @@ export default async function WalletPage() {
   
   return (
     <div className="space-y-6">
-      <PageHeader title="Wallet" description="Manage your balance and top up via bank transfer." />
+      <PageHeader title="Wallet" subtitle="Manage your balance and top up via bank transfer." />
       <WalletSuccessToast />
 
       {/* Balance row */}
@@ -210,7 +210,7 @@ export default async function WalletPage() {
               {transactions.map((t: any) => (
                 <TableRow key={t.id}>
                   <TableCell className="text-white/80">{new Date(t.created_at).toLocaleString()}</TableCell>
-                  <TableCell className="text-white/80">{t.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</TableCell>
+                  <TableCell className="text-white/80">{t.type.replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())}</TableCell>
                   <TableCell className="text-white/80">{renderStatus(t.status)}</TableCell>
                   <TableCell className="text-white/80">{t.amount_ttd ? Number(t.amount_ttd).toFixed(2) : '—'}</TableCell>
                   <TableCell className="text-white/80">{t.points_delta}</TableCell>
@@ -236,7 +236,7 @@ export default async function WalletPage() {
           {transactions.map((t: any) => (
             <div key={t.id} className="rounded-md bg-white/10 p-3">
               <div className="flex justify-between text-white/80">
-                <span className="font-medium">{t.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                <span className="font-medium">{t.type.replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())}</span>
                 <span className="text-xs">{new Date(t.created_at).toLocaleString()}</span>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-white/80">

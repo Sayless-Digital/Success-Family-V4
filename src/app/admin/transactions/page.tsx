@@ -111,7 +111,7 @@ export default function AdminTransactionsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Transactions"
-        description="All platform transactions. Review and verify receipts where provided."
+        subtitle="All platform transactions. Review and verify receipts where provided."
       />
 
       {loading ? (

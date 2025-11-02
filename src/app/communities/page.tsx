@@ -25,7 +25,7 @@ export default async function CommunitiesPage() {
 
   // Fetch member counts for each community
   const communitiesWithCounts = await Promise.all(
-    (communities || []).map(async (community) => {
+    (communities || []).map(async (community: any) => {
       const { count } = await supabase
         .from('community_members')
         .select('*', { count: 'exact', head: true })
@@ -33,6 +33,7 @@ export default async function CommunitiesPage() {
       
       return {
         ...community,
+        owner: Array.isArray(community.owner) ? community.owner[0] : community.owner,
         memberCount: count || 0
       }
     })

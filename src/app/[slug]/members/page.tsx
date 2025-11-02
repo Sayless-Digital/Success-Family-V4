@@ -31,7 +31,7 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
   }
 
   // Fetch all members
-  const { data: members, error: membersError } = await supabase
+  const { data: membersData, error: membersError } = await supabase
     .from('community_members')
     .select(`
       id,
@@ -46,6 +46,12 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
     console.error('Error fetching members:', membersError)
   }
 
+  // Transform members to ensure user is an object, not an array
+  const members = membersData?.map((member: any) => ({
+    ...member,
+    user: Array.isArray(member.user) ? member.user[0] : member.user
+  })) || []
+
   // Check if user is authenticated and get their membership status
   const { data: { user } } = await supabase.auth.getUser()
   
@@ -54,7 +60,7 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
   
   if (user) {
     isOwner = community.owner_id === user.id
-    userMembership = members?.find((m: any) => m.user.id === user.id) || null
+    userMembership = members.find((m: any) => m.user?.id === user.id) || null
   }
 
   return (

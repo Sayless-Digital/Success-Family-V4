@@ -72,23 +72,29 @@ export default function FeedView({
       const postElements = document.querySelectorAll('[data-post-id]')
       if (postElements.length === 0) return
 
-      let closestPost: { element: Element; distance: number } | null = null
+      interface PostCandidate {
+        element: Element
+        distance: number
+      }
+      let closestPost: PostCandidate | null = null
 
-      postElements.forEach(el => {
-        const rect = el.getBoundingClientRect()
+      Array.from(postElements).forEach((el) => {
+        const element = el as Element
+        const rect = element.getBoundingClientRect()
         // Calculate distance from top of viewport (negative means it's above)
         const distanceFromTop = rect.top < 0 ? -rect.top : rect.top
         
         // Find the post that's closest to the top but still visible
         if (rect.top < window.innerHeight && rect.bottom > 0) {
+          const candidate: PostCandidate = { element, distance: distanceFromTop }
           if (!closestPost || distanceFromTop < closestPost.distance) {
-            closestPost = { element: el, distance: distanceFromTop }
+            closestPost = candidate
           }
         }
       })
 
       if (closestPost) {
-        const postId = closestPost.element.getAttribute('data-post-id')
+        const postId = (closestPost as PostCandidate).element.getAttribute('data-post-id')
         if (postId) {
           setTopVisiblePostId(postId)
         }

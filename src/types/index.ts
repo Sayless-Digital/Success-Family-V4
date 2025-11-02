@@ -51,7 +51,8 @@ export interface BankAccount {
 
 // Removed legacy subscription plan types
 
-// Removed legacy community pricing types
+// Community pricing types
+export type CommunityPricingType = 'free' | 'one_time' | 'monthly' | 'annual' | 'recurring'
 
 // Community types
 export interface Community {

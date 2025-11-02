@@ -54,10 +54,8 @@ const BaseDialogContent = React.forwardRef<
           visibility: 'auto',
           autoHide: 'move',
           autoHideDelay: 200,
-          dragScrolling: true,
-          clickScrolling: false,
-          touchSupport: true,
-          snapHandle: false,
+          dragScroll: true,
+          clickScroll: false,
         },
         overflow: {
           x: 'hidden',
@@ -78,10 +76,10 @@ const BaseDialogContent = React.forwardRef<
 
   // Update scrollbar instance when content changes
   useEffect(() => {
-    if (scrollbarInstanceRef.current && props['data-state'] === 'open') {
+    if (scrollbarInstanceRef.current && (props as any)['data-state'] === 'open') {
       scrollbarInstanceRef.current.update()
     }
-  }, [children, props['data-state']])
+  }, [children, (props as any)['data-state']])
 
   return (
     <DialogPortal>

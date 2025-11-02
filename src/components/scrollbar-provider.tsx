@@ -29,10 +29,8 @@ export function ScrollbarProvider({ children }: ScrollbarProviderProps) {
           visibility: 'auto',
           autoHide: 'move',
           autoHideDelay: 200,
-          dragScrolling: true,
-          clickScrolling: false,
-          touchSupport: true,
-          snapHandle: false,
+          dragScroll: true,
+          clickScroll: false,
         },
         overflow: {
           x: 'hidden',
