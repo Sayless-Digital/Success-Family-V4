@@ -285,7 +285,7 @@ export default function CommunityView({
                         </Link>
                         <Badge 
                           variant={member.role === 'owner' ? 'default' : 'secondary'}
-                          className={member.role === 'owner' ? 'bg-primary/20 text-primary border-primary/30' : 'bg-white/10 text-white/80 border-white/20'}
+                          className={member.role === 'owner' ? 'bg-white/10 text-white/80 border-white/20' : 'bg-white/10 text-white/80 border-white/20'}
                         >
                           {member.role === 'owner' ? (
                             <>
