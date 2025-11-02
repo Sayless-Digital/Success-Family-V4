@@ -137,10 +137,6 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                           </div>
                         </div>
                         
-                        {/* Free Badge */}
-                        <Badge className="bg-white/10 text-white/80 border-white/20">
-                          Free
-                        </Badge>
                       </div>
                     </div>
                   </CardContent>

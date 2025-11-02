@@ -219,9 +219,11 @@ export default function CommunityView({
           
           <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
             <CardContent className="p-6 text-center">
-              <Globe className="h-8 w-8 text-white/70 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-white mb-1">Free</div>
-              <div className="text-white/60 text-sm">Community</div>
+              <MessageSquare className="h-8 w-8 text-white/70 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-white mb-1">
+                {new Date(community.updated_at).toLocaleDateString('en-US', { month: 'short' })}
+              </div>
+              <div className="text-white/60 text-sm">Last Active</div>
             </CardContent>
           </Card>
         </div>
@@ -327,7 +329,7 @@ export default function CommunityView({
               Join {community.name}
             </DialogTitle>
             <DialogDescription className="text-white/60">
-              This is a free community. Click join to become a member.
+              Click join to become a member of this community.
             </DialogDescription>
           </DialogHeader>
           
