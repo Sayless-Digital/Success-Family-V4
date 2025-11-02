@@ -160,7 +160,7 @@ export default function CommunityView({
                 <div className="flex items-center gap-3 mb-2">
                   <h1 className="text-3xl font-bold text-white truncate">{community.name}</h1>
                   {isMember && !isOwner && (
-                    <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                    <Badge className="bg-white/10 text-white/80 border-white/20">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Member
                     </Badge>
