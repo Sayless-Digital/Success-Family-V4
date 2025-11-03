@@ -112,7 +112,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-8 w-8 hover:bg-white/20"
+              className="h-8 w-8 hover:bg-white/20 touch-feedback"
               aria-label="Toggle sidebar"
             >
               <Sidebar className="h-4 w-4" />
@@ -125,7 +125,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20"
+                  className="h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20 touch-feedback cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
@@ -228,14 +228,14 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               <Button
                 variant="ghost"
                 size="sm"
-                className="hidden sm:inline-flex hover:bg-white/20"
+                className="hidden sm:inline-flex hover:bg-white/20 touch-feedback"
                 onClick={handleSignInClick}
               >
                 Sign In
               </Button>
               <Button
                 size="sm"
-                className="hidden sm:inline-flex"
+                className="hidden sm:inline-flex touch-feedback"
                 onClick={handleSignUpClick}
               >
                 Sign Up
@@ -245,14 +245,14 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               <Button
                 variant="ghost"
                 size="sm"
-                className="sm:hidden text-xs px-2 hover:bg-white/20"
+                className="sm:hidden text-xs px-2 hover:bg-white/20 touch-feedback"
                 onClick={handleSignInClick}
               >
                 Sign In
               </Button>
               <Button
                 size="sm"
-                className="sm:hidden text-xs px-2"
+                className="sm:hidden text-xs px-2 touch-feedback"
                 onClick={handleSignUpClick}
               >
                 Sign Up
@@ -261,8 +261,8 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
           ) : user ? (
             // Hide user profile on mobile (shown in bottom nav)
             <div className="hidden md:block">
-              <Link href={`/profile/${userProfile?.username || ''}`}>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
+              <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer">
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0 avatar-feedback cursor-pointer">
                   <Avatar className="h-8 w-8 border-4 border-white/20">
                     <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
                     <AvatarFallback className="text-xs">
@@ -276,8 +276,8 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
 
           {/* Hide points/wallet on mobile (shown in bottom nav) */}
           {user && (
-            <Link href="/wallet" className="ml-1 hidden md:block">
-              <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80">
+            <Link href="/wallet" className="ml-1 hidden md:block cursor-pointer">
+              <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback cursor-pointer">
                 <WalletIcon className="h-4 w-4 mr-1" />
                 <span className="text-sm">{walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}</span>
               </Button>
@@ -290,7 +290,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-8 w-8 hover:bg-white/20"
+              className="h-8 w-8 hover:bg-white/20 touch-feedback"
               aria-label="Toggle sidebar"
             >
               <Menu className="h-4 w-4" />

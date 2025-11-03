@@ -149,7 +149,7 @@ export function WalletView({
         </div>
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-white/10 text-white/80 hover:bg-white/20">Top Up</Button>
+            <Button className="bg-white/10 text-white/80 hover:bg-white/20 touch-feedback">Top Up</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -190,7 +190,7 @@ export function WalletView({
                 <Input id="file" name="file" type="file" accept="image/*,application/pdf" required />
               </div>
               <DialogFooter className="w-full">
-                <Button type="submit" className="w-full bg-white/10 text-white/80 hover:bg-white/20">Top Up</Button>
+                <Button type="submit" className="w-full bg-white/10 text-white/80 hover:bg-white/20 touch-feedback">Top Up</Button>
               </DialogFooter>
             </form>
           </DialogContent>

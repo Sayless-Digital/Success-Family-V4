@@ -37,6 +37,12 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      onInteractOutside={(event) => {
+        const target = event.target as HTMLElement
+        if (target?.closest('[data-sonner-toaster]')) {
+          event.preventDefault()
+        }
+      }}
       className={cn(
         "fixed z-50 grid gap-4 border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6 shadow-lg duration-200 rounded-lg",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",

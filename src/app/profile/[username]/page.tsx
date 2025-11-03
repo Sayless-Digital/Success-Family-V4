@@ -48,7 +48,61 @@ export default async function ProfilePage(props: PageProps) {
     .eq('user_id', user.id)
     .eq('status', 'verified')
 
-  // Fetch user's posts with media and community
+  // Get current user for boost status
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+
+  // Helper function to enrich posts with batch queries
+  const enrichPostsWithBatchQueries = async (posts: any[]) => {
+    if (!posts || posts.length === 0) return []
+    
+    const postIds = posts.map(p => p.id)
+    
+    // Batch fetch boost counts
+    const { data: boostCountsData } = await supabase
+      .rpc('get_posts_boost_counts', { p_post_ids: postIds })
+
+    // Batch fetch user boost status if authenticated
+    let userBoostStatus: Array<{ post_id: string; user_has_boosted: boolean; can_unboost: boolean }> = []
+    if (currentUser) {
+      const { data: boostStatusData } = await supabase
+        .rpc('get_user_boosted_posts', { 
+          p_post_ids: postIds,
+          p_user_id: currentUser.id 
+        })
+      userBoostStatus = boostStatusData || []
+    }
+
+    // Create lookup maps
+    const boostCountMap = new Map(
+      (boostCountsData || []).map(b => [b.post_id, b.boost_count])
+    )
+    const boostStatusMap = new Map(
+      userBoostStatus.map(b => [b.post_id, { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }])
+    )
+
+    // Enrich posts
+    return posts.map((post: any) => {
+      const boostCount = boostCountMap.get(post.id) || 0
+      const boostStatus = boostStatusMap.get(post.id) || { user_has_boosted: false, can_unboost: false }
+      
+      // Get media sorted by display_order
+      const media = (post.post_media || []).sort((a: PostMedia, b: PostMedia) => 
+        a.display_order - b.display_order
+      )
+
+      return {
+        ...post,
+        boost_count: boostCount,
+        media: media.length > 0 ? media : undefined,
+        community_slug: post.communities?.slug,
+        community_name: post.communities?.name,
+        user_has_boosted: boostStatus.user_has_boosted,
+        can_unboost: boostStatus.can_unboost
+      }
+    })
+  }
+
+  // Fetch initial 20 user's posts with media and community
   const { data: userPosts } = await supabase
     .from('posts')
     .select(`
@@ -58,60 +112,20 @@ export default async function ProfilePage(props: PageProps) {
     `)
     .eq('author_id', user.id)
     .order('created_at', { ascending: false })
+    .limit(20)
 
-  // Get current user for boost status
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  // Enrich posts with batch queries
+  const postsWithData = await enrichPostsWithBatchQueries(userPosts || [])
 
-  // Enrich posts with boost counts, boost status, and attach media
-  const postsWithData: (Post & { media?: PostMedia[] })[] = await Promise.all(
-    (userPosts || []).map(async (post: any) => {
-      // Get boost count using RPC
-      const { data: boostCount } = await supabase
-        .rpc('get_post_boost_count', { p_post_id: post.id })
-      
-      // Get media sorted by display_order
-      const media = (post.post_media || []).sort((a: PostMedia, b: PostMedia) => 
-        a.display_order - b.display_order
-      )
+  // Check if there are more posts
+  const { count: totalPostsCount } = await supabase
+    .from('posts')
+    .select('*', { count: 'exact', head: true })
+    .eq('author_id', user.id)
 
-      // Check if current user has boosted this post
-      let userHasBoosted = false
-      let canUnboost = false
+  const postsHasMore = (totalPostsCount || 0) > 20
 
-      if (currentUser) {
-        const { data: boostData } = await supabase
-          .from('post_boosts')
-          .select('id')
-          .eq('post_id', post.id)
-          .eq('user_id', currentUser.id)
-          .maybeSingle()
-
-        userHasBoosted = !!boostData
-
-        if (userHasBoosted) {
-          // Check if user can unboost (within 1 minute)
-          const { data: canUnboostData } = await supabase
-            .rpc('can_unboost_post', {
-              p_post_id: post.id,
-              p_user_id: currentUser.id
-            })
-          canUnboost = canUnboostData || false
-        }
-      }
-
-      return {
-        ...post,
-        boost_count: boostCount || 0,
-        media: media.length > 0 ? media : undefined,
-        community_slug: post.communities?.slug,
-        community_name: post.communities?.name,
-        user_has_boosted: userHasBoosted,
-        can_unboost: canUnboost
-      }
-    })
-  )
-
-  // Fetch posts user has boosted
+  // Fetch initial 20 posts user has boosted
   const { data: boostedPostsData } = await supabase
     .from('post_boosts')
     .select(`
@@ -125,111 +139,78 @@ export default async function ProfilePage(props: PageProps) {
     `)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
+    .limit(20)
 
-  // Transform boosted posts data with boost counts (posts user boosted)
-  const boostedPosts: (Post & { media?: PostMedia[], author?: User })[] = await Promise.all(
-    (boostedPostsData || [])
-      .filter((boost: any) => boost.posts)
-      .map(async (boost: any) => {
-        const post = boost.posts
-        
-        // Get boost count using RPC
-        const { data: boostCount } = await supabase
-          .rpc('get_post_boost_count', { p_post_id: post.id })
-        
-        const media = (post.post_media || []).sort((a: PostMedia, b: PostMedia) => 
-          a.display_order - b.display_order
-        )
+  // Transform boosted posts data
+  const boostedPostsRaw = (boostedPostsData || [])
+    .filter((boost: any) => boost.posts)
+    .map((boost: any) => ({
+      ...boost.posts,
+      post_media: boost.posts.post_media || [],
+      communities: boost.posts.communities
+    }))
 
-        // All posts in this list are boosted by the profile owner
-        let canUnboost = false
-        if (currentUser && currentUser.id === user.id) {
-          // Check if user can unboost (within 1 minute)
-          const { data: canUnboostData } = await supabase
-            .rpc('can_unboost_post', {
-              p_post_id: post.id,
-              p_user_id: currentUser.id
-            })
-          canUnboost = canUnboostData || false
-        }
+  // Enrich with batch queries
+  const boostedPosts = await enrichPostsWithBatchQueries(boostedPostsRaw)
+  
+  // Set user_has_boosted and can_unboost for boosted posts (only if viewing own profile)
+  const enrichedBoostedPosts = boostedPosts.map((post: any) => {
+    const boostStatus = currentUser?.id === user.id 
+      ? { user_has_boosted: true, can_unboost: post.can_unboost }
+      : { user_has_boosted: false, can_unboost: false }
+    
+    return {
+      ...post,
+      ...boostStatus,
+      author: boostedPostsRaw.find((p: any) => p.id === post.id)?.author
+    }
+  }) as (Post & { media?: PostMedia[], author?: User })[]
 
-        return {
-          ...post,
-          boost_count: boostCount || 0,
-          media: media.length > 0 ? media : undefined,
-          author: post.author,
-          community_slug: post.communities?.slug,
-          community_name: post.communities?.name,
-          user_has_boosted: currentUser?.id === user.id, // Only true if viewing own profile
-          can_unboost: canUnboost
-        }
-      })
-  )
+  // Check if there are more boosted posts
+  const { count: totalBoostedCount } = await supabase
+    .from('post_boosts')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+
+  const boostedPostsHasMore = (totalBoostedCount || 0) > 20
 
   // Fetch user's posts that have been boosted by others
-  const { data: boostedUserPostsData } = await supabase
+  // First get posts that have boosts using a join
+  const { data: postsWithBoosts } = await supabase
     .from('posts')
     .select(`
       *,
       post_media (*),
-      communities!posts_community_id_fkey (slug, name)
+      communities!posts_community_id_fkey (slug, name),
+      post_boosts!inner(post_id)
     `)
     .eq('author_id', user.id)
     .order('created_at', { ascending: false })
+    .limit(100) // Fetch more to account for filtering
 
-  // Filter to only posts that have boosts (have been boosted by others)
-  const userPostsWithBoosts = await Promise.all(
-    (boostedUserPostsData || []).map(async (post: any) => {
-      const { data: boostCount } = await supabase
-        .rpc('get_post_boost_count', { p_post_id: post.id })
-      
-      if (boostCount === 0 || boostCount === null) return null
+  // Get unique posts (join creates duplicates)
+  const uniquePostsWithBoosts = Array.from(
+    new Map((postsWithBoosts || []).map((p: any) => [p.id, p])).values()
+  ).slice(0, 20) // Take first 20 after deduplication
 
-      const media = (post.post_media || []).sort((a: PostMedia, b: PostMedia) => 
-        a.display_order - b.display_order
-      )
+  // Enrich with batch queries
+  const gotBoostedPostsRaw = await enrichPostsWithBatchQueries(uniquePostsWithBoosts)
+  
+  // Filter to only those with boost_count > 0 (should all have > 0 but double-check)
+  const gotBoostedPosts = gotBoostedPostsRaw.filter((p: any) => (p.boost_count || 0) > 0) as (Post & { media?: PostMedia[] })[]
 
-      // Check if current user has boosted this post
-      let userHasBoosted = false
-      let canUnboost = false
+  // Check if there are more - count posts with boosts
+  const { count: totalGotBoostedCount } = await supabase
+    .from('posts')
+    .select(`
+      id,
+      post_boosts!inner(post_id)
+    `, { count: 'exact', head: false })
+    .eq('author_id', user.id)
 
-      if (currentUser) {
-        const { data: boostData } = await supabase
-          .from('post_boosts')
-          .select('id')
-          .eq('post_id', post.id)
-          .eq('user_id', currentUser.id)
-          .maybeSingle()
+  const gotBoostedPostsHasMore = (totalGotBoostedCount || 0) > 20
 
-        userHasBoosted = !!boostData
-
-        if (userHasBoosted) {
-          // Check if user can unboost (within 1 minute)
-          const { data: canUnboostData } = await supabase
-            .rpc('can_unboost_post', {
-              p_post_id: post.id,
-              p_user_id: currentUser.id
-            })
-          canUnboost = canUnboostData || false
-        }
-      }
-
-      return {
-        ...post,
-        boost_count: boostCount || 0,
-        media: media.length > 0 ? media : undefined,
-        community_slug: post.communities?.slug,
-        community_name: post.communities?.name,
-        user_has_boosted: userHasBoosted,
-        can_unboost: canUnboost
-      }
-    })
-  )
-
-  // Filter out nulls (posts with no boosts)
-  const gotBoostedPosts = userPostsWithBoosts.filter(Boolean) as (Post & { media?: PostMedia[] })[]
-
-  // Fetch saved posts (only if viewing own profile or if we have access)
+  // Fetch initial 20 saved posts (only if viewing own profile or if we have access)
   const { data: savedPostsData } = await supabase
     .from('saved_posts')
     .select(`
@@ -243,60 +224,35 @@ export default async function ProfilePage(props: PageProps) {
     `)
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
+    .limit(20)
 
-  // Transform saved posts data with boost counts
-  const savedPosts: (Post & { media?: PostMedia[], author?: User })[] = await Promise.all(
-    (savedPostsData || [])
-      .filter((saved: any) => saved.posts)
-      .map(async (saved: any) => {
-        const post = saved.posts
-        
-        // Get boost count using RPC
-        const { data: boostCount } = await supabase
-          .rpc('get_post_boost_count', { p_post_id: post.id })
-        
-        const media = (post.post_media || []).sort((a: PostMedia, b: PostMedia) => 
-          a.display_order - b.display_order
-        )
+  // Transform saved posts data
+  const savedPostsRaw = (savedPostsData || [])
+    .filter((saved: any) => saved.posts)
+    .map((saved: any) => ({
+      ...saved.posts,
+      post_media: saved.posts.post_media || [],
+      communities: saved.posts.communities,
+      author: saved.posts.author
+    }))
 
-        // Check if current user has boosted this post
-        let userHasBoosted = false
-        let canUnboost = false
+  // Enrich with batch queries
+  const savedPosts = await enrichPostsWithBatchQueries(savedPostsRaw)
+  
+  // Add saved flag and author info
+  const enrichedSavedPosts = savedPosts.map((post: any) => ({
+    ...post,
+    user_has_saved: true, // All saved posts are saved by definition
+    author: savedPostsRaw.find((p: any) => p.id === post.id)?.author
+  })) as (Post & { media?: PostMedia[], author?: User })[]
 
-        if (currentUser) {
-          const { data: boostData } = await supabase
-            .from('post_boosts')
-            .select('id')
-            .eq('post_id', post.id)
-            .eq('user_id', currentUser.id)
-            .maybeSingle()
+  // Check if there are more saved posts
+  const { count: totalSavedCount } = await supabase
+    .from('saved_posts')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id)
 
-          userHasBoosted = !!boostData
-
-          if (userHasBoosted) {
-            // Check if user can unboost (within 1 minute)
-            const { data: canUnboostData } = await supabase
-              .rpc('can_unboost_post', {
-                p_post_id: post.id,
-                p_user_id: currentUser.id
-              })
-            canUnboost = canUnboostData || false
-          }
-        }
-
-        return {
-          ...post,
-          boost_count: boostCount || 0,
-          media: media.length > 0 ? media : undefined,
-          author: post.author,
-          community_slug: post.communities?.slug,
-          community_name: post.communities?.name,
-          user_has_saved: true, // All saved posts are saved by definition
-          user_has_boosted: userHasBoosted,
-          can_unboost: canUnboost
-        }
-      })
-  )
+  const savedPostsHasMore = (totalSavedCount || 0) > 20
 
   // Fetch communities user is a member of
   const { data: communitiesData } = await supabase
@@ -324,9 +280,13 @@ export default async function ProfilePage(props: PageProps) {
       memberCommunitiesCount={memberCommunitiesCount || 0}
       verifiedPaymentsCount={verifiedPaymentsCount || 0}
       posts={postsWithData}
-      boostedPosts={boostedPosts}
+      postsHasMore={postsHasMore}
+      boostedPosts={enrichedBoostedPosts}
+      boostedPostsHasMore={boostedPostsHasMore}
       gotBoostedPosts={gotBoostedPosts}
-      savedPosts={savedPosts}
+      gotBoostedPostsHasMore={gotBoostedPostsHasMore}
+      savedPosts={enrichedSavedPosts}
+      savedPostsHasMore={savedPostsHasMore}
       communities={communities}
     />
   )

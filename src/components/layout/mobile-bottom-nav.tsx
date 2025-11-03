@@ -34,7 +34,7 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
         <Link href="/wallet" prefetch={true}>
           <Button 
             variant="ghost" 
-            className="h-10 px-4 bg-white/10 hover:bg-white/20 text-white/80"
+            className="h-10 px-4 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
           >
             <WalletIcon className="h-4 w-4 mr-2" />
             <span className="text-sm font-semibold">
@@ -45,7 +45,7 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
 
         {/* Right side - User Profile */}
         <Link href={`/profile/${userProfile?.username || ''}`} prefetch={true}>
-          <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
+          <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 avatar-feedback">
             <Avatar className="h-10 w-10 border-2 border-white/20">
               <AvatarImage 
                 src={userProfile?.profile_picture || undefined} 

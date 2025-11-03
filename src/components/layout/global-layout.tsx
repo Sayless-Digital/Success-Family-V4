@@ -7,7 +7,7 @@ import { GlobalSidebar } from "./global-sidebar"
 import { MobileBottomNav } from "./mobile-bottom-nav"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
-import { Toaster } from "sonner"
+import { Toaster } from "@/components/toaster"
 import Silk from "@/components/Silk"
 
 interface GlobalLayoutProps {
@@ -168,7 +168,7 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
       <ScrollToTop />
     </div>
     
-    {/* Toaster must be last to ensure it renders after dialogs in DOM */}
+    {/* Toaster is portaled to document.body with high z-index */}
     <Toaster
         key={isMobile ? 'mobile' : 'desktop'}
         position="bottom-center"
@@ -176,12 +176,12 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
         theme="dark"
         toastOptions={{
           style: {
-            background: 'rgba(0, 0, 0, 0.8)',
+            background: 'rgba(0, 0, 0, 0.5)',
             color: 'white',
             backdropFilter: 'blur(16px)',
             borderRadius: '12px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
             // Adjust position based on sidebar state (not on stream pages)
             marginLeft: !isStreamPage && isSidebarPinned && !isMobile ? '8rem' : '0',
             // Force bottom margin on mobile to account for bottom nav (not on stream pages)

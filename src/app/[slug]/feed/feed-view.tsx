@@ -34,6 +34,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { ImageIcon, Mic, Play, Pause, X, Save } from "lucide-react"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
+import { LoadingSpinner } from "@/components/loading-spinner"
 
 interface PostWithAuthor extends Post {
   author: UserType
@@ -50,13 +51,15 @@ interface FeedViewProps {
   posts: PostWithAuthor[]
   isMember: boolean
   currentUserId?: string
+  hasMore: boolean
 }
 
 export default function FeedView({
   community,
   posts: initialPosts,
   isMember: initialIsMember,
-  currentUserId
+  currentUserId,
+  hasMore: initialHasMore
 }: FeedViewProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -147,6 +150,9 @@ export default function FeedView({
   const [topVisiblePostId, setTopVisiblePostId] = useState<string | null>(null)
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
   const [newPostsCount, setNewPostsCount] = useState(0)
+  const [hasMore, setHasMore] = useState(initialHasMore)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const loadMoreRef = React.useRef<HTMLDivElement>(null)
 
   // Sort posts: pinned first, then by published date
   const sortedPosts = useMemo(() => {
@@ -421,6 +427,149 @@ export default function FeedView({
       supabase.removeChannel(channel)
     }
   }, [community?.id])
+
+  // Load more posts (infinite scroll)
+  const loadMorePosts = async () => {
+    if (isLoadingMore || !hasMore || posts.length === 0) return
+
+    setIsLoadingMore(true)
+    try {
+      // Get the last post's created_at for pagination
+      const lastPost = [...posts].sort((a, b) => {
+        const dateA = new Date(a.published_at || a.created_at).getTime()
+        const dateB = new Date(b.published_at || b.created_at).getTime()
+        return dateB - dateA
+      })[posts.length - 1]
+
+      const lastPostDate = lastPost?.published_at || lastPost?.created_at
+
+      // Fetch next 20 posts
+      const { data: newPostsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          author:users!posts_author_id_fkey(
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_picture
+          ),
+          media:post_media(
+            id,
+            media_type,
+            storage_path,
+            file_name,
+            display_order
+          )
+        `)
+        .eq('community_id', community.id)
+        .order('is_pinned', { ascending: false })
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .lt('created_at', lastPostDate || new Date().toISOString())
+        .limit(20)
+
+      if (error) {
+        console.error('Error loading more posts:', error)
+        toast.error('Failed to load more posts')
+        return
+      }
+
+      if (!newPostsData || newPostsData.length === 0) {
+        setHasMore(false)
+        return
+      }
+
+      // Batch enrich new posts with boost data
+      const newPostIds = newPostsData.map(p => p.id)
+      
+      // Batch fetch boost counts
+      const { data: boostCountsData } = await supabase
+        .rpc('get_posts_boost_counts', { p_post_ids: newPostIds })
+
+      // Batch fetch user boost status if authenticated
+      let userBoostStatus: Array<{ post_id: string; user_has_boosted: boolean; can_unboost: boolean }> = []
+      if (user) {
+        const { data: boostStatusData } = await supabase
+          .rpc('get_user_boosted_posts', { 
+            p_post_ids: newPostIds,
+            p_user_id: user.id 
+          })
+        userBoostStatus = boostStatusData || []
+      }
+
+      // Create lookup maps
+      const boostCountMap = new Map(
+        (boostCountsData || []).map(b => [b.post_id, b.boost_count])
+      )
+      const boostStatusMap = new Map(
+        userBoostStatus.map(b => [b.post_id, { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }])
+      )
+
+      // Enrich new posts
+      const enrichedNewPosts = newPostsData.map((post) => {
+        const boostCount = boostCountMap.get(post.id) || 0
+        const boostStatus = boostStatusMap.get(post.id) || { user_has_boosted: false, can_unboost: false }
+
+        return {
+          ...post,
+          boost_count: boostCount,
+          user_has_boosted: boostStatus.user_has_boosted,
+          can_unboost: boostStatus.can_unboost
+        } as PostWithAuthor
+      })
+
+      // Append new posts to existing list
+      setPosts(prevPosts => [...prevPosts, ...enrichedNewPosts])
+
+      // Check if there are more posts
+      if (enrichedNewPosts.length < 20) {
+        setHasMore(false)
+      }
+    } catch (error: any) {
+      console.error('Error loading more posts:', error)
+      toast.error('Failed to load more posts')
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // Infinite scroll - Intersection Observer
+  React.useEffect(() => {
+    if (!hasMore || isLoadingMore) return
+
+    const loadMore = () => {
+      if (!isLoadingMore && hasMore && posts.length > 0) {
+        loadMorePosts()
+      }
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const firstEntry = entries[0]
+        if (firstEntry.isIntersecting) {
+          loadMore()
+        }
+      },
+      {
+        root: null,
+        rootMargin: '200px', // Start loading 200px before reaching the bottom
+        threshold: 0.1
+      }
+    )
+
+    const currentRef = loadMoreRef.current
+    if (currentRef) {
+      observer.observe(currentRef)
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef)
+      }
+    }
+  }, [hasMore, isLoadingMore, posts.length])
 
   const loadNewPosts = async () => {
     try {
@@ -1725,6 +1874,21 @@ export default function FeedView({
               </CardContent>
             </Card>
           ))}
+          
+          {/* Infinite Scroll Trigger & Loading Indicator */}
+          {sortedPosts.length > 0 && (
+            <div ref={loadMoreRef} className="py-8 flex justify-center">
+              {isLoadingMore && (
+                <div className="flex flex-col items-center gap-4">
+                  <LoadingSpinner />
+                  <p className="text-white/60 text-sm">Loading more posts...</p>
+                </div>
+              )}
+              {!hasMore && !isLoadingMore && (
+                <p className="text-white/60 text-sm">No more posts to load</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Empty State */}

@@ -153,32 +153,32 @@ export default function CommunityView({
         <Tabs value={activeTab} className="w-full">
           <TabsList className="w-full">
             <TabsTrigger value="home" asChild>
-              <Link href={`/${community.slug}`} className="flex items-center gap-2" prefetch={true}>
+              <Link href={`/${community.slug}`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
                 <Home className="h-4 w-4" />
                 Home
               </Link>
             </TabsTrigger>
             <TabsTrigger value="feed" asChild>
-              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2" prefetch={true}>
+              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
                 <MessageSquare className="h-4 w-4" />
                 Feed
               </Link>
             </TabsTrigger>
             <TabsTrigger value="events" asChild>
-              <Link href={`/${community.slug}/events`} className="flex items-center gap-2" prefetch={true}>
+              <Link href={`/${community.slug}/events`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
                 <Video className="h-4 w-4" />
                 Events
               </Link>
             </TabsTrigger>
             <TabsTrigger value="members" asChild>
-              <Link href={`/${community.slug}/members`} className="flex items-center gap-2" prefetch={true}>
+              <Link href={`/${community.slug}/members`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
                 <Users className="h-4 w-4" />
                 Members
               </Link>
             </TabsTrigger>
             {(isOwner || isMember) && (
               <TabsTrigger value="settings" asChild>
-                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2">
+                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2 touch-feedback">
                   <Shield className="h-4 w-4" />
                   Settings
                 </Link>
@@ -269,7 +269,7 @@ export default function CommunityView({
             <Button 
               onClick={() => setJoinDialogOpen(true)}
               size="lg"
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback"
             >
               <Heart className="h-5 w-5 mr-2" />
               Join Community
@@ -281,14 +281,14 @@ export default function CommunityView({
               onClick={handleLeaveCommunity}
               variant="outline"
               size="lg"
-              className="border-white/20 text-white hover:bg-white/10"
+              className="border-white/20 text-white hover:bg-white/10 touch-feedback"
             >
               Leave Community
             </Button>
           )}
           
           {isOwner && (
-            <Button asChild size="lg" variant="outline" className="border-white/20 text-white hover:bg-white/10">
+            <Button asChild size="lg" variant="outline" className="border-white/20 text-white hover:bg-white/10 touch-feedback">
               <Link href={`/${community.slug}/settings`}>
                 <Shield className="h-5 w-5 mr-2" />
                 Manage Community
@@ -393,14 +393,14 @@ export default function CommunityView({
               variant="outline"
               onClick={() => setJoinDialogOpen(false)}
               disabled={isSubmitting}
-              className="border-white/20 text-white hover:bg-white/10"
+              className="border-white/20 text-white hover:bg-white/10 touch-feedback"
             >
               Cancel
             </Button>
             <Button 
               onClick={handleJoinCommunity} 
               disabled={isSubmitting}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback"
             >
               {isSubmitting ? (
                 <>

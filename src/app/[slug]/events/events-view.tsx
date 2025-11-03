@@ -658,7 +658,7 @@ export default function CommunityEventsView({
           {isOwner && (
             <Button
               onClick={() => setCreateDialogOpen(true)}
-              className="bg-white/10 text-white/80 hover:bg-white/20 w-full sm:w-auto flex-shrink-0"
+              className="bg-white/10 text-white/80 hover:bg-white/20 w-full sm:w-auto flex-shrink-0 cursor-pointer"
             >
               <Plus className="h-4 w-4 mr-2" />
               Create Event
@@ -756,7 +756,7 @@ export default function CommunityEventsView({
             {isOwner && (
               <Button
                 onClick={() => setCreateDialogOpen(true)}
-                className="mt-6 bg-white/10 text-white/80 hover:bg-white/20"
+                className="mt-6 bg-white/10 text-white/80 hover:bg-white/20 cursor-pointer"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Event

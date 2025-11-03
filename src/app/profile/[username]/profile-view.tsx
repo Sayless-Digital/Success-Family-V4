@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase"
 import type { Post, PostMedia, User as UserType } from "@/types"
 import Link from "next/link"
 import { ScrollToTop } from "@/components/scroll-to-top"
+import { LoadingSpinner } from "@/components/loading-spinner"
 
 interface User {
   id: string
@@ -32,9 +33,13 @@ interface ProfileViewProps {
   memberCommunitiesCount: number
   verifiedPaymentsCount: number
   posts: (Post & { media?: PostMedia[] })[]
+  postsHasMore: boolean
   boostedPosts: (Post & { media?: PostMedia[], author?: UserType })[]
+  boostedPostsHasMore: boolean
   gotBoostedPosts: (Post & { media?: PostMedia[] })[]
+  gotBoostedPostsHasMore: boolean
   savedPosts: (Post & { media?: PostMedia[], author?: UserType })[]
+  savedPostsHasMore: boolean
   communities: Array<{
     id: string
     name: string
@@ -51,21 +56,43 @@ export default function ProfileView({
   memberCommunitiesCount,
   verifiedPaymentsCount,
   posts: initialPosts,
+  postsHasMore: initialPostsHasMore,
   boostedPosts: initialBoostedPosts,
+  boostedPostsHasMore: initialBoostedPostsHasMore,
   gotBoostedPosts: initialGotBoostedPosts,
+  gotBoostedPostsHasMore: initialGotBoostedPostsHasMore,
   savedPosts: initialSavedPosts,
+  savedPostsHasMore: initialSavedPostsHasMore,
   communities,
 }: ProfileViewProps) {
   const { user: currentUser, userProfile, walletBalance } = useAuth()
   const isOwnProfile = currentUser?.id === user.id
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({})
   const [posts, setPosts] = useState(initialPosts || [])
+  const [postsHasMore, setPostsHasMore] = useState(initialPostsHasMore)
+  const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false)
+  const postsLoadMoreRef = React.useRef<HTMLDivElement>(null)
+  
   const [boostedPosts, setBoostedPosts] = useState(initialBoostedPosts || [])
+  const [boostedPostsHasMore, setBoostedPostsHasMore] = useState(initialBoostedPostsHasMore)
+  const [isLoadingMoreBoosted, setIsLoadingMoreBoosted] = useState(false)
+  const boostedLoadMoreRef = React.useRef<HTMLDivElement>(null)
+  
   const [gotBoostedPosts, setGotBoostedPosts] = useState(initialGotBoostedPosts || [])
+  const [gotBoostedPostsHasMore, setGotBoostedPostsHasMore] = useState(initialGotBoostedPostsHasMore)
+  const [isLoadingMoreGotBoosted, setIsLoadingMoreGotBoosted] = useState(false)
+  const gotBoostedLoadMoreRef = React.useRef<HTMLDivElement>(null)
+  
   const [savedPosts, setSavedPosts] = useState(initialSavedPosts || [])
+  const [savedPostsHasMore, setSavedPostsHasMore] = useState(initialSavedPostsHasMore)
+  const [isLoadingMoreSaved, setIsLoadingMoreSaved] = useState(false)
+  const savedLoadMoreRef = React.useRef<HTMLDivElement>(null)
+  
   const [savingPosts, setSavingPosts] = useState<Set<string>>(new Set())
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
+  
+  const [activeTab, setActiveTab] = useState("posts")
 
   // Fetch image URLs for all posts
   React.useEffect(() => {
@@ -1079,7 +1106,321 @@ export default function ProfileView({
     return date.toLocaleDateString()
   }
 
-  const PostList = ({ postsToShow }: { postsToShow: (Post & { media?: PostMedia[], author?: UserType })[] }) => {
+  // Helper function to enrich posts with batch queries
+  const enrichPostsBatch = async (newPosts: any[]) => {
+    if (!newPosts || newPosts.length === 0) return []
+    
+    const postIds = newPosts.map(p => p.id)
+    
+    // Batch fetch boost counts
+    const { data: boostCountsData } = await supabase
+      .rpc('get_posts_boost_counts', { p_post_ids: postIds })
+
+    // Batch fetch user boost status if authenticated
+    let userBoostStatus: Array<{ post_id: string; user_has_boosted: boolean; can_unboost: boolean }> = []
+    if (currentUser) {
+      const { data: boostStatusData } = await supabase
+        .rpc('get_user_boosted_posts', { 
+          p_post_ids: postIds,
+          p_user_id: currentUser.id 
+        })
+      userBoostStatus = boostStatusData || []
+    }
+
+    // Create lookup maps
+    const boostCountMap = new Map(
+      (boostCountsData || []).map(b => [b.post_id, b.boost_count])
+    )
+    const boostStatusMap = new Map(
+      userBoostStatus.map(b => [b.post_id, { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }])
+    )
+
+    // Enrich posts
+    return newPosts.map((post: any) => {
+      const boostCount = boostCountMap.get(post.id) || 0
+      const boostStatus = boostStatusMap.get(post.id) || { user_has_boosted: false, can_unboost: false }
+      
+      const media = (post.post_media || []).sort((a: PostMedia, b: PostMedia) => 
+        a.display_order - b.display_order
+      )
+
+      return {
+        ...post,
+        boost_count: boostCount,
+        media: media.length > 0 ? media : undefined,
+        community_slug: post.communities?.slug,
+        community_name: post.communities?.name,
+        user_has_boosted: boostStatus.user_has_boosted,
+        can_unboost: boostStatus.can_unboost
+      }
+    })
+  }
+
+  // Load more functions for each tab
+  const loadMorePosts = async () => {
+    if (isLoadingMorePosts || !postsHasMore || posts.length === 0) return
+    setIsLoadingMorePosts(true)
+    
+    try {
+      const lastPost = posts[posts.length - 1]
+      const lastPostDate = lastPost?.published_at || lastPost?.created_at
+
+      const { data: newPostsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          post_media (*),
+          communities!posts_community_id_fkey (slug, name)
+        `)
+        .eq('author_id', user.id)
+        .order('created_at', { ascending: false })
+        .lt('created_at', lastPostDate || new Date().toISOString())
+        .limit(20)
+
+      if (error) throw error
+      if (!newPostsData || newPostsData.length === 0) {
+        setPostsHasMore(false)
+        return
+      }
+
+      const enriched = await enrichPostsBatch(newPostsData)
+      setPosts(prev => [...prev, ...enriched])
+      if (enriched.length < 20) setPostsHasMore(false)
+    } catch (error: any) {
+      console.error('Error loading more posts:', error)
+      toast.error('Failed to load more posts')
+    } finally {
+      setIsLoadingMorePosts(false)
+    }
+  }
+
+  const loadMoreBoosted = async () => {
+    if (isLoadingMoreBoosted || !boostedPostsHasMore || boostedPosts.length === 0) return
+    setIsLoadingMoreBoosted(true)
+    
+    try {
+      const lastBoost = boostedPosts[boostedPosts.length - 1]
+      const lastBoostDate = lastBoost?.created_at
+
+      const { data: newBoostedData, error } = await supabase
+        .from('post_boosts')
+        .select(`
+          post_id,
+          posts (
+            *,
+            post_media (*),
+            author:users!posts_author_id_fkey (*),
+            communities!posts_community_id_fkey (slug, name)
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .lt('created_at', lastBoostDate || new Date().toISOString())
+        .limit(20)
+
+      if (error) throw error
+      if (!newBoostedData || newBoostedData.length === 0) {
+        setBoostedPostsHasMore(false)
+        return
+      }
+
+      const newPostsRaw = newBoostedData
+        .filter((boost: any) => boost.posts)
+        .map((boost: any) => ({
+          ...boost.posts,
+          post_media: boost.posts.post_media || [],
+          communities: boost.posts.communities,
+          author: boost.posts.author
+        }))
+
+      const enriched = await enrichPostsBatch(newPostsRaw)
+      const withBoostStatus = enriched.map((post: any) => ({
+        ...post,
+        user_has_boosted: true,
+        author: newPostsRaw.find((p: any) => p.id === post.id)?.author
+      }))
+      
+      setBoostedPosts(prev => [...prev, ...withBoostStatus])
+      if (withBoostStatus.length < 20) setBoostedPostsHasMore(false)
+    } catch (error: any) {
+      console.error('Error loading more boosted posts:', error)
+      toast.error('Failed to load more posts')
+    } finally {
+      setIsLoadingMoreBoosted(false)
+    }
+  }
+
+  const loadMoreGotBoosted = async () => {
+    if (isLoadingMoreGotBoosted || !gotBoostedPostsHasMore || gotBoostedPosts.length === 0) return
+    setIsLoadingMoreGotBoosted(true)
+    
+    try {
+      const lastPost = gotBoostedPosts[gotBoostedPosts.length - 1]
+      const lastPostDate = lastPost?.published_at || lastPost?.created_at
+
+      const { data: newPostsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          post_media (*),
+          communities!posts_community_id_fkey (slug, name),
+          post_boosts!inner(post_id)
+        `)
+        .eq('author_id', user.id)
+        .order('created_at', { ascending: false })
+        .lt('created_at', lastPostDate || new Date().toISOString())
+        .limit(100)
+
+      if (error) throw error
+      if (!newPostsData || newPostsData.length === 0) {
+        setGotBoostedPostsHasMore(false)
+        return
+      }
+
+      const uniquePosts = Array.from(
+        new Map(newPostsData.map((p: any) => [p.id, p])).values()
+      ).slice(0, 20)
+
+      const enriched = await enrichPostsBatch(uniquePosts)
+      const filtered = enriched.filter((p: any) => (p.boost_count || 0) > 0)
+      
+      setGotBoostedPosts(prev => [...prev, ...filtered])
+      if (filtered.length < 20) setGotBoostedPostsHasMore(false)
+    } catch (error: any) {
+      console.error('Error loading more got boosted posts:', error)
+      toast.error('Failed to load more posts')
+    } finally {
+      setIsLoadingMoreGotBoosted(false)
+    }
+  }
+
+  const loadMoreSaved = async () => {
+    if (isLoadingMoreSaved || !savedPostsHasMore || savedPosts.length === 0) return
+    setIsLoadingMoreSaved(true)
+    
+    try {
+      const lastSaved = savedPosts[savedPosts.length - 1]
+      const lastSavedDate = lastSaved?.created_at
+
+      const { data: newSavedData, error } = await supabase
+        .from('saved_posts')
+        .select(`
+          post_id,
+          posts (
+            *,
+            post_media (*),
+            author:users!posts_author_id_fkey (*),
+            communities!posts_community_id_fkey (slug, name)
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .lt('created_at', lastSavedDate || new Date().toISOString())
+        .limit(20)
+
+      if (error) throw error
+      if (!newSavedData || newSavedData.length === 0) {
+        setSavedPostsHasMore(false)
+        return
+      }
+
+      const newPostsRaw = newSavedData
+        .filter((saved: any) => saved.posts)
+        .map((saved: any) => ({
+          ...saved.posts,
+          post_media: saved.posts.post_media || [],
+          communities: saved.posts.communities,
+          author: saved.posts.author
+        }))
+
+      const enriched = await enrichPostsBatch(newPostsRaw)
+      const withSavedFlag = enriched.map((post: any) => ({
+        ...post,
+        user_has_saved: true,
+        author: newPostsRaw.find((p: any) => p.id === post.id)?.author
+      }))
+      
+      setSavedPosts(prev => [...prev, ...withSavedFlag])
+      if (withSavedFlag.length < 20) setSavedPostsHasMore(false)
+    } catch (error: any) {
+      console.error('Error loading more saved posts:', error)
+      toast.error('Failed to load more posts')
+    } finally {
+      setIsLoadingMoreSaved(false)
+    }
+  }
+
+  // Intersection Observers for infinite scroll on each tab
+  React.useEffect(() => {
+    if (!postsHasMore || isLoadingMorePosts || activeTab !== "posts") return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMorePosts()
+      },
+      { root: null, rootMargin: '200px', threshold: 0.1 }
+    )
+
+    if (postsLoadMoreRef.current) observer.observe(postsLoadMoreRef.current)
+    return () => {
+      if (postsLoadMoreRef.current) observer.unobserve(postsLoadMoreRef.current)
+    }
+  }, [postsHasMore, isLoadingMorePosts, activeTab, posts.length])
+
+  React.useEffect(() => {
+    if (!boostedPostsHasMore || isLoadingMoreBoosted || activeTab !== "boosts") return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreBoosted()
+      },
+      { root: null, rootMargin: '200px', threshold: 0.1 }
+    )
+
+    if (boostedLoadMoreRef.current) observer.observe(boostedLoadMoreRef.current)
+    return () => {
+      if (boostedLoadMoreRef.current) observer.unobserve(boostedLoadMoreRef.current)
+    }
+  }, [boostedPostsHasMore, isLoadingMoreBoosted, activeTab, boostedPosts.length])
+
+  React.useEffect(() => {
+    if (!gotBoostedPostsHasMore || isLoadingMoreGotBoosted || activeTab !== "got-boosted") return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreGotBoosted()
+      },
+      { root: null, rootMargin: '200px', threshold: 0.1 }
+    )
+
+    if (gotBoostedLoadMoreRef.current) observer.observe(gotBoostedLoadMoreRef.current)
+    return () => {
+      if (gotBoostedLoadMoreRef.current) observer.unobserve(gotBoostedLoadMoreRef.current)
+    }
+  }, [gotBoostedPostsHasMore, isLoadingMoreGotBoosted, activeTab, gotBoostedPosts.length])
+
+  React.useEffect(() => {
+    if (!savedPostsHasMore || isLoadingMoreSaved || activeTab !== "saved") return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreSaved()
+      },
+      { root: null, rootMargin: '200px', threshold: 0.1 }
+    )
+
+    if (savedLoadMoreRef.current) observer.observe(savedLoadMoreRef.current)
+    return () => {
+      if (savedLoadMoreRef.current) observer.unobserve(savedLoadMoreRef.current)
+    }
+  }, [savedPostsHasMore, isLoadingMoreSaved, activeTab, savedPosts.length])
+
+  const PostList = ({ postsToShow, hasMore, isLoadingMore, loadMoreRef: ref }: { 
+    postsToShow: (Post & { media?: PostMedia[], author?: UserType })[]
+    hasMore?: boolean
+    isLoadingMore?: boolean
+    loadMoreRef?: React.RefObject<HTMLDivElement>
+  }) => {
     if (!postsToShow || postsToShow.length === 0) {
       return (
         <div className="text-center py-12">
@@ -1129,7 +1470,8 @@ export default function ProfileView({
                   <Link 
                     href={`/profile/${postAuthor.username}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="flex-shrink-0"
+                    className="flex-shrink-0 avatar-feedback"
+                    prefetch={true}
                   >
                       <Avatar className="h-10 w-10 border-4 border-white/20">
                         <AvatarImage 
@@ -1158,7 +1500,8 @@ export default function ProfileView({
                               <Link 
                                 href={`/${communitySlug}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="text-white/60 hover:text-white/80 text-xs transition-colors"
+                                className="text-white/60 hover:text-white/80 text-xs transition-colors touch-feedback"
+                                prefetch={true}
                               >
                                 {(post as any).community_name}
                               </Link>
@@ -1196,7 +1539,7 @@ export default function ProfileView({
                         handleBoostToggle(post.id, post.author_id, e)
                       }}
                       disabled={!currentUser || boostingPosts.has(post.id)}
-                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed touch-feedback ${
                         post.user_has_boosted
                           ? 'bg-yellow-400/10 border-yellow-400/40'
                           : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30'
@@ -1231,7 +1574,7 @@ export default function ProfileView({
                           handleSaveToggle(post.id)
                         }}
                         disabled={savingPosts.has(post.id)}
-                        className={`group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        className={`group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed touch-feedback ${
                           post.user_has_saved
                             ? 'bg-white/10 border-white/30'
                             : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30'
@@ -1251,6 +1594,21 @@ export default function ProfileView({
             </Card>
           )
         })}
+        
+        {/* Infinite Scroll Trigger & Loading Indicator */}
+        {sortedPosts.length > 0 && (
+          <div ref={ref} className="py-8 flex justify-center">
+            {isLoadingMore && (
+              <div className="flex flex-col items-center gap-4">
+                <LoadingSpinner />
+                <p className="text-white/60 text-sm">Loading more posts...</p>
+              </div>
+            )}
+            {!hasMore && !isLoadingMore && (
+              <p className="text-white/60 text-sm">No more posts to load</p>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -1286,52 +1644,72 @@ export default function ProfileView({
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="posts" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full">
-            <TabsTrigger value="posts" className="gap-2">
+            <TabsTrigger value="posts" className="gap-2 touch-feedback">
               <LayoutGrid className="h-4 w-4" />
               <span>All Posts ({posts.length})</span>
             </TabsTrigger>
             {isOwnProfile && (
               <>
-                <TabsTrigger value="boosts" className="gap-2">
+                <TabsTrigger value="boosts" className="gap-2 touch-feedback">
                   <Zap className="h-4 w-4" />
                   <span>I Boosted ({boostedPosts.length})</span>
                 </TabsTrigger>
-                <TabsTrigger value="saved" className="gap-2">
+                <TabsTrigger value="saved" className="gap-2 touch-feedback">
                   <Bookmark className="h-4 w-4" />
                   <span>Saved ({savedPosts.length})</span>
                 </TabsTrigger>
               </>
             )}
-            <TabsTrigger value="got-boosted" className="gap-2">
+            <TabsTrigger value="got-boosted" className="gap-2 touch-feedback">
               <TrendingUp className="h-4 w-4" />
               <span>Got Boosted ({gotBoostedPosts.length})</span>
             </TabsTrigger>
-            <TabsTrigger value="communities" className="gap-2">
+            <TabsTrigger value="communities" className="gap-2 touch-feedback">
               <Building2 className="h-4 w-4" />
               <span>Communities ({communities.length})</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="posts" className="mt-4">
-            <PostList postsToShow={posts} />
+            <PostList 
+              postsToShow={posts}
+              hasMore={postsHasMore}
+              isLoadingMore={isLoadingMorePosts}
+              loadMoreRef={postsLoadMoreRef}
+            />
           </TabsContent>
 
           {isOwnProfile && (
             <>
               <TabsContent value="boosts" className="mt-4">
-                <PostList postsToShow={boostedPosts} />
+                <PostList 
+                  postsToShow={boostedPosts}
+                  hasMore={boostedPostsHasMore}
+                  isLoadingMore={isLoadingMoreBoosted}
+                  loadMoreRef={boostedLoadMoreRef}
+                />
               </TabsContent>
 
               <TabsContent value="saved" className="mt-4">
-                <PostList postsToShow={savedPosts} />
+                <PostList 
+                  postsToShow={savedPosts}
+                  hasMore={savedPostsHasMore}
+                  isLoadingMore={isLoadingMoreSaved}
+                  loadMoreRef={savedLoadMoreRef}
+                />
               </TabsContent>
             </>
           )}
 
           <TabsContent value="got-boosted" className="mt-4">
-            <PostList postsToShow={gotBoostedPosts} />
+            <PostList 
+              postsToShow={gotBoostedPosts}
+              hasMore={gotBoostedPostsHasMore}
+              isLoadingMore={isLoadingMoreGotBoosted}
+              loadMoreRef={gotBoostedLoadMoreRef}
+            />
           </TabsContent>
 
           <TabsContent value="communities" className="mt-4">
@@ -1345,7 +1723,8 @@ export default function ProfileView({
                   <Link
                     key={community.id}
                     href={`/${community.slug}`}
-                    className="block"
+                    className="block touch-feedback"
+                    prefetch={true}
                   >
                     <Card className="group bg-white/10 backdrop-blur-md border-0 hover:bg-white/15 transition-colors">
                       <CardContent className="p-4">

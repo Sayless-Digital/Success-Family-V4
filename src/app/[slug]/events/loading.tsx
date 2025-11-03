@@ -5,7 +5,7 @@ export default function EventsLoading() {
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-4">
-          <LoadingSpinner size="lg" />
+          <LoadingSpinner />
           <p className="text-white/60 text-sm">Loading events...</p>
         </div>
       </div>

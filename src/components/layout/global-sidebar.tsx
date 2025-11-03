@@ -130,7 +130,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                   <li>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                      className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
                       asChild
                     >
                       <Link href="/" onClick={() => isMobile && onClose()} prefetch={true}>
@@ -147,7 +147,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                       <li key={item.href}>
                         <Button
                           variant="ghost"
-                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
                           asChild
                         >
                           <Link href={item.href} onClick={() => isMobile && onClose()} prefetch={true}>
@@ -168,7 +168,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                       <li key={item.href}>
                         <Button
                           variant="ghost"
-                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
                           asChild
                         >
                           <Link href={item.href} onClick={() => isMobile && onClose()} prefetch={true}>
@@ -194,7 +194,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                           <li key={item.href}>
                             <Button
                               variant="ghost"
-                              className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                              className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
                               asChild
                             >
                               <Link href={href} onClick={() => isMobile && onClose()} prefetch={true}>
@@ -209,7 +209,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                         <li>
                           <Button
                             variant="ghost"
-                            className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                            className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
                             asChild
                           >
                             <Link href="/admin" onClick={() => isMobile && onClose()} prefetch={true}>
@@ -223,7 +223,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                       <li>
                         <Button
                           variant="ghost"
-                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
+                          className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
                           onClick={handleSignOut}
                         >
                           <LogOut className="h-4 w-4" />

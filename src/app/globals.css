@@ -412,36 +412,7 @@
     animation: edge-glow-pulse 1.5s ease-in-out infinite;
   }
 
-  /* CRITICAL: Sonner toasts MUST appear above all dialogs */
-  /* Target the portal container that Sonner creates */
-  body > div[data-sonner-toaster] {
-    z-index: 2147483647 !important;
-    position: fixed !important;
-  }
   
-  /* Ensure all toast elements inherit the high z-index */
-  [data-sonner-toaster] [data-sonner-toast] {
-    position: relative !important;
-    z-index: inherit !important;
-  }
-  
-  /* Force ALL Radix portals to stay below - maximum specificity */
-  body > div[data-radix-portal],
-  body > [data-radix-portal],
-  [data-radix-portal] {
-    z-index: 50 !important;
-  }
-  
-  /* Target Radix overlay and content with maximum specificity */
-  [data-radix-dialog-overlay],
-  [data-radix-portal] > [data-radix-dialog-overlay] {
-    z-index: 50 !important;
-  }
-  
-  [data-radix-dialog-content],
-  [data-radix-portal] > [data-radix-dialog-content] {
-    z-index: 50 !important;
-  }
 
   /* View Transitions API for smooth page changes */
   @view-transition {
@@ -492,5 +463,65 @@
 
   .page-transition-exit {
     animation: fade-out 0.2s ease-out;
+  }
+
+  /* Touch/tap feedback for all interactive elements */
+  .touch-feedback {
+    transition: all 0.1s ease-out;
+  }
+
+  .touch-feedback:active {
+    transform: scale(0.92);
+    opacity: 0.6;
+  }
+
+  /* Specific feedback for buttons */
+  button:active,
+  [role="button"]:active {
+    transform: scale(0.92);
+    opacity: 0.65;
+  }
+
+  /* Tab trigger feedback */
+  [role="tab"]:active,
+  [data-radix-tabs-trigger]:active {
+    transform: scale(0.92);
+    opacity: 0.65;
+  }
+
+  /* Link feedback when used as buttons */
+  a:active {
+    transform: scale(0.92);
+    opacity: 0.65;
+  }
+
+  /* Avatar/profile picture feedback */
+  .avatar-feedback:active {
+    transform: scale(0.88);
+    opacity: 0.6;
+  }
+
+  /* Loading Spinner Glow Effect */
+  .loading-spinner-glow {
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)) 
+            drop-shadow(0 0 16px rgba(255, 255, 255, 0.2)) 
+            drop-shadow(0 0 24px rgba(255, 255, 255, 0.1));
+  }
+
+  .loading-spinner-glow.animate-spin {
+    animation: spin 1s linear infinite, spinner-pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes spinner-pulse-glow {
+    0%, 100% {
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)) 
+              drop-shadow(0 0 16px rgba(255, 255, 255, 0.2)) 
+              drop-shadow(0 0 24px rgba(255, 255, 255, 0.1));
+    }
+    50% {
+      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.6)) 
+              drop-shadow(0 0 20px rgba(255, 255, 255, 0.3)) 
+              drop-shadow(0 0 32px rgba(255, 255, 255, 0.15));
+    }
   }
 }

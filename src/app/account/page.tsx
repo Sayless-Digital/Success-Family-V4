@@ -271,7 +271,8 @@ export default function AccountPage() {
                   </h3>
                   <Link 
                     href={`/profile/${formData.username}`}
-                    className="group"
+                    className="group touch-feedback"
+                    prefetch={true}
                   >
                     <p className="text-white/60 text-sm mb-4 group-hover:text-primary/80 transition-colors">@{formData.username}</p>
                   </Link>
@@ -289,7 +290,7 @@ export default function AccountPage() {
                         type="button"
                         variant="outline"
                         disabled={uploading}
-                        className="w-full sm:w-auto bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer"
+                        className="w-full sm:w-auto bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer touch-feedback"
                       >
                         {uploading ? (
                           <>
@@ -434,7 +435,7 @@ export default function AccountPage() {
                 <Button 
                   type="submit" 
                   disabled={saving}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 transition-colors touch-feedback"
                   size="lg"
                 >
                   {saving ? (
@@ -483,7 +484,7 @@ export default function AccountPage() {
                     <button
                       type="button"
                       onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors touch-feedback"
                     >
                       {showPasswords.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -506,7 +507,7 @@ export default function AccountPage() {
                     <button
                       type="button"
                       onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors touch-feedback"
                     >
                       {showPasswords.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -518,7 +519,7 @@ export default function AccountPage() {
                   <Button 
                     type="submit" 
                     disabled={passwordSaving || !passwordData.newPassword || !passwordData.confirmPassword}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 transition-colors touch-feedback"
                     size="lg"
                   >
                     {passwordSaving ? (
