@@ -234,7 +234,7 @@ function DraggableSelfView({
         zIndex: 30,
       }}
       className={cn(
-        "w-[100px] h-[180px] rounded-xl overflow-hidden shadow-2xl border-2 border-white/20 bg-black touch-none",
+        "w-[100px] h-[180px] rounded-xl overflow-hidden shadow-2xl border-2 border-white/10 bg-transparent touch-none",
         isDragging ? "cursor-grabbing" : "cursor-grab"
       )}
       onMouseDown={handleMouseDown}
@@ -266,15 +266,15 @@ function DraggableSelfView({
             
             {/* Overlay with name */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
-              <div className="absolute bottom-1.5 left-2 right-2">
-                <span className="text-white text-xs font-medium">
+              <div className="absolute bottom-1.5 left-2 inline-block bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full">
+                <span className="text-white text-xs font-medium whitespace-nowrap">
                   You
                 </span>
               </div>
             </div>
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-black">
+          <div className="w-full h-full flex items-center justify-center bg-transparent backdrop-blur-sm">
             <Avatar className="h-20 w-20 border-4 border-white/20">
               <AvatarImage src={userImage || undefined} alt={userName} />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-2xl">
@@ -324,7 +324,7 @@ function ParticipantVideo({
   }, [participant.videoStream, participant.sessionId, hasVideo])
 
   return (
-    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border-2 border-white/10 backdrop-blur-sm">
       {hasVideo && participant.videoStream ? (
         <>
           <video
@@ -335,8 +335,8 @@ function ParticipantVideo({
             className="w-full h-full object-cover"
           />
           {/* Name overlay */}
-          <div className="absolute bottom-2 left-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded">
-            <span className="text-white text-sm font-medium truncate block">
+          <div className="absolute bottom-2 left-2 inline-block bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full">
+            <span className="text-white text-sm font-medium whitespace-nowrap">
               {participant.name || 'Unknown'}
               {participant.isLocalParticipant && ' (You)'}
             </span>
@@ -717,7 +717,7 @@ function CallContent({
         </div>
 
         {/* Bottom Controls Bar - Mobile nav style */}
-        <div className="fixed bottom-0 left-0 right-0 z-20 h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20">
+        <div className="flex-shrink-0 h-12 z-20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20">
           <div className="h-full flex items-center justify-between gap-3 px-1">
             {/* Left: Layout toggle button */}
             <Button

@@ -27,6 +27,7 @@ export function CustomDateTimePicker({
   const [currentMonth, setCurrentMonth] = React.useState(
     new Date(date.getFullYear(), date.getMonth(), 1)
   )
+  const timeSlotRefs = React.useRef<Map<string, HTMLButtonElement>>(new Map())
 
   // Convert 24-hour time to 12-hour format with AM/PM
   const formatTime12Hour = (time24: string): string => {
@@ -50,6 +51,82 @@ export function CustomDateTimePicker({
     }
     return generated
   }, [timeSlots])
+
+  // Find the next available time slot after current time
+  const getNextTimeSlot = React.useCallback(() => {
+    const now = new Date()
+    const currentHours = now.getHours()
+    const currentMinutes = now.getMinutes()
+    
+    // Calculate next 30-minute interval (always round up)
+    let nextHour = currentHours
+    let nextMinute = currentMinutes <= 30 ? 30 : 0
+    
+    // If we need to round up past the hour, increment hour
+    if (currentMinutes > 30) {
+      nextHour = (currentHours + 1) % 24
+      nextMinute = 0
+    } else if (currentMinutes === 30 || currentMinutes === 0) {
+      // If exactly on a 30-minute mark, go to next slot (30 -> 00 of next hour, or 00 -> 30)
+      if (currentMinutes === 30) {
+        nextHour = (currentHours + 1) % 24
+        nextMinute = 0
+      } else {
+        // currentMinutes === 0, so next is :30
+        nextMinute = 30
+      }
+    }
+    
+    // Find the first available slot at or after the calculated next time
+    for (const slot of slots) {
+      if (!slot.available) continue
+      
+      const [slotHours, slotMinutes] = slot.time.split(':').map(Number)
+      
+      // Check if this slot is strictly after the current time
+      const isStrictlyAfter = slotHours > currentHours || 
+        (slotHours === currentHours && slotMinutes > currentMinutes)
+      
+      // Also check if it matches our calculated next time
+      const matchesNext = slotHours === nextHour && slotMinutes === nextMinute
+      
+      if (isStrictlyAfter || matchesNext) {
+        return slot.time
+      }
+    }
+    
+    // If no future slot found, return first available slot
+    return slots.find(s => s.available)?.time || slots[0]?.time
+  }, [slots])
+
+  // Auto-scroll to current/next time slot when date is today and no time is selected
+  React.useEffect(() => {
+    // Only auto-scroll if date is today and no time is selected yet
+    const today = new Date()
+    const isToday = (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    )
+    
+    if (!isToday || time) return
+    
+    // Get the next time slot
+    const nextSlot = getNextTimeSlot()
+    if (!nextSlot) return
+    
+    // Wait for DOM to render and ScrollArea to be ready
+    const timer = setTimeout(() => {
+      const button = timeSlotRefs.current.get(nextSlot)
+      if (button) {
+        // Scroll the button into view within the ScrollArea viewport
+        // Use 'center' for vertical centering, 'nearest' for horizontal to avoid grid scrolling
+        button.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+      }
+    }, 150)
+    
+    return () => clearTimeout(timer)
+  }, [date, time, getNextTimeSlot])
 
   // Get days for current month
   const getDaysInMonth = (date: Date) => {
@@ -212,6 +289,13 @@ export function CustomDateTimePicker({
                   {slots.map(({ time: timeSlot, available }) => (
                     <Button
                       key={timeSlot}
+                      ref={(el) => {
+                        if (el) {
+                          timeSlotRefs.current.set(timeSlot, el)
+                        } else {
+                          timeSlotRefs.current.delete(timeSlot)
+                        }
+                      }}
                       variant={time === timeSlot ? "default" : "outline"}
                       size="sm"
                       className="w-full"

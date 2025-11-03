@@ -835,10 +835,10 @@ export default function CommunityEventsView({
                 />
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="gap-3">
                 <Button
-                  variant="outline"
                   onClick={() => setCreateStep(1)}
+                  className="bg-white/10 text-white/80 hover:bg-white/20 border border-white/20"
                 >
                   Back
                 </Button>
