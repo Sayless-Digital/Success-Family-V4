@@ -63,7 +63,7 @@ const BaseDialogContent = React.forwardRef<
           },
           overflow: {
             x: 'hidden',
-            y: 'auto',
+            y: 'scroll',
           },
           paddingAbsolute: false,
           showNativeOverlaidScrollbars: false,
