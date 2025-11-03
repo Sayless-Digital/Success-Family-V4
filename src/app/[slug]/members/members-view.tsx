@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { Crown, Calendar, Search, Home, Users, MessageSquare, Shield } from "lucide-react"
+import { Crown, Calendar, Search, Home, Users, MessageSquare, Shield, Video } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -46,7 +46,14 @@ export default function CommunityMembersView({
   const [searchQuery, setSearchQuery] = useState("")
 
   // Determine active tab
-  const activeTab = pathname === `/${community.slug}/members` ? "members" : "home"
+  const activeTab = React.useMemo(() => {
+    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
+    if (pathname === `/${community.slug}/feed`) return "feed"
+    if (pathname === `/${community.slug}/events`) return "events"
+    if (pathname === `/${community.slug}/members`) return "members"
+    if (pathname === `/${community.slug}/settings`) return "settings"
+    return "home"
+  }, [pathname, community.slug])
 
   // Sort members: owner first, then by join date
   const sortedMembers = useMemo(() => {
@@ -83,6 +90,12 @@ export default function CommunityMembersView({
               <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Feed
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="events" asChild>
+              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
+                <Video className="h-4 w-4" />
+                Events
               </Link>
             </TabsTrigger>
             <TabsTrigger value="members" asChild>

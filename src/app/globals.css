@@ -411,4 +411,35 @@
   .animate-edge-glow {
     animation: edge-glow-pulse 1.5s ease-in-out infinite;
   }
+
+  /* CRITICAL: Sonner toasts MUST appear above all dialogs */
+  /* Target the portal container that Sonner creates */
+  body > div[data-sonner-toaster] {
+    z-index: 2147483647 !important;
+    position: fixed !important;
+  }
+  
+  /* Ensure all toast elements inherit the high z-index */
+  [data-sonner-toaster] [data-sonner-toast] {
+    position: relative !important;
+    z-index: inherit !important;
+  }
+  
+  /* Force ALL Radix portals to stay below - maximum specificity */
+  body > div[data-radix-portal],
+  body > [data-radix-portal],
+  [data-radix-portal] {
+    z-index: 50 !important;
+  }
+  
+  /* Target Radix overlay and content with maximum specificity */
+  [data-radix-dialog-overlay],
+  [data-radix-portal] > [data-radix-dialog-overlay] {
+    z-index: 50 !important;
+  }
+  
+  [data-radix-dialog-content],
+  [data-radix-portal] > [data-radix-dialog-content] {
+    z-index: 50 !important;
+  }
 }

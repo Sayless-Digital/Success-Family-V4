@@ -9,6 +9,9 @@ export function validateEnv() {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
+    GETSTREAM_API_KEY: process.env.GETSTREAM_API_KEY,
+    GETSTREAM_API_SECRET: process.env.GETSTREAM_API_SECRET,
+    NEXT_PUBLIC_GETSTREAM_API_KEY: process.env.NEXT_PUBLIC_GETSTREAM_API_KEY,
   }
 
   const missingVars = Object.entries(requiredEnvVars)

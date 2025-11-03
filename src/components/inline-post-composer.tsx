@@ -290,8 +290,8 @@ export function InlinePostComposer({
     })
   }
 
-        React.useEffect(() => {
-          updateScrollButtons()
+  React.useEffect(() => {
+    updateScrollButtons()
         }, [imageFiles])
 
         React.useEffect(() => {
@@ -707,7 +707,7 @@ export function InlinePostComposer({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                onClick={() => fileInputRef.current?.click()}
                   disabled={submitting || imageFiles.length >= 8 || showVoiceRecorder}
                   className="group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                 >

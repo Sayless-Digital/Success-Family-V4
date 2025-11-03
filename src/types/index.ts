@@ -82,6 +82,8 @@ export interface PlatformSettings {
   id: number
   buy_price_per_point: number
   user_value_per_point: number
+  stream_start_cost: number // Points charged to create/start a stream (goes to platform)
+  stream_join_cost: number // Points charged to join a stream (goes to event owner)
   updated_at: string
 }
 
@@ -107,6 +109,7 @@ export interface Transaction {
   verified_by?: string
   verified_at?: string
   rejection_reason?: string
+  recipient_user_id?: string // User who received points (NULL for platform fees)
   created_at: string
 }
 
@@ -157,6 +160,56 @@ export interface Comment {
   parent_id?: string
   created_at: string
   updated_at: string
+}
+
+// Event system types
+export type EventStatus = 'scheduled' | 'live' | 'completed' | 'cancelled'
+
+export interface CommunityEvent {
+  id: string
+  community_id: string
+  owner_id: string
+  title: string
+  description?: string
+  scheduled_at: string
+  started_at?: string
+  ended_at?: string
+  status: EventStatus
+  stream_call_id?: string // GetStream call ID
+  points_charged: number // Amount charged to owner for starting
+  created_at: string
+  updated_at: string
+  // Joined fields
+  owner?: User
+  community?: Community
+  registration_count?: number
+  user_has_registered?: boolean
+}
+
+export interface EventRegistration {
+  id: string
+  event_id: string
+  user_id: string
+  points_charged: number
+  registered_at: string
+  joined_at?: string
+  cancelled_at?: string
+  refunded_at?: string
+  // Joined fields
+  user?: User
+  event?: CommunityEvent
+}
+
+export interface EventRecording {
+  id: string
+  event_id: string
+  stream_recording_id: string
+  storage_path?: string
+  post_id?: string
+  duration_seconds?: number
+  file_size_bytes?: number
+  created_at: string
+  saved_at?: string
 }
 
 // Database types

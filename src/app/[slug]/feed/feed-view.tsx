@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2 } from "lucide-react"
+import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2, Video } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
@@ -133,7 +133,14 @@ export default function FeedView({
   }, [user, community?.id, community?.owner_id])
 
   // Determine active tab
-  const activeTab = pathname === `/${community.slug}/feed` ? "feed" : "home"
+  const activeTab = React.useMemo(() => {
+    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
+    if (pathname === `/${community.slug}/feed`) return "feed"
+    if (pathname === `/${community.slug}/events`) return "events"
+    if (pathname === `/${community.slug}/members`) return "members"
+    if (pathname === `/${community.slug}/settings`) return "settings"
+    return "home"
+  }, [pathname, community.slug])
   const [posts, setPosts] = useState(initialPosts)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
   const [savingPosts, setSavingPosts] = useState<Set<string>>(new Set())
@@ -1261,6 +1268,12 @@ export default function FeedView({
               <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Feed
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="events" asChild>
+              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
+                <Video className="h-4 w-4" />
+                Events
               </Link>
             </TabsTrigger>
             <TabsTrigger value="members" asChild>

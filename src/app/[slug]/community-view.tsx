@@ -2,7 +2,7 @@
 
 import React, { useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, Home } from "lucide-react"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, Home, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -56,6 +56,7 @@ export default function CommunityView({
   const getActiveTab = () => {
     if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
     if (pathname === `/${community.slug}/feed`) return "feed"
+    if (pathname === `/${community.slug}/events`) return "events"
     if (pathname === `/${community.slug}/members`) return "members"
     if (pathname === `/${community.slug}/settings`) return "settings"
     return "home"
@@ -161,6 +162,12 @@ export default function CommunityView({
               <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Feed
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="events" asChild>
+              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
+                <Video className="h-4 w-4" />
+                Events
               </Link>
             </TabsTrigger>
             <TabsTrigger value="members" asChild>
