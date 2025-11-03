@@ -426,10 +426,10 @@ function ParticipantVideo({
           </div>
         </>
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-          <Avatar className="h-24 w-24 border-4 border-white/20">
+        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+          <Avatar className="h-16 w-16 sm:h-20 sm:w-20 border-2 border-white/20">
             <AvatarImage src={participant.image} alt={participant.name} />
-            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-3xl">
+            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xl sm:text-2xl">
               {participant.name?.charAt(0).toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>

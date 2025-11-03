@@ -47,26 +47,32 @@ const BaseDialogContent = React.forwardRef<
 
   // Initialize OverlayScrollbars when component mounts
   useEffect(() => {
-    if (contentRef.current && !scrollbarInstanceRef.current) {
-      scrollbarInstanceRef.current = OverlayScrollbars(contentRef.current, {
-        scrollbars: {
-          theme: 'custom-overlay',
-          visibility: 'auto',
-          autoHide: 'move',
-          autoHideDelay: 200,
-          dragScroll: true,
-          clickScroll: false,
-        },
-        overflow: {
-          x: 'hidden',
-          y: 'scroll',
-        },
-        paddingAbsolute: false,
-        showNativeOverlaidScrollbars: false,
-      })
-    }
+    if (!contentRef.current) return
+
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (contentRef.current && !scrollbarInstanceRef.current) {
+        scrollbarInstanceRef.current = OverlayScrollbars(contentRef.current, {
+          scrollbars: {
+            theme: 'custom-overlay',
+            visibility: 'auto',
+            autoHide: 'move',
+            autoHideDelay: 200,
+            dragScroll: true,
+            clickScroll: false,
+          },
+          overflow: {
+            x: 'hidden',
+            y: 'auto',
+          },
+          paddingAbsolute: false,
+          showNativeOverlaidScrollbars: false,
+        })
+      }
+    }, 0)
 
     return () => {
+      clearTimeout(timer)
       if (scrollbarInstanceRef.current) {
         scrollbarInstanceRef.current.destroy()
         scrollbarInstanceRef.current = null
@@ -74,12 +80,16 @@ const BaseDialogContent = React.forwardRef<
     }
   }, [])
 
-  // Update scrollbar instance when content changes
+  // Update scrollbar instance when content changes or dialog state changes
   useEffect(() => {
-    if (scrollbarInstanceRef.current && (props as any)['data-state'] === 'open') {
-      scrollbarInstanceRef.current.update()
+    if (scrollbarInstanceRef.current) {
+      // Small delay to ensure DOM updates are complete
+      const timer = setTimeout(() => {
+        scrollbarInstanceRef.current?.update()
+      }, 0)
+      return () => clearTimeout(timer)
     }
-  }, [children, (props as any)['data-state']])
+  }, [children])
 
   return (
     <DialogPortal>
@@ -98,15 +108,16 @@ const BaseDialogContent = React.forwardRef<
           "sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto",
           "sm:w-full sm:max-w-lg",
           "sm:translate-x-[-50%] sm:translate-y-[-50%]",
-          "sm:h-auto sm:max-h-[calc(100dvh-4rem)]",
+          "sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:min-h-0",
+          "overflow-hidden flex flex-col",
           "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
           "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
           className
         )}
         {...props}
       >
-        <div ref={contentRef} className={cn("h-full overflow-hidden", scrollbarClassName)}>
-          <div className={cn("h-full p-6 flex flex-col", contentClassName)}>
+        <div ref={contentRef} className={cn("flex-1 min-h-0 overflow-auto", scrollbarClassName)}>
+          <div className={cn("p-6", contentClassName)}>
             {children}
           </div>
         </div>

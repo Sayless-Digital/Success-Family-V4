@@ -44,28 +44,30 @@ const DialogContent = React.forwardRef<
         }
       }}
       className={cn(
-        "fixed z-50 grid gap-4 border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-6 shadow-lg duration-200 rounded-lg",
+        "fixed z-50 flex flex-col border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md shadow-lg duration-200 rounded-lg",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
         // Mobile: 8px from all edges (0.5rem = 8px)
         "top-2 left-2 right-2 bottom-2",
         "w-[calc(100vw-1rem)] h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)]",
-        "overflow-y-auto",
+        "overflow-hidden",
         // Desktop: centered with max-width
         "sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto",
         "sm:w-full sm:max-w-lg",
         "sm:translate-x-[-50%] sm:translate-y-[-50%]",
-        "sm:h-auto sm:max-h-[calc(100dvh-4rem)]",
+        "sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:min-h-0",
         "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
         "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
-        // Center content when not full height
-        "flex flex-col items-center justify-center",
         className
       )}
       {...props}
     >
-      {children}
+      <div className="flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent' }}>
+        <div className="p-6">
+          {children}
+        </div>
+      </div>
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 text-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-white/20 data-[state=open]:text-white cursor-pointer">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>

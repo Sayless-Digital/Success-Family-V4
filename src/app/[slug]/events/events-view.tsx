@@ -1006,7 +1006,7 @@ function EventCard({
                 </Button>
               )}
               
-              {!isOwner && event.status === 'live' && isRegistered && onJoinStream && (
+              {!isOwner && event.status === 'live' && onJoinStream && (
                 <Button
                   size="sm"
                   onClick={onJoinStream}
