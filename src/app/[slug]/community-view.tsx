@@ -153,25 +153,25 @@ export default function CommunityView({
         <Tabs value={activeTab} className="w-full">
           <TabsList className="w-full">
             <TabsTrigger value="home" asChild>
-              <Link href={`/${community.slug}`} className="flex items-center gap-2">
+              <Link href={`/${community.slug}`} className="flex items-center gap-2" prefetch={true}>
                 <Home className="h-4 w-4" />
                 Home
               </Link>
             </TabsTrigger>
             <TabsTrigger value="feed" asChild>
-              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
+              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2" prefetch={true}>
                 <MessageSquare className="h-4 w-4" />
                 Feed
               </Link>
             </TabsTrigger>
             <TabsTrigger value="events" asChild>
-              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
+              <Link href={`/${community.slug}/events`} className="flex items-center gap-2" prefetch={true}>
                 <Video className="h-4 w-4" />
                 Events
               </Link>
             </TabsTrigger>
             <TabsTrigger value="members" asChild>
-              <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
+              <Link href={`/${community.slug}/members`} className="flex items-center gap-2" prefetch={true}>
                 <Users className="h-4 w-4" />
                 Members
               </Link>

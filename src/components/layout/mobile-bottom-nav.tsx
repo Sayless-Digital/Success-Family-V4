@@ -31,7 +31,7 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
     <nav className="fixed bottom-0 left-0 right-0 z-[9999] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20">
       <div className="h-full px-1 flex items-center justify-between">
         {/* Left side - Points */}
-        <Link href="/wallet">
+        <Link href="/wallet" prefetch={true}>
           <Button 
             variant="ghost" 
             className="h-10 px-4 bg-white/10 hover:bg-white/20 text-white/80"
@@ -44,7 +44,7 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
         </Link>
 
         {/* Right side - User Profile */}
-        <Link href={`/profile/${userProfile?.username || ''}`}>
+        <Link href={`/profile/${userProfile?.username || ''}`} prefetch={true}>
           <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
             <Avatar className="h-10 w-10 border-2 border-white/20">
               <AvatarImage 

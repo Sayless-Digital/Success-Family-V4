@@ -442,4 +442,55 @@
   [data-radix-portal] > [data-radix-dialog-content] {
     z-index: 50 !important;
   }
+
+  /* View Transitions API for smooth page changes */
+  @view-transition {
+    navigation: auto;
+  }
+
+  /* Fade transition for page changes */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.25s;
+    animation-timing-function: ease-out;
+  }
+
+  ::view-transition-old(root) {
+    animation-name: fade-out;
+  }
+
+  ::view-transition-new(root) {
+    animation-name: fade-in;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+
+  /* Ensure loading states have smooth transitions too */
+  .page-transition-enter {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .page-transition-exit {
+    animation: fade-out 0.2s ease-out;
+  }
 }

@@ -133,7 +133,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                       className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
                       asChild
                     >
-                      <Link href="/" onClick={() => isMobile && onClose()}>
+                      <Link href="/" onClick={() => isMobile && onClose()} prefetch={true}>
                         <LogOut className="h-4 w-4" />
                         <span>Back to Site</span>
                       </Link>
@@ -150,7 +150,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                           className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
                           asChild
                         >
-                          <Link href={item.href} onClick={() => isMobile && onClose()}>
+                          <Link href={item.href} onClick={() => isMobile && onClose()} prefetch={true}>
                             <Icon className="h-4 w-4" />
                             <span>{item.label}</span>
                           </Link>
@@ -171,7 +171,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                           className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
                           asChild
                         >
-                          <Link href={item.href} onClick={() => isMobile && onClose()}>
+                          <Link href={item.href} onClick={() => isMobile && onClose()} prefetch={true}>
                             <Icon className="h-4 w-4" />
                             <span>{item.label}</span>
                           </Link>
@@ -197,7 +197,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                               className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
                               asChild
                             >
-                              <Link href={href} onClick={() => isMobile && onClose()}>
+                              <Link href={href} onClick={() => isMobile && onClose()} prefetch={true}>
                                 <Icon className="h-4 w-4" />
                                 <span>{item.label}</span>
                               </Link>
@@ -212,7 +212,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                             className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md"
                             asChild
                           >
-                            <Link href="/admin" onClick={() => isMobile && onClose()}>
+                            <Link href="/admin" onClick={() => isMobile && onClose()} prefetch={true}>
                               <Shield className="h-4 w-4" />
                               <span>Admin Dashboard</span>
                             </Link>
