@@ -74,10 +74,10 @@ export default async function ProfilePage(props: PageProps) {
 
     // Create lookup maps
     const boostCountMap = new Map(
-      (boostCountsData || []).map(b => [b.post_id, b.boost_count])
+      (boostCountsData || []).map((b: { post_id: string; boost_count: number }) => [b.post_id, b.boost_count])
     )
     const boostStatusMap = new Map(
-      userBoostStatus.map(b => [b.post_id, { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }])
+      userBoostStatus.map((b: { post_id: string; user_has_boosted: boolean; can_unboost: boolean }) => [b.post_id, { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }])
     )
 
     // Enrich posts
