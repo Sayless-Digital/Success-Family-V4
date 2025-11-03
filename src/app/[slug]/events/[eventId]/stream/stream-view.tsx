@@ -288,6 +288,164 @@ function DraggableSelfView({
   )
 }
 
+// Custom Participant Video Component
+function ParticipantVideo({
+  participant
+}: {
+  participant: any
+}) {
+  const videoRef = React.useRef<HTMLVideoElement>(null)
+  const hasVideo = !!participant.videoStream
+
+  React.useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const updateVideoStream = async () => {
+      try {
+        if (hasVideo && participant.videoStream) {
+          if (video.srcObject !== participant.videoStream) {
+            video.srcObject = participant.videoStream
+            await video.play().catch((error) => {
+              if (error.name !== 'AbortError') {
+                console.error('Error playing video:', error)
+              }
+            })
+          }
+        } else {
+          video.srcObject = null
+        }
+      } catch (error) {
+        console.error('Error updating video stream:', error)
+      }
+    }
+
+    updateVideoStream()
+  }, [participant.videoStream, participant.sessionId, hasVideo])
+
+  return (
+    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+      {hasVideo && participant.videoStream ? (
+        <>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={participant.isLocalParticipant}
+            className="w-full h-full object-cover"
+          />
+          {/* Name overlay */}
+          <div className="absolute bottom-2 left-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded">
+            <span className="text-white text-sm font-medium truncate block">
+              {participant.name || 'Unknown'}
+              {participant.isLocalParticipant && ' (You)'}
+            </span>
+          </div>
+        </>
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+          <Avatar className="h-24 w-24 border-4 border-white/20">
+            <AvatarImage src={participant.image} alt={participant.name} />
+            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-3xl">
+              {participant.name?.charAt(0).toUpperCase() || 'U'}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-white text-sm font-medium">
+            {participant.name || 'Unknown'}
+            {participant.isLocalParticipant && ' (You)'}
+          </span>
+        </div>
+      )}
+      
+      {/* Muted indicator */}
+      {!(participant.audioStream || (participant.publishedTracks && Array.from(participant.publishedTracks).includes('audio'))) && (
+        <div className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm rounded-full p-2">
+          <MicOff className="h-4 w-4 text-white" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Custom Speaker Layout - One main speaker, others in sidebar
+function CustomSpeakerLayout() {
+  const { useParticipants } = useCallStateHooks()
+  const participants = useParticipants()
+  
+  // Find the dominant speaker or first participant with video, or just first participant
+  const mainParticipant = participants.find(p => p.videoStream) || participants[0]
+  const otherParticipants = participants.filter(p => p.sessionId !== mainParticipant?.sessionId)
+
+  if (!mainParticipant) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-white/60">Waiting for participants...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full h-full flex gap-2 p-2">
+      {/* Main speaker */}
+      <div className="flex-1">
+        <ParticipantVideo participant={mainParticipant} />
+      </div>
+      
+      {/* Other participants sidebar */}
+      {otherParticipants.length > 0 && (
+        <div className="w-48 flex flex-col gap-2 overflow-y-auto">
+          {otherParticipants.map((participant) => (
+            <div key={participant.sessionId} className="aspect-video">
+              <ParticipantVideo participant={participant} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Custom Grid Layout - All participants in grid
+function CustomGridLayout() {
+  const { useParticipants } = useCallStateHooks()
+  const participants = useParticipants()
+  
+  const getGridColumns = (count: number) => {
+    if (count === 1) return 1
+    if (count === 2) return 2
+    if (count <= 4) return 2
+    if (count <= 9) return 3
+    return 4
+  }
+
+  const columns = getGridColumns(participants.length)
+
+  if (participants.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-white/60">Waiting for participants...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="w-full h-full p-2 grid gap-2"
+      style={{
+        gridTemplateColumns: `repeat(${columns}, 1fr)`,
+        gridAutoRows: '1fr',
+      }}
+    >
+      {participants.map((participant) => (
+        <ParticipantVideo
+          key={participant.sessionId}
+          participant={participant}
+        />
+      ))}
+    </div>
+  )
+}
+
 // Sidebar component for participants and chat - Platform style
 function StreamSidebar({
   show,
@@ -378,12 +536,12 @@ function StreamSidebar({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  {!participant.publishedTracks.includes('audio') && (
+                  {!participant.audioStream && (
                     <div className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center">
                       <MicOff className="h-3 w-3 text-white/70" />
                     </div>
                   )}
-                  {!participant.publishedTracks.includes('video') && (
+                  {!participant.videoStream && (
                     <div className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center">
                       <VideoOff className="h-3 w-3 text-white/70" />
                     </div>
@@ -541,11 +699,11 @@ function CallContent({
 
         {/* Video Layout */}
         <div className="flex-1 relative min-h-0 z-10">
-          <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0">
             {layout === "speaker" ? (
-              <SpeakerLayout />
+              <CustomSpeakerLayout />
             ) : (
-              <PaginatedGridLayout />
+              <CustomGridLayout />
             )}
           </div>
           
@@ -816,7 +974,7 @@ export default function StreamView({
 
         // Get or create call
         const callId = event.stream_call_id || event.id
-        const streamCall = streamClient.call('livestream', callId)
+        const streamCall = streamClient.call('default', callId)
 
         // Join call
         await streamCall.join({ create: true })

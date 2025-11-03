@@ -9,8 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { PageHeader } from "@/components/ui/page-header"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -72,6 +70,7 @@ export default function CommunityEventsView({
   const pathname = usePathname()
   const { user, walletBalance, refreshWalletBalance } = useAuth()
 
+
   // Determine active tab
   const activeTab = React.useMemo(() => {
     if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
@@ -90,7 +89,6 @@ export default function CommunityEventsView({
 
   // Create event form state
   const [createStep, setCreateStep] = useState<1 | 2>(1)
-  const [eventTitle, setEventTitle] = useState("")
   const [eventDescription, setEventDescription] = useState("")
   const [eventDate, setEventDate] = useState<Date>(new Date())
   const [eventTime, setEventTime] = useState<string | null>(null)
@@ -228,7 +226,7 @@ export default function CommunityEventsView({
           schema: 'public',
           table: 'event_registrations'
         },
-        async (payload) => {
+        async (payload: any) => {
           const eventId = payload.new?.event_id || payload.old?.event_id
 
           if (!eventId) return
@@ -303,11 +301,6 @@ export default function CommunityEventsView({
       return
     }
 
-    if (!eventTitle.trim()) {
-      toast.error("Please enter a title")
-      return
-    }
-
     if (!eventDate) {
       toast.error("Please select a date")
       return
@@ -350,7 +343,6 @@ export default function CommunityEventsView({
         .insert({
           community_id: community.id,
           owner_id: currentUserId,
-          title: eventTitle.trim(),
           description: eventDescription.trim() || null,
           scheduled_at: scheduledAt.toISOString(),
           status: 'scheduled',
@@ -428,7 +420,6 @@ export default function CommunityEventsView({
 
       setCreateDialogOpen(false)
       setCreateStep(1)
-      setEventTitle("")
       setEventDescription("")
       setEventDate(new Date())
       setEventTime(null)
@@ -578,7 +569,6 @@ export default function CommunityEventsView({
         },
         body: JSON.stringify({
           eventId: eventId,
-          title: event.title,
         }),
       })
 
@@ -663,12 +653,12 @@ export default function CommunityEventsView({
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center justify-between">
-          <PageHeader title="Events" subtitle="Schedule and join live streams" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <PageHeader title="Events" subtitle="Schedule and join live streams" className="mb-0" />
           {isOwner && (
             <Button
               onClick={() => setCreateDialogOpen(true)}
-              className="bg-white/10 text-white/80 hover:bg-white/20"
+              className="bg-white/10 text-white/80 hover:bg-white/20 w-full sm:w-auto flex-shrink-0"
             >
               <Plus className="h-4 w-4 mr-2" />
               Create Event
@@ -782,7 +772,6 @@ export default function CommunityEventsView({
         if (!open) {
           // Reset form when closing
           setCreateStep(1)
-          setEventTitle("")
           setEventDescription("")
           setEventDate(new Date())
           setEventTime(null)
@@ -800,45 +789,27 @@ export default function CommunityEventsView({
           
           {createStep === 1 ? (
             <>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    value={eventTitle}
-                    onChange={(e) => setEventTitle(e.target.value)}
-                    placeholder="My Live Stream"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={eventDescription}
-                    onChange={(e) => setEventDescription(e.target.value)}
-                    placeholder="Tell people what this event is about..."
-                    rows={4}
-                  />
-                </div>
+              <div className="py-4 w-full">
+                <Textarea
+                  id="description"
+                  value={eventDescription}
+                  onChange={(e) => setEventDescription(e.target.value)}
+                  placeholder="What is this stream about? Keep it concise."
+                  rows={8}
+                  className="w-full resize-none min-h-[200px]"
+                />
               </div>
 
               <DialogFooter>
                 <Button
-                  variant="outline"
-                  onClick={() => setCreateDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
                   onClick={() => {
-                    if (!eventTitle.trim()) {
-                      toast.error("Please enter a title")
+                    if (!eventDescription.trim()) {
+                      toast.error("Please enter a description")
                       return
                     }
                     setCreateStep(2)
                   }}
-                  className="bg-white/10 text-white/80 hover:bg-white/20"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   Next: Choose Date & Time
                 </Button>
@@ -1000,10 +971,7 @@ function EventCard({
         
         {/* Event Content */}
         <div className="mb-3">
-          {/* Title */}
-          <h3 className="text-white/80 text-base mb-2">{event.title}</h3>
-          
-          {/* Description */}
+          {/* Description only (title removed) */}
           {event.description && (
             <p className="text-white/80 text-base mb-2">{event.description}</p>
           )}

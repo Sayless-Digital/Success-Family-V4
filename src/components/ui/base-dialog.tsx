@@ -106,7 +106,7 @@ const BaseDialogContent = React.forwardRef<
         {...props}
       >
         <div ref={contentRef} className={cn("h-full overflow-hidden", scrollbarClassName)}>
-          <div className={cn("h-full p-6 flex flex-col items-center justify-center", contentClassName)}>
+          <div className={cn("h-full p-6 flex flex-col", contentClassName)}>
             {children}
           </div>
         </div>

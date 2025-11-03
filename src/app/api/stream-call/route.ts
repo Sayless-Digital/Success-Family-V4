@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
     
     const { eventId, title } = body
 
-    if (!eventId || !title) {
+    if (!eventId) {
       return NextResponse.json(
-        { error: 'Event ID and title are required' },
+        { error: 'Event ID is required' },
         { status: 400 }
       )
     }
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     // Verify user owns the event
     const { data: event, error: eventError } = await supabase
       .from('community_events')
-      .select('id, owner_id, status')
+      .select('id, owner_id, status, description')
       .eq('id', eventId)
       .single()
 
@@ -104,7 +104,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Stream call API: Creating Stream call', { eventId, title: title })
+    // Build a safe title for the call from provided title or description snippet
+    const computedTitle = (title && String(title).trim().slice(0, 80))
+      || (event.description ? String(event.description).trim().slice(0, 80) : 'Live Event')
+
+    console.log('Stream call API: Creating Stream call', { eventId, title: computedTitle })
     
     let callId: string
     try {
@@ -121,13 +125,7 @@ export async function POST(request: NextRequest) {
           created_by_id: user.id, // Required for server-side auth
           custom: {
             event_id: eventId,
-            title: title,
-          },
-        },
-        settings_override: {
-          recording: {
-            mode: 'cloud',
-            quality: '1080p',
+            title: computedTitle,
           },
         },
       })

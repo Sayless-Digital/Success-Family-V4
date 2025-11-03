@@ -169,7 +169,6 @@ export interface CommunityEvent {
   id: string
   community_id: string
   owner_id: string
-  title: string
   description?: string
   scheduled_at: string
   started_at?: string

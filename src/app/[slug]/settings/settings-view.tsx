@@ -642,7 +642,7 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button
-                                      variant="admin-ghost"
+                                      variant="ghost"
                                       size="icon"
                                     >
                                       <MoreVertical className="h-4 w-4" />
@@ -747,7 +747,7 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
                                         <Button
-                                          variant="admin-ghost"
+                                          variant="ghost"
                                           size="icon"
                                         >
                                           <MoreVertical className="h-4 w-4" />

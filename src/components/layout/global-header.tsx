@@ -176,7 +176,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
                         <Link 
                           href={`/${community.slug}`} 
                           className="cursor-pointer"
-                          onClick={() => isMobile && onMenuClick()}
                         >
                           <div className="flex items-center gap-2 w-full">
                             <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">

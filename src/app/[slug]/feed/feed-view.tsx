@@ -1471,7 +1471,7 @@ export default function FeedView({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (currentVoiceNote === newVoiceNote) {
+                                  if (currentVoiceNote === newVoiceNote || !('id' in currentVoiceNote)) {
                                     const index = editingNewMedia[post.id]?.findIndex(m => m.preview === currentVoiceNote.preview) ?? -1
                                     if (index >= 0) handleEditingRemoveNewMedia(post.id, index)
                                   } else {
