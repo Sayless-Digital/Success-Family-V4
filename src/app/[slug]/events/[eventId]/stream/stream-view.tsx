@@ -137,111 +137,196 @@ function DraggableSelfView({
   const BOTTOM_BAR_HEIGHT = 48
   const VIDEO_WIDTH = 100
   const VIDEO_HEIGHT = 180
-  const DRAG_MULTIPLIER = 3 // Highly exaggerated movement
   
-  const [position, setPosition] = React.useState({
-    x: window.innerWidth - VIDEO_WIDTH - PADDING,
-    y: window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING
+  const elementRef = React.useRef<HTMLDivElement>(null)
+  const positionRef = React.useRef({
+    x: typeof window !== 'undefined' ? window.innerWidth - VIDEO_WIDTH - PADDING : 0,
+    y: typeof window !== 'undefined' ? window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING : 0
   })
-  const [isDragging, setIsDragging] = React.useState(false)
-  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 })
-  const [initialPosition, setInitialPosition] = React.useState({ x: 0, y: 0 })
+  const offsetRef = React.useRef({ x: 0, y: 0 })
+  
   const { useLocalParticipant } = useCallStateHooks()
   const localParticipant = useLocalParticipant()
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-    setDragStart({ x: e.clientX, y: e.clientY })
-    setInitialPosition({ x: position.x, y: position.y })
-  }
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault()
-    const touch = e.touches[0]
-    setIsDragging(true)
-    setDragStart({ x: touch.clientX, y: touch.clientY })
-    setInitialPosition({ x: position.x, y: position.y })
-  }
-
   React.useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        // Calculate actual movement from drag start
-        const actualDeltaX = e.clientX - dragStart.x
-        const actualDeltaY = e.clientY - dragStart.y
-        
-        // Apply multiplier to the movement
-        const exaggeratedDeltaX = actualDeltaX * DRAG_MULTIPLIER
-        const exaggeratedDeltaY = actualDeltaY * DRAG_MULTIPLIER
-        
-        // Calculate new position from initial position + exaggerated delta
-        const newX = Math.max(PADDING, Math.min(initialPosition.x + exaggeratedDeltaX, window.innerWidth - VIDEO_WIDTH - PADDING))
-        const newY = Math.max(HEADER_HEIGHT + PADDING, Math.min(initialPosition.y + exaggeratedDeltaY, window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING))
-        
-        setPosition({ x: newX, y: newY })
+    const el = elementRef.current
+    if (!el) return
+    
+    // Set initial position with hardware acceleration
+    el.style.transform = `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`
+    
+    let isDragging = false
+    let pointerId: number | null = null
+    
+    const getBounds = () => ({
+      minX: PADDING,
+      minY: HEADER_HEIGHT + PADDING,
+      maxX: window.innerWidth - VIDEO_WIDTH - PADDING,
+      maxY: window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING
+    })
+    
+    const snapToCorner = () => {
+      const bounds = getBounds()
+      const centerX = window.innerWidth / 2
+      const centerY = (window.innerHeight - HEADER_HEIGHT - BOTTOM_BAR_HEIGHT) / 2 + HEADER_HEIGHT
+      
+      const isLeft = positionRef.current.x + VIDEO_WIDTH / 2 < centerX
+      const isTop = positionRef.current.y + VIDEO_HEIGHT / 2 < centerY
+      
+      positionRef.current.x = isLeft ? bounds.minX : bounds.maxX
+      positionRef.current.y = isTop ? bounds.minY : bounds.maxY
+      
+      el.style.transition = 'transform 0.2s ease-out'
+      el.style.transform = `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`
+      setTimeout(() => { el.style.transition = 'none' }, 200)
+    }
+    
+    const updatePosition = (clientX: number, clientY: number) => {
+      const bounds = getBounds()
+      let x = clientX - offsetRef.current.x
+      let y = clientY - offsetRef.current.y
+      
+      x = Math.max(bounds.minX, Math.min(x, bounds.maxX))
+      y = Math.max(bounds.minY, Math.min(y, bounds.maxY))
+      
+      positionRef.current.x = x
+      positionRef.current.y = y
+      
+      // Single GPU operation - critical for mobile performance
+      el.style.transform = `translate3d(${x}px, ${y}px, 0)`
+    }
+    
+    // Pointer Events (Desktop + Modern Mobile)
+    const onPointerDown = (e: PointerEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      isDragging = true
+      pointerId = e.pointerId
+      
+      const rect = el.getBoundingClientRect()
+      offsetRef.current.x = e.clientX - rect.left
+      offsetRef.current.y = e.clientY - rect.top
+      
+      el.setPointerCapture(e.pointerId)
+      el.style.cursor = 'grabbing'
+      el.style.transition = 'none'
+      
+      // Mobile: add visual feedback
+      el.style.opacity = '0.9'
+    }
+    
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isDragging) return
+      e.preventDefault()
+      e.stopPropagation()
+      updatePosition(e.clientX, e.clientY)
+    }
+    
+    const onPointerUp = (e: PointerEvent) => {
+      if (!isDragging) return
+      isDragging = false
+      
+      if (pointerId !== null) {
+        el.releasePointerCapture(pointerId)
+        pointerId = null
       }
+      
+      el.style.cursor = 'grab'
+      el.style.opacity = '1'
+      snapToCorner()
     }
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (isDragging) {
-        e.preventDefault()
-        const touch = e.touches[0]
-        
-        // Calculate actual movement from drag start
-        const actualDeltaX = touch.clientX - dragStart.x
-        const actualDeltaY = touch.clientY - dragStart.y
-        
-        // Apply multiplier to the movement
-        const exaggeratedDeltaX = actualDeltaX * DRAG_MULTIPLIER
-        const exaggeratedDeltaY = actualDeltaY * DRAG_MULTIPLIER
-        
-        // Calculate new position from initial position + exaggerated delta
-        const newX = Math.max(PADDING, Math.min(initialPosition.x + exaggeratedDeltaX, window.innerWidth - VIDEO_WIDTH - PADDING))
-        const newY = Math.max(HEADER_HEIGHT + PADDING, Math.min(initialPosition.y + exaggeratedDeltaY, window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING))
-        
-        setPosition({ x: newX, y: newY })
-      }
+    
+    // Touch Events (Legacy Mobile - Fallback)
+    const onTouchStart = (e: TouchEvent) => {
+      if (isDragging) return // Pointer already handling
+      e.preventDefault()
+      e.stopPropagation()
+      
+      const touch = e.touches[0]
+      isDragging = true
+      
+      const rect = el.getBoundingClientRect()
+      offsetRef.current.x = touch.clientX - rect.left
+      offsetRef.current.y = touch.clientY - rect.top
+      
+      el.style.transition = 'none'
+      el.style.opacity = '0.9'
     }
-
-    const handleEnd = () => {
-      setIsDragging(false)
+    
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return
+      e.preventDefault()
+      e.stopPropagation()
+      
+      const touch = e.touches[0]
+      updatePosition(touch.clientX, touch.clientY)
     }
-
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleEnd)
-      document.addEventListener('touchmove', handleTouchMove, { passive: false })
-      document.addEventListener('touchend', handleEnd)
+    
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!isDragging) return
+      e.preventDefault()
+      isDragging = false
+      
+      el.style.opacity = '1'
+      snapToCorner()
     }
-
+    
+    const onResize = () => {
+      const bounds = getBounds()
+      positionRef.current.x = Math.min(positionRef.current.x, bounds.maxX)
+      positionRef.current.y = Math.max(bounds.minY, Math.min(positionRef.current.y, bounds.maxY))
+      el.style.transform = `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`
+    }
+    
+    // Pointer events (primary)
+    el.addEventListener('pointerdown', onPointerDown, { passive: false })
+    el.addEventListener('pointermove', onPointerMove, { passive: false })
+    el.addEventListener('pointerup', onPointerUp, { passive: false })
+    el.addEventListener('pointercancel', onPointerUp, { passive: false })
+    
+    // Touch events (fallback for older mobile browsers)
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: false })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false })
+    
+    window.addEventListener('resize', onResize)
+    
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleEnd)
-      document.removeEventListener('touchmove', handleTouchMove)
-      document.removeEventListener('touchend', handleEnd)
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointermove', onPointerMove)
+      el.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('pointercancel', onPointerUp)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+      window.removeEventListener('resize', onResize)
     }
-  }, [isDragging, dragStart, initialPosition])
+  }, [])
 
   if (!localParticipant || !visible) return null
 
   return (
     <div
+      ref={elementRef}
       style={{
         position: 'fixed',
-        left: `${position.x}px`,
-        top: `${position.y}px`,
+        left: 0,
+        top: 0,
         zIndex: 30,
+        transform: 'translate3d(0, 0, 0)',
+        willChange: 'transform',
+        cursor: 'grab',
+        touchAction: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
       }}
-      className={cn(
-        "w-[100px] h-[180px] rounded-xl overflow-hidden shadow-2xl border-2 border-white/10 bg-transparent touch-none",
-        isDragging ? "cursor-grabbing" : "cursor-grab"
-      )}
-      onMouseDown={handleMouseDown}
-      onTouchStart={handleTouchStart}
+      className="w-[100px] h-[180px] rounded-xl overflow-hidden shadow-2xl border-2 border-white/10 bg-black/20 backdrop-blur-sm"
     >
-      {/* Video container or Avatar */}
-      <div className="relative w-full h-full">
+      <div className="relative w-full h-full pointer-events-none">
         {isCameraEnabled ? (
           <>
             <video
@@ -250,7 +335,6 @@ function DraggableSelfView({
                   if (video.srcObject !== localParticipant.videoStream) {
                     video.srcObject = localParticipant.videoStream
                     video.play().catch((error) => {
-                      // Ignore AbortError - it's expected when video changes
                       if (error.name !== 'AbortError') {
                         console.error('Error playing video:', error)
                       }
@@ -261,10 +345,9 @@ function DraggableSelfView({
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain bg-black"
             />
             
-            {/* Overlay with name */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
               <div className="absolute bottom-1.5 left-2 inline-block bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full">
                 <span className="text-white text-xs font-medium whitespace-nowrap">
@@ -274,7 +357,7 @@ function DraggableSelfView({
             </div>
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-transparent backdrop-blur-sm">
+          <div className="w-full h-full flex items-center justify-center">
             <Avatar className="h-20 w-20 border-4 border-white/20">
               <AvatarImage src={userImage || undefined} alt={userName} />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-2xl">
@@ -332,11 +415,11 @@ function ParticipantVideo({
             autoPlay
             playsInline
             muted={participant.isLocalParticipant}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain bg-black"
           />
           {/* Name overlay */}
-          <div className="absolute bottom-2 left-2 inline-block bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full">
-            <span className="text-white text-sm font-medium whitespace-nowrap">
+          <div className="absolute bottom-1.5 left-1.5 inline-block bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md max-w-[calc(100%-12px)]">
+            <span className="text-white text-xs font-medium truncate block">
               {participant.name || 'Unknown'}
               {participant.isLocalParticipant && ' (You)'}
             </span>
@@ -350,7 +433,7 @@ function ParticipantVideo({
               {participant.name?.charAt(0).toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
-          <span className="text-white text-sm font-medium">
+          <span className="text-white text-xs font-medium">
             {participant.name || 'Unknown'}
             {participant.isLocalParticipant && ' (You)'}
           </span>
@@ -429,19 +512,19 @@ function CustomGridLayout() {
   }
 
   return (
-    <div
-      className="w-full h-full p-2 grid gap-2"
-      style={{
-        gridTemplateColumns: `repeat(${columns}, 1fr)`,
-        gridAutoRows: '1fr',
-      }}
-    >
-      {participants.map((participant) => (
-        <ParticipantVideo
-          key={participant.sessionId}
-          participant={participant}
-        />
-      ))}
+    <div className="w-full h-full p-2 overflow-y-auto">
+      <div
+        className="grid gap-2 w-full"
+        style={{
+          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+        }}
+      >
+        {participants.map((participant) => (
+          <div key={participant.sessionId} className="w-full" style={{ aspectRatio: '16/9' }}>
+            <ParticipantVideo participant={participant} />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
