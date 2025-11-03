@@ -9,10 +9,8 @@ import {
   Call,
   CallControls,
   SpeakerLayout,
-  CallParticipantsList,
   CallStatsButton,
   ScreenShareButton,
-  RecordCallButton,
   useCallStateHooks,
   PaginatedGridLayout,
 } from "@stream-io/video-react-sdk"
@@ -34,14 +32,32 @@ import {
   Video,
   VideoOff,
   Phone,
+  MoreVertical,
+  LogOut,
+  PhoneOff,
+  Search,
+  User,
+  Minimize2,
+  PictureInPicture2,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import Silk from "@/components/Silk"
 import type { CommunityEvent } from "@/types"
 
 interface StreamViewProps {
@@ -84,18 +100,7 @@ function StreamInfo({ event, community }: { event: CommunityEvent; community: an
   }, [event.started_at])
 
   return (
-    <div className="flex items-center gap-3">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setShowInfo(!showInfo)}
-        className="hidden md:flex items-center gap-2 text-white/80 hover:text-white hover:bg-white/10 transition-all duration-200"
-      >
-        <Info className="h-4 w-4" />
-        <span className="text-sm font-medium">Meeting details</span>
-        <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", showInfo && "rotate-180")} />
-      </Button>
-      
+    <div className="flex items-center gap-2">
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-sm border border-white/10">
         <Clock className="h-3.5 w-3.5 text-white/70" />
         <span className="text-sm text-white font-mono tabular-nums">{duration}</span>
@@ -115,37 +120,65 @@ function StreamInfo({ event, community }: { event: CommunityEvent; community: an
 }
 
 // Draggable self-view component - portrait orientation (compact)
-function DraggableSelfView() {
-  const [position, setPosition] = React.useState({ x: window.innerWidth - 100 - 16, y: window.innerHeight - 180 - 16 })
+function DraggableSelfView({
+  visible,
+  isCameraEnabled,
+  userName,
+  userImage
+}: {
+  visible: boolean
+  isCameraEnabled: boolean
+  userName: string
+  userImage?: string | null
+}) {
+  // Constants for boundaries
+  const PADDING = 16
+  const HEADER_HEIGHT = 48
+  const BOTTOM_BAR_HEIGHT = 48
+  const VIDEO_WIDTH = 100
+  const VIDEO_HEIGHT = 180
+  const DRAG_MULTIPLIER = 3 // Highly exaggerated movement
+  
+  const [position, setPosition] = React.useState({
+    x: window.innerWidth - VIDEO_WIDTH - PADDING,
+    y: window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING
+  })
   const [isDragging, setIsDragging] = React.useState(false)
-  const [dragOffset, setDragOffset] = React.useState({ x: 0, y: 0 })
+  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 })
+  const [initialPosition, setInitialPosition] = React.useState({ x: 0, y: 0 })
   const { useLocalParticipant } = useCallStateHooks()
   const localParticipant = useLocalParticipant()
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     setIsDragging(true)
-    setDragOffset({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    })
+    setDragStart({ x: e.clientX, y: e.clientY })
+    setInitialPosition({ x: position.x, y: position.y })
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
     e.preventDefault()
     const touch = e.touches[0]
     setIsDragging(true)
-    setDragOffset({
-      x: touch.clientX - position.x,
-      y: touch.clientY - position.y,
-    })
+    setDragStart({ x: touch.clientX, y: touch.clientY })
+    setInitialPosition({ x: position.x, y: position.y })
   }
 
   React.useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
-        const newX = Math.max(0, Math.min(e.clientX - dragOffset.x, window.innerWidth - 100))
-        const newY = Math.max(0, Math.min(e.clientY - dragOffset.y, window.innerHeight - 180))
+        // Calculate actual movement from drag start
+        const actualDeltaX = e.clientX - dragStart.x
+        const actualDeltaY = e.clientY - dragStart.y
+        
+        // Apply multiplier to the movement
+        const exaggeratedDeltaX = actualDeltaX * DRAG_MULTIPLIER
+        const exaggeratedDeltaY = actualDeltaY * DRAG_MULTIPLIER
+        
+        // Calculate new position from initial position + exaggerated delta
+        const newX = Math.max(PADDING, Math.min(initialPosition.x + exaggeratedDeltaX, window.innerWidth - VIDEO_WIDTH - PADDING))
+        const newY = Math.max(HEADER_HEIGHT + PADDING, Math.min(initialPosition.y + exaggeratedDeltaY, window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING))
+        
         setPosition({ x: newX, y: newY })
       }
     }
@@ -154,8 +187,19 @@ function DraggableSelfView() {
       if (isDragging) {
         e.preventDefault()
         const touch = e.touches[0]
-        const newX = Math.max(0, Math.min(touch.clientX - dragOffset.x, window.innerWidth - 100))
-        const newY = Math.max(0, Math.min(touch.clientY - dragOffset.y, window.innerHeight - 180))
+        
+        // Calculate actual movement from drag start
+        const actualDeltaX = touch.clientX - dragStart.x
+        const actualDeltaY = touch.clientY - dragStart.y
+        
+        // Apply multiplier to the movement
+        const exaggeratedDeltaX = actualDeltaX * DRAG_MULTIPLIER
+        const exaggeratedDeltaY = actualDeltaY * DRAG_MULTIPLIER
+        
+        // Calculate new position from initial position + exaggerated delta
+        const newX = Math.max(PADDING, Math.min(initialPosition.x + exaggeratedDeltaX, window.innerWidth - VIDEO_WIDTH - PADDING))
+        const newY = Math.max(HEADER_HEIGHT + PADDING, Math.min(initialPosition.y + exaggeratedDeltaY, window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING))
+        
         setPosition({ x: newX, y: newY })
       }
     }
@@ -177,9 +221,9 @@ function DraggableSelfView() {
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleEnd)
     }
-  }, [isDragging, dragOffset])
+  }, [isDragging, dragStart, initialPosition])
 
-  if (!localParticipant) return null
+  if (!localParticipant || !visible) return null
 
   return (
     <div
@@ -196,34 +240,47 @@ function DraggableSelfView() {
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
     >
-      {/* Video container */}
+      {/* Video container or Avatar */}
       <div className="relative w-full h-full">
-        <video
-          ref={(video) => {
-            if (video && localParticipant.videoStream) {
-              video.srcObject = localParticipant.videoStream
-              video.play().catch(console.error)
-            }
-          }}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover"
-        />
-        
-        {/* Overlay with name */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
-          <div className="absolute bottom-1.5 left-2 right-2">
-            <span className="text-white text-xs font-medium">
-              You
-            </span>
-          </div>
-        </div>
-
-        {/* Muted indicator */}
-        {!localParticipant.publishedTracks.includes('audio') && (
-          <div className="absolute top-1.5 right-1.5 bg-red-500 rounded-full p-1">
-            <X className="h-2.5 w-2.5 text-white" />
+        {isCameraEnabled ? (
+          <>
+            <video
+              ref={(video) => {
+                if (video && localParticipant.videoStream) {
+                  if (video.srcObject !== localParticipant.videoStream) {
+                    video.srcObject = localParticipant.videoStream
+                    video.play().catch((error) => {
+                      // Ignore AbortError - it's expected when video changes
+                      if (error.name !== 'AbortError') {
+                        console.error('Error playing video:', error)
+                      }
+                    })
+                  }
+                }
+              }}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            
+            {/* Overlay with name */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
+              <div className="absolute bottom-1.5 left-2 right-2">
+                <span className="text-white text-xs font-medium">
+                  You
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-black">
+            <Avatar className="h-20 w-20 border-4 border-white/20">
+              <AvatarImage src={userImage || undefined} alt={userName} />
+              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-2xl">
+                {userName.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
           </div>
         )}
       </div>
@@ -231,7 +288,7 @@ function DraggableSelfView() {
   )
 }
 
-// Sidebar component for participants and chat
+// Sidebar component for participants and chat - Platform style
 function StreamSidebar({
   show,
   onClose,
@@ -241,17 +298,31 @@ function StreamSidebar({
   onClose: () => void
   activeTab: "participants" | "chat"
 }) {
+  const [searchQuery, setSearchQuery] = useState("")
+  const { useParticipantCount, useParticipants } = useCallStateHooks()
+  const participantCount = useParticipantCount()
+  const participants = useParticipants()
+
+  // Filter participants based on search
+  const filteredParticipants = participants.filter((participant) =>
+    participant.name?.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
   return (
     <div
       className={cn(
-        "absolute right-0 top-0 bottom-0 w-80 md:w-96 bg-gray-900/98 backdrop-blur-xl border-l border-white/10 z-50 flex flex-col transition-transform duration-300 ease-out shadow-2xl",
+        "absolute right-0 top-0 bottom-12 w-80 md:w-96 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-l border-white/20 z-50 flex flex-col transition-transform duration-300 ease-out shadow-2xl",
         show ? "translate-x-0" : "translate-x-full"
       )}
     >
-      <div className="flex items-center justify-between p-5 border-b border-white/10">
-        <h3 className="text-white font-semibold text-lg">
-          {activeTab === "participants" ? "People" : "In-call messages"}
-        </h3>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-white/20">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-white/70" />
+          <h3 className="text-white font-semibold text-base">
+            {activeTab === "participants" ? `In call (${participantCount})` : "Messages"}
+          </h3>
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -261,16 +332,75 @@ function StreamSidebar({
           <X className="h-4 w-4" />
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto">
+
+      {/* Search Bar - Only show for participants */}
+      {activeTab === "participants" && (
+        <div className="px-4 pt-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+            <Input
+              type="text"
+              placeholder="Search people..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 bg-white/5 border-white/20 text-white placeholder:text-white/50 focus:bg-white/10 focus:border-white/30"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
         {activeTab === "participants" ? (
-          <div className="p-4">
-            <CallParticipantsList onClose={onClose} />
+          <div className="p-4 space-y-2">
+            {filteredParticipants.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-white/60 text-sm">No participants found</p>
+              </div>
+            ) : (
+              filteredParticipants.map((participant) => (
+              <div
+                key={participant.sessionId}
+                className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-all duration-200"
+              >
+                <Avatar className="h-10 w-10 border-2 border-white/20">
+                  <AvatarImage src={participant.image} alt={participant.name} />
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-sm">
+                    {participant.name?.charAt(0).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium text-sm truncate">
+                    {participant.name || 'Unknown User'}
+                  </p>
+                  {participant.isLocalParticipant && (
+                    <p className="text-white/60 text-xs">You</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {!participant.publishedTracks.includes('audio') && (
+                    <div className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center">
+                      <MicOff className="h-3 w-3 text-white/70" />
+                    </div>
+                  )}
+                  {!participant.publishedTracks.includes('video') && (
+                    <div className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center">
+                      <VideoOff className="h-3 w-3 text-white/70" />
+                    </div>
+                  )}
+                </div>
+              </div>
+              ))
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <MessageSquare className="h-12 w-12 text-white/30 mb-4" />
+            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-4">
+              <MessageSquare className="h-8 w-8 text-white/50" />
+            </div>
+            <h4 className="text-white font-medium mb-2">Messages coming soon</h4>
             <p className="text-white/60 text-sm">
-              In-call messaging coming soon
+              Chat with participants during the call
             </p>
           </div>
         )}
@@ -286,17 +416,62 @@ function CallContent({
   isOwner,
   onEndCall,
   call,
+  currentUserName,
+  currentUserImage,
 }: {
   event: CommunityEvent
   community: { id: string; name: string; slug: string }
   isOwner: boolean
   onEndCall: () => void
   call: Call
+  currentUserName: string
+  currentUserImage?: string | null
 }) {
   const [showSidebar, setShowSidebar] = useState(false)
   const [sidebarTab, setSidebarTab] = useState<"participants" | "chat">("participants")
   const [layout, setLayout] = useState<"speaker" | "grid">("speaker")
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showSelfView, setShowSelfView] = useState(true)
+  const [isMicEnabled, setIsMicEnabled] = useState(true)
+  const [isCameraEnabled, setIsCameraEnabled] = useState(true)
+  const [isMicLoading, setIsMicLoading] = useState(false)
+  const [isCameraLoading, setIsCameraLoading] = useState(false)
+  const router = useRouter()
+
+  const handleLeaveCall = async () => {
+    try {
+      if (call) {
+        await call.leave()
+      }
+      router.push(`/${community.slug}/events`)
+    } catch (error: any) {
+      console.error('Error leaving call:', error)
+      toast.error('Failed to leave call')
+    }
+  }
+
+  const handleEndCallForEveryone = async () => {
+    try {
+      if (call) {
+        await call.leave()
+      }
+
+      // Update event status to end it for everyone
+      await supabase
+        .from('community_events')
+        .update({
+          status: 'completed',
+          ended_at: new Date().toISOString(),
+        })
+        .eq('id', event.id)
+
+      toast.success('Call ended for everyone')
+      router.push(`/${community.slug}/events`)
+    } catch (error: any) {
+      console.error('Error ending call:', error)
+      toast.error('Failed to end call')
+    }
+  }
 
   const openSidebar = (tab: "participants" | "chat") => {
     if (showSidebar && sidebarTab === tab) {
@@ -320,30 +495,43 @@ function CallContent({
   return (
     <StreamCall call={call}>
       {/* Full screen - header and mobile nav are hidden on stream pages */}
-      <div className="fixed inset-0 flex flex-col bg-black overflow-hidden">
-        {/* Header - Google Meet style */}
-        <div className="flex items-center justify-between px-6 py-3 z-10 flex-shrink-0">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="flex flex-col min-w-0">
-              <h1 className="text-base font-medium text-white truncate">
-                {event.title}
-              </h1>
-              <p className="text-xs text-white/60 truncate">{community.name}</p>
+      <div className="fixed inset-0 flex flex-col overflow-hidden">
+        {/* Aurora Background */}
+        <div className="fixed inset-0 z-0 overflow-hidden w-full h-full">
+          <div className="w-full h-full">
+            <Silk
+              speed={0.3}
+              scale={1}
+              color="#0a0318"
+              noiseIntensity={1}
+              rotation={0}
+            />
+          </div>
+        </div>
+        {/* Header - Platform style matching bottom bar */}
+        <div className="flex items-center justify-between px-1 h-12 z-10 flex-shrink-0 relative bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-b border-white/20 rounded-b-lg">
+          {/* Left: Community Logo */}
+          <div className="flex items-center gap-2 flex-1">
+            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
+              {community.name[0].toUpperCase()}
             </div>
+            <span className="font-semibold text-white text-sm hidden sm:block truncate">
+              {community.name}
+            </span>
           </div>
           
+          {/* Center: Stream Info */}
           <div className="flex items-center justify-center flex-shrink-0">
             <StreamInfo event={event} community={community} />
           </div>
           
-          <div className="flex items-center gap-2 justify-end flex-1">
-            <CallStatsButton />
-            {isOwner && <RecordCallButton />}
+          {/* Right: Fullscreen button */}
+          <div className="flex items-center justify-end flex-1">
             <Button
               variant="ghost"
               size="sm"
               onClick={toggleFullscreen}
-              className="text-white/70 hover:text-white hover:bg-white/10 rounded-full h-10 w-10 p-0"
+              className="h-10 w-10 rounded-full p-0 bg-white/10 hover:bg-white/20 text-white transition-all duration-200"
               title="Toggle fullscreen"
             >
               <Maximize2 className="h-4 w-4" />
@@ -352,7 +540,7 @@ function CallContent({
         </div>
 
         {/* Video Layout */}
-        <div className="flex-1 relative min-h-0">
+        <div className="flex-1 relative min-h-0 z-10">
           <div className="absolute inset-0 overflow-hidden">
             {layout === "speaker" ? (
               <SpeakerLayout />
@@ -361,112 +549,187 @@ function CallContent({
             )}
           </div>
           
-          {/* Floating controls overlay - Top Left */}
-          <div className="absolute top-6 left-6 z-20 flex gap-2">
+          {/* Draggable Self View - Bottom Right by default (portrait orientation) */}
+          <DraggableSelfView
+            visible={showSelfView}
+            isCameraEnabled={isCameraEnabled}
+            userName={currentUserName}
+            userImage={currentUserImage}
+          />
+        </div>
+
+        {/* Bottom Controls Bar - Mobile nav style */}
+        <div className="fixed bottom-0 left-0 right-0 z-20 h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20">
+          <div className="h-full flex items-center justify-between gap-3 px-1">
+            {/* Left: Layout toggle button */}
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setLayout(layout === "speaker" ? "grid" : "speaker")}
-              className="bg-[#3c4043] hover:bg-[#4d5156] text-white border-0 rounded-lg px-4 h-10 shadow-lg transition-all duration-200"
+              className="h-10 w-10 rounded-full p-0 bg-white/10 hover:bg-white/20 text-white transition-all duration-200"
+              title={layout === "speaker" ? "Change to Grid" : "Change to Spotlight"}
             >
-              <Grid3x3 className="h-4 w-4 mr-2" />
-              <span className="text-sm font-medium">
-                {layout === "speaker" ? "Change to Grid" : "Change to Spotlight"}
-              </span>
-            </Button>
-          </div>
-
-          {/* Floating action buttons - Top Right */}
-          <div className="absolute top-6 right-6 z-20 flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => openSidebar("participants")}
-              className={cn(
-                "rounded-full h-12 w-12 p-0 shadow-lg transition-all duration-200",
-                showSidebar && sidebarTab === "participants"
-                  ? "bg-white text-gray-900 hover:bg-white/90"
-                  : "bg-[#3c4043] hover:bg-[#4d5156] text-white"
+              {layout === "speaker" ? (
+                <Grid3x3 className="h-4 w-4" />
+              ) : (
+                <User className="h-4 w-4" />
               )}
-              title="Show everyone"
-            >
-              <Users className="h-5 w-5" />
             </Button>
-            <Button
+
+            {/* Center: Call controls */}
+            <div className="flex items-center gap-3">
+              {/* Mic toggle */}
+              <Button
               variant="ghost"
               size="sm"
-              onClick={() => openSidebar("chat")}
-              className={cn(
-                "rounded-full h-12 w-12 p-0 shadow-lg transition-all duration-200",
-                showSidebar && sidebarTab === "chat"
-                  ? "bg-white text-gray-900 hover:bg-white/90"
-                  : "bg-[#3c4043] hover:bg-[#4d5156] text-white"
-              )}
-              title="Chat with everyone"
-            >
-              <MessageSquare className="h-5 w-5" />
-            </Button>
-          </div>
-
-          {/* Draggable Self View - Bottom Right by default (portrait orientation) */}
-          <DraggableSelfView />
-        </div>
-
-        {/* Bottom Controls Bar - Google Meet floating rounded bar */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
-          <div className="flex items-center gap-3 px-6 py-4 bg-[#202124] rounded-full shadow-2xl border border-white/10">
-            {/* Mic toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const audioTrack = call.microphone
-                if (audioTrack.state.status === 'enabled') {
-                  audioTrack.disable()
-                } else {
-                  audioTrack.enable()
+              onClick={async () => {
+                if (isMicLoading) return
+                setIsMicLoading(true)
+                try {
+                  const audioTrack = call.microphone
+                  if (audioTrack.state.status === 'enabled') {
+                    await audioTrack.disable()
+                    setIsMicEnabled(false)
+                  } else {
+                    await audioTrack.enable()
+                    setIsMicEnabled(true)
+                  }
+                } catch (error) {
+                  console.error('Error toggling microphone:', error)
+                } finally {
+                  setIsMicLoading(false)
                 }
               }}
-              className="h-12 w-12 rounded-full p-0 bg-[#3c4043] hover:bg-[#5f6368] text-white transition-all duration-200"
+              disabled={isMicLoading}
+              className={cn(
+                "h-10 w-10 rounded-full p-0 transition-all duration-200",
+                isMicLoading
+                  ? "bg-white/10 text-white cursor-wait"
+                  : isMicEnabled
+                    ? "bg-white/10 hover:bg-white/20 text-white"
+                    : "bg-red-600 hover:bg-red-700 text-white"
+              )}
               title="Toggle microphone"
             >
-              {call.microphone.state.status === 'enabled' ? (
-                <Mic className="h-5 w-5" />
+              {isMicLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isMicEnabled ? (
+                <Mic className="h-4 w-4" />
               ) : (
-                <MicOff className="h-5 w-5" />
+                <MicOff className="h-4 w-4" />
               )}
             </Button>
 
             {/* Video toggle */}
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const videoTrack = call.camera
-                if (videoTrack.state.status === 'enabled') {
-                  videoTrack.disable()
-                } else {
-                  videoTrack.enable()
-                }
-              }}
-              className="h-12 w-12 rounded-full p-0 bg-[#3c4043] hover:bg-[#5f6368] text-white transition-all duration-200"
-              title="Toggle camera"
-            >
-              {call.camera.state.status === 'enabled' ? (
-                <Video className="h-5 w-5" />
-              ) : (
-                <VideoOff className="h-5 w-5" />
-              )}
-            </Button>
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  if (isCameraLoading) return
+                  setIsCameraLoading(true)
+                  try {
+                    const videoTrack = call.camera
+                    if (videoTrack.state.status === 'enabled') {
+                      await videoTrack.disable()
+                      setIsCameraEnabled(false)
+                    } else {
+                      await videoTrack.enable()
+                      setIsCameraEnabled(true)
+                    }
+                  } catch (error) {
+                    console.error('Error toggling camera:', error)
+                  } finally {
+                    setIsCameraLoading(false)
+                  }
+                }}
+                disabled={isCameraLoading}
+                className={cn(
+                  "h-10 w-10 rounded-full p-0 transition-all duration-200",
+                  isCameraLoading
+                    ? "bg-white/10 text-white cursor-wait"
+                    : isCameraEnabled
+                      ? "bg-white/10 hover:bg-white/20 text-white"
+                      : "bg-red-600 hover:bg-red-700 text-white"
+                )}
+                title="Toggle camera"
+              >
+                {isCameraLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isCameraEnabled ? (
+                  <Video className="h-4 w-4" />
+                ) : (
+                  <VideoOff className="h-4 w-4" />
+                )}
+              </Button>
 
-            {/* Leave call button */}
-            <Button
-              onClick={onEndCall}
-              className="h-12 w-12 rounded-full p-0 bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
-              title="Leave call"
-            >
-              <Phone className="h-5 w-5 rotate-[135deg]" />
-            </Button>
+              {/* Leave/End call button */}
+              {isOwner ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      className="h-10 w-10 rounded-full p-0 bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+                      title="Call options"
+                    >
+                      <Phone className="h-4 w-4 rotate-[135deg]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="mb-2">
+                    <DropdownMenuItem onClick={handleLeaveCall}>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Leave call
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleEndCallForEveryone}
+                      className="text-red-600 focus:text-red-600"
+                    >
+                      <PhoneOff className="h-4 w-4 mr-2" />
+                      End call for everyone
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  onClick={onEndCall}
+                  className="h-10 w-10 rounded-full p-0 bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+                  title="Leave call"
+                >
+                  <Phone className="h-4 w-4 rotate-[135deg]" />
+                </Button>
+              )}
+            </div>
+
+            {/* Right: Self-view toggle and People buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSelfView(!showSelfView)}
+                className="h-10 w-10 rounded-full p-0 bg-white/10 hover:bg-white/20 text-white transition-all duration-200"
+                title={showSelfView ? "Hide self view" : "Show self view"}
+              >
+                {showSelfView ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <PictureInPicture2 className="h-4 w-4" />
+                )}
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => openSidebar("participants")}
+                className={cn(
+                  "h-10 w-10 rounded-full p-0 transition-all duration-200",
+                  showSidebar && sidebarTab === "participants"
+                    ? "bg-white/20 text-white"
+                    : "bg-white/10 hover:bg-white/20 text-white"
+                )}
+                title="Show people"
+              >
+                <Users className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -624,26 +887,7 @@ export default function StreamView({
     }
   }
 
-  if (!client) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="bg-white/10 backdrop-blur-md border-0">
-          <CardContent className="p-8 text-center">
-            <p className="text-white/80 mb-4">GetStream API key not configured</p>
-            <Button
-              onClick={() => router.push(`/${community.slug}/events`)}
-              className="bg-white/10 text-white/80 hover:bg-white/20"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Events
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (isLoading) {
+  if (isLoading || !client) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center space-y-4">
@@ -692,6 +936,8 @@ export default function StreamView({
         isOwner={isOwner}
         onEndCall={handleEndCall}
         call={call}
+        currentUserName={currentUserName}
+        currentUserImage={currentUserImage}
       />
     </StreamVideo>
   )
