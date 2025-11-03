@@ -111,7 +111,7 @@ export interface Transaction {
 }
 
 // Post system types
-export type MediaType = 'image' | 'video' | 'document'
+export type MediaType = 'image' | 'video' | 'document' | 'audio'
 
 export interface Post {
   id: string
