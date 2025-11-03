@@ -53,6 +53,8 @@ const DialogContent = React.forwardRef<
         "sm:h-auto sm:max-h-[calc(100dvh-4rem)]",
         "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
         "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+        // Center content when not full height
+        "flex flex-col items-center justify-center",
         className
       )}
       {...props}
@@ -73,7 +75,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "flex flex-col space-y-1.5 text-center",
       className
     )}
     {...props}
@@ -87,7 +89,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "flex flex-col-reverse sm:flex-row sm:justify-center sm:space-x-2",
       className
     )}
     {...props}

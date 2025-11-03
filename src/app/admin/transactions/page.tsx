@@ -18,12 +18,13 @@ export default function AdminTransactionsPage() {
   const [activeTx, setActiveTx] = useState<any | null>(null)
   const [userMap, setUserMap] = useState<Record<string, { label: string; email?: string }> | null>(null)
   const [bankMap, setBankMap] = useState<Record<string, { label: string; detail?: string }> | null>(null)
+  const [recipientMap, setRecipientMap] = useState<Record<string, { label: string; email?: string }> | null>(null)
 
   const load = async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select('*, recipient_user_id, points_delta')
       .order('created_at', { ascending: false })
 
     if (!error) {
@@ -31,15 +32,17 @@ export default function AdminTransactionsPage() {
 
       // Build lookup sets
       const userIds = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean)))
+      const recipientIds = Array.from(new Set(rows.map((r) => r.recipient_user_id).filter(Boolean)))
       const bankIds = Array.from(new Set(rows.map((r) => r.bank_account_id).filter(Boolean)))
+      const allUserIds = Array.from(new Set([...userIds, ...recipientIds]))
 
       // Fetch related users (best-effort; may be restricted by RLS)
       let usersById: Record<string, { label: string; email?: string }> = {}
-      if (userIds.length > 0) {
+      if (allUserIds.length > 0) {
         const { data: usersData } = await supabase
           .from('users')
           .select('id, email, first_name, last_name, username')
-          .in('id', userIds)
+          .in('id', allUserIds)
 
         if (usersData) {
           for (const u of usersData as any[]) {
@@ -49,6 +52,14 @@ export default function AdminTransactionsPage() {
           }
         }
       }
+      
+      // Separate recipient map
+      const recipientsById: Record<string, { label: string; email?: string }> = {}
+      recipientIds.forEach(id => {
+        if (usersById[id]) {
+          recipientsById[id] = usersById[id]
+        }
+      })
 
       // Fetch related bank accounts (best-effort)
       let banksById: Record<string, { label: string; detail?: string }> = {}
@@ -76,6 +87,7 @@ export default function AdminTransactionsPage() {
       setTransactions(withSigned)
       setUserMap(usersById)
       setBankMap(banksById)
+      setRecipientMap(recipientsById)
     }
     setLoading(false)
   }
@@ -132,6 +144,8 @@ export default function AdminTransactionsPage() {
               <TableHead>Type</TableHead>
               <TableHead>Bank Account</TableHead>
               <TableHead>Amount</TableHead>
+              <TableHead>Points</TableHead>
+              <TableHead>Recipient</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Receipt</TableHead>
@@ -169,6 +183,36 @@ export default function AdminTransactionsPage() {
                       <Badge variant="outline" className="bg-white/10 text-white border-white/20 w-fit">
                         TTD ${Number(t.amount_ttd ?? 0).toFixed(2)}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {t.points_delta !== null && t.points_delta !== undefined && t.points_delta !== 0 ? (
+                        <Badge 
+                          variant="outline" 
+                          className={`w-fit ${
+                            t.points_delta > 0 
+                              ? 'bg-green-500/20 text-green-400 border-green-500/30' 
+                              : 'bg-red-500/20 text-red-400 border-red-500/30'
+                          }`}
+                        >
+                          {t.points_delta > 0 ? '+' : ''}{t.points_delta}
+                        </Badge>
+                      ) : (
+                        <span className="text-white/60">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {t.recipient_user_id ? (
+                        <div>
+                          <div className="font-medium text-white/80">{recipientMap?.[t.recipient_user_id]?.label || t.recipient_user_id}</div>
+                          {recipientMap?.[t.recipient_user_id]?.email && (
+                            <div className="text-sm text-white/60">{recipientMap[t.recipient_user_id].email}</div>
+                          )}
+                        </div>
+                      ) : t.type === 'point_spend' && t.points_delta < 0 ? (
+                        <span className="text-white/60 italic">Platform</span>
+                      ) : (
+                        <span className="text-white/60">—</span>
+                      )}
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
                       {t.status === 'verified' ? (
@@ -270,6 +314,8 @@ export default function AdminTransactionsPage() {
               <div className="flex justify-between"><span className="text-white/60">Type</span><span className="capitalize">{activeTx.type?.replaceAll('_', ' ')}</span></div>
               <div className="flex justify-between"><span className="text-white/60">Status</span><span>{activeTx.status}</span></div>
               <div className="flex justify-between"><span className="text-white/60">Amount</span><span>TTD ${Number(activeTx.amount_ttd ?? 0).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-white/60">Points</span><span>{activeTx.points_delta !== null && activeTx.points_delta !== undefined && activeTx.points_delta !== 0 ? `${activeTx.points_delta > 0 ? '+' : ''}${activeTx.points_delta}` : '—'}</span></div>
+              <div className="flex justify-between"><span className="text-white/60">Recipient</span><span>{activeTx.recipient_user_id ? (recipientMap?.[activeTx.recipient_user_id]?.label || activeTx.recipient_user_id) : (activeTx.type === 'point_spend' && activeTx.points_delta < 0 ? 'Platform' : '—')}</span></div>
               <div className="flex justify-between"><span className="text-white/60">Bank Account</span><span>{activeTx.bank_account_id || '-'}</span></div>
               <div className="flex justify-between"><span className="text-white/60">Created</span><span>{new Date(activeTx.created_at).toLocaleString()}</span></div>
               {activeTx.signed_url ? (

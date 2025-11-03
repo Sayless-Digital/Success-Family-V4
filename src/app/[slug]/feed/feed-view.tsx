@@ -3,8 +3,15 @@
 import React, { useMemo, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield } from "lucide-react"
+import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import confetti from "canvas-confetti"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,7 +21,19 @@ import { InlinePostComposer } from "@/components/inline-post-composer"
 import { PostMediaSlider } from "@/components/post-media-slider"
 import { useAuth } from "@/components/auth-provider"
 import { supabase } from "@/lib/supabase"
-import type { Post, User as UserType } from "@/types"
+import { cn } from "@/lib/utils"
+import type { Post, User as UserType, MediaType } from "@/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { ImageIcon, Mic, Play, Pause, X, Save } from "lucide-react"
+import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 
 interface PostWithAuthor extends Post {
   author: UserType
@@ -36,12 +55,82 @@ interface FeedViewProps {
 export default function FeedView({
   community,
   posts: initialPosts,
-  isMember,
+  isMember: initialIsMember,
   currentUserId
 }: FeedViewProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const { user, userProfile, walletBalance } = useAuth()
+  const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
+  
+  // Optimistically determine membership immediately (before async check)
+  const isMemberOptimistic = React.useMemo(() => {
+    if (!user || !community?.id) return initialIsMember
+    // If user is owner, they're always a member
+    if (community.owner_id === user.id) return true
+    // Use initial value as fallback until we check
+    return initialIsMember
+  }, [user, community?.id, community?.owner_id, initialIsMember])
+  
+  const [isMember, setIsMember] = React.useState(isMemberOptimistic)
+
+  // Update immediately when optimistic value changes
+  React.useEffect(() => {
+    setIsMember(isMemberOptimistic)
+  }, [isMemberOptimistic])
+
+  // Initial membership check + Realtime subscription for instant updates
+  React.useEffect(() => {
+    if (!user || !community?.id) {
+      setIsMember(false)
+      return
+    }
+
+    // If user is owner, they're always a member
+    if (community.owner_id === user.id) {
+      setIsMember(true)
+      return
+    }
+
+    // Initial check
+    const checkMembership = async () => {
+      const { data: membership } = await supabase
+        .from('community_members')
+        .select('id')
+        .eq('community_id', community.id)
+        .eq('user_id', user.id)
+        .single()
+      
+      setIsMember(!!membership)
+    }
+
+    checkMembership()
+
+    // Subscribe to realtime changes for instant updates when user joins/leaves
+    const channel = supabase
+      .channel(`community-membership-${community.id}-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'community_members',
+          filter: `community_id=eq.${community.id} AND user_id=eq.${user.id}`
+        },
+        (payload) => {
+          // Immediately update membership based on realtime event
+          if (payload.eventType === 'INSERT') {
+            setIsMember(true)
+          } else if (payload.eventType === 'DELETE') {
+            setIsMember(false)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user, community?.id, community?.owner_id])
 
   // Determine active tab
   const activeTab = pathname === `/${community.slug}/feed` ? "feed" : "home"
@@ -327,9 +416,111 @@ export default function FeedView({
   }, [community?.id])
 
   const loadNewPosts = async () => {
-    // Refresh the page to load new posts
-    router.refresh()
-    setNewPostsCount(0)
+    try {
+      // Get the most recent post timestamp from current posts
+      const mostRecentPost = posts.length > 0 
+        ? posts.reduce((latest, post) => {
+            const postDate = new Date(post.published_at || post.created_at)
+            const latestDate = new Date(latest.published_at || latest.created_at)
+            return postDate > latestDate ? post : latest
+          })
+        : null
+
+      // Fetch new posts that were created after the most recent one
+      const { data: newPostsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          author:users!posts_author_id_fkey(
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_picture
+          ),
+          media:post_media(
+            id,
+            media_type,
+            storage_path,
+            file_name,
+            display_order
+          )
+        `)
+        .eq('community_id', community.id)
+        .order('is_pinned', { ascending: false })
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (error) {
+        console.error('Error fetching new posts:', error)
+        toast.error('Failed to load new posts')
+        return
+      }
+
+      if (!newPostsData || newPostsData.length === 0) {
+        setNewPostsCount(0)
+        toast.info('No new posts to load')
+        return
+      }
+
+      // Filter out posts that already exist in the current list
+      const existingPostIds = new Set(posts.map(p => p.id))
+      const trulyNewPosts = newPostsData.filter(p => !existingPostIds.has(p.id))
+
+      if (trulyNewPosts.length === 0) {
+        setNewPostsCount(0)
+        toast.info('No new posts to load')
+        return
+      }
+
+      // Enrich new posts with boost counts and user's boost status
+      const enrichedNewPosts = await Promise.all(
+        trulyNewPosts.map(async (post) => {
+          // Get boost count
+          const { data: boostCountData } = await supabase
+            .rpc('get_post_boost_count', { p_post_id: post.id })
+
+          // Get user's boost status if authenticated
+          let userHasBoosted = false
+          let canUnboost = false
+          if (user) {
+            const { data: userBoostedData } = await supabase
+              .rpc('user_boosted_post', {
+                p_post_id: post.id,
+                p_user_id: user.id
+              })
+            userHasBoosted = userBoostedData || false
+
+            // Check if user can unboost (within 1 minute)
+            if (userHasBoosted) {
+              const { data: canUnboostData } = await supabase
+                .rpc('can_unboost_post', {
+                  p_post_id: post.id,
+                  p_user_id: user.id
+                })
+              canUnboost = canUnboostData || false
+            }
+          }
+
+          return {
+            ...post,
+            boost_count: boostCountData || 0,
+            user_has_boosted: userHasBoosted,
+            can_unboost: canUnboost
+          }
+        })
+      )
+
+      // Prepend new posts to the existing list
+      setPosts(prevPosts => [...enrichedNewPosts, ...prevPosts])
+      setNewPostsCount(0)
+      
+      toast.success(`Loaded ${enrichedNewPosts.length} new ${enrichedNewPosts.length === 1 ? 'post' : 'posts'}`)
+    } catch (error: any) {
+      console.error('Error loading new posts:', error)
+      toast.error('Failed to load new posts')
+    }
   }
 
   const fireGoldConfetti = (element: HTMLElement | null) => {
@@ -549,6 +740,496 @@ export default function FeedView({
     }
   }
 
+  const [editingPostId, setEditingPostId] = React.useState<string | null>(null)
+  const [editingContent, setEditingContent] = React.useState<Record<string, string>>({})
+  const [editingExistingMedia, setEditingExistingMedia] = React.useState<Record<string, Array<{ id: string; preview: string; type: MediaType; storagePath: string }>>>({})
+  const [editingNewMedia, setEditingNewMedia] = React.useState<Record<string, Array<{ file: File; preview: string; type: MediaType }>>>({})
+  const [editingSubmitting, setEditingSubmitting] = React.useState<Record<string, boolean>>({})
+  const [editingShowVoiceRecorder, setEditingShowVoiceRecorder] = React.useState<string | null>(null)
+  const [editingPlayingAudio, setEditingPlayingAudio] = React.useState<Record<string, string | null>>({})
+  const [editingAudioProgress, setEditingAudioProgress] = React.useState<Record<string, Record<string, { current: number; duration: number }>>>({})
+  const editingAudioRefs = React.useRef<Record<string, Record<string, HTMLAudioElement>>>({})
+  const editingFileInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({})
+  const [deletingPostId, setDeletingPostId] = React.useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = React.useState(false)
+
+  interface EditingMediaFile {
+    file: File
+    preview: string
+    type: MediaType
+  }
+
+  interface EditingExistingMediaItem {
+    id: string
+    preview: string
+    type: MediaType
+    storagePath: string
+  }
+
+  const handleEditPost = (post: PostWithAuthor) => {
+    setEditingPostId(post.id)
+    setEditingContent(prev => ({ ...prev, [post.id]: post.content }))
+    
+    // Load existing media
+    if (post.media) {
+      const existing: EditingExistingMediaItem[] = post.media.map(m => ({
+        id: m.id!,
+        preview: supabase.storage.from('post-media').getPublicUrl(m.storage_path).data.publicUrl,
+        type: m.media_type,
+        storagePath: m.storage_path
+      }))
+      setEditingExistingMedia(prev => ({ ...prev, [post.id]: existing }))
+      
+      // Preload audio metadata for existing voice notes
+      const existingAudio = existing.find(m => m.type === 'audio')
+      if (existingAudio) {
+        const audio = new Audio(existingAudio.preview)
+        audio.addEventListener('loadedmetadata', () => {
+          setEditingAudioProgress(prev => ({
+            ...prev,
+            [post.id]: {
+              ...(prev[post.id] || {}),
+              [existingAudio.preview]: {
+                current: 0,
+                duration: audio.duration || 0
+              }
+            }
+          }))
+        })
+        audio.addEventListener('timeupdate', () => {
+          setEditingAudioProgress(prev => ({
+            ...prev,
+            [post.id]: {
+              ...(prev[post.id] || {}),
+              [existingAudio.preview]: {
+                current: audio.currentTime,
+                duration: audio.duration || 0
+              }
+            }
+          }))
+        })
+        audio.addEventListener('ended', () => {
+          setEditingPlayingAudio(prev => ({
+            ...prev,
+            [post.id]: null
+          }))
+        })
+        audio.addEventListener('pause', () => {
+          if (audio.ended) {
+            setEditingPlayingAudio(prev => ({
+              ...prev,
+              [post.id]: null
+            }))
+          }
+        })
+        if (!editingAudioRefs.current[post.id]) {
+          editingAudioRefs.current[post.id] = {}
+        }
+        editingAudioRefs.current[post.id][existingAudio.preview] = audio
+        audio.load()
+      }
+    }
+    
+    setEditingNewMedia(prev => ({ ...prev, [post.id]: [] }))
+  }
+
+  const handleCancelEdit = (postId: string) => {
+    setEditingPostId(null)
+    setEditingContent(prev => {
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+    setEditingExistingMedia(prev => {
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+    setEditingNewMedia(prev => {
+      const newMedia = prev[postId] || []
+      newMedia.forEach(m => URL.revokeObjectURL(m.preview))
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+    setEditingShowVoiceRecorder(null)
+    setEditingPlayingAudio(prev => {
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+    setEditingAudioProgress(prev => {
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+    // Cleanup audio refs
+    if (editingAudioRefs.current[postId]) {
+      Object.values(editingAudioRefs.current[postId]).forEach(audio => {
+        audio.pause()
+        audio.src = ''
+      })
+      delete editingAudioRefs.current[postId]
+    }
+  }
+
+  const formatAudioTime = (seconds: number) => {
+    if (!isFinite(seconds) || isNaN(seconds)) return "0:00"
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const handleEditingVoiceNoteComplete = async (postId: string, audioBlob: Blob) => {
+    if (!user) return
+
+    if (walletBalance === null || walletBalance < 1) {
+      toast.error("You need at least 1 point to add a voice note")
+      setEditingShowVoiceRecorder(null)
+      return
+    }
+
+    const preview = URL.createObjectURL(audioBlob)
+    const fileName = `voice-note-${Date.now()}.webm`
+    const file = new File([audioBlob], fileName, { type: 'audio/webm' })
+
+    const audio = new Audio(preview)
+    audio.addEventListener('loadedmetadata', () => {
+      setEditingAudioProgress(prev => ({
+        ...prev,
+        [postId]: {
+          ...(prev[postId] || {}),
+          [preview]: {
+            current: 0,
+            duration: audio.duration || 0
+          }
+        }
+      }))
+    })
+    audio.addEventListener('timeupdate', () => {
+      setEditingAudioProgress(prev => ({
+        ...prev,
+        [postId]: {
+          ...(prev[postId] || {}),
+          [preview]: {
+            current: audio.currentTime,
+            duration: audio.duration || 0
+          }
+        }
+      }))
+    })
+    audio.addEventListener('ended', () => {
+      setEditingPlayingAudio(prev => ({
+        ...prev,
+        [postId]: null
+      }))
+    })
+    audio.addEventListener('pause', () => {
+      if (audio.ended) {
+        setEditingPlayingAudio(prev => ({
+          ...prev,
+          [postId]: null
+        }))
+      }
+    })
+    if (!editingAudioRefs.current[postId]) {
+      editingAudioRefs.current[postId] = {}
+    }
+    editingAudioRefs.current[postId][preview] = audio
+    audio.load()
+
+    setEditingNewMedia(prev => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), { file, preview, type: 'audio' }]
+    }))
+    setEditingShowVoiceRecorder(null)
+  }
+
+  const handleEditingFileSelect = (postId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const newFiles: EditingMediaFile[] = files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document'
+    }))
+    setEditingNewMedia(prev => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), ...newFiles]
+    }))
+    if (editingFileInputRefs.current[postId]) {
+      editingFileInputRefs.current[postId]!.value = ''
+    }
+  }
+
+  const handleEditingRemoveNewMedia = (postId: string, index: number) => {
+    setEditingNewMedia(prev => {
+      const newFiles = [...(prev[postId] || [])]
+      const removedMedia = newFiles[index]
+
+      if (removedMedia.type === 'audio' && editingAudioRefs.current[postId]?.[removedMedia.preview]) {
+        const audio = editingAudioRefs.current[postId][removedMedia.preview]
+        audio.pause()
+        audio.src = ''
+        delete editingAudioRefs.current[postId][removedMedia.preview]
+      }
+      if (removedMedia.type === 'audio') {
+        setEditingAudioProgress(prev => {
+          const updated = { ...prev }
+          if (updated[postId]) {
+            const postProgress = { ...updated[postId] }
+            delete postProgress[removedMedia.preview]
+            updated[postId] = postProgress
+          }
+          return updated
+        })
+      }
+      URL.revokeObjectURL(removedMedia.preview)
+      newFiles.splice(index, 1)
+      return { ...prev, [postId]: newFiles }
+    })
+  }
+
+  const handleEditingRemoveExistingMedia = async (postId: string, mediaId: string, storagePath: string) => {
+    try {
+      await supabase.storage.from('post-media').remove([storagePath])
+      await supabase.from('post_media').delete().eq('id', mediaId)
+      
+      setEditingExistingMedia(prev => ({
+        ...prev,
+        [postId]: (prev[postId] || []).filter(m => m.id !== mediaId)
+      }))
+      toast.success("Media removed")
+    } catch (error: any) {
+      console.error('Error removing media:', error)
+      toast.error('Failed to remove media')
+    }
+  }
+
+  const handleEditingAudioPlay = (postId: string, previewUrl: string) => {
+    Object.keys(editingAudioRefs.current[postId] || {}).forEach(key => {
+      if (key !== previewUrl) {
+        const audio = editingAudioRefs.current[postId][key]
+        if (audio && !audio.paused) {
+          audio.pause()
+          audio.currentTime = 0
+        }
+      }
+    })
+
+    if (!editingAudioRefs.current[postId]?.[previewUrl]) {
+      const audio = new Audio(previewUrl)
+      
+      audio.addEventListener('loadedmetadata', () => {
+        setEditingAudioProgress(prev => ({
+          ...prev,
+          [postId]: {
+            ...(prev[postId] || {}),
+            [previewUrl]: {
+              current: 0,
+              duration: audio.duration || 0
+            }
+          }
+        }))
+      })
+      
+      audio.addEventListener('timeupdate', () => {
+        setEditingAudioProgress(prev => ({
+          ...prev,
+          [postId]: {
+            ...(prev[postId] || {}),
+            [previewUrl]: {
+              current: audio.currentTime,
+              duration: audio.duration || 0
+            }
+          }
+        }))
+      })
+      
+      audio.addEventListener('ended', () => {
+        setEditingPlayingAudio(prev => ({
+          ...prev,
+          [postId]: null
+        }))
+      })
+      
+      audio.addEventListener('pause', () => {
+        if (audio.ended) {
+          setEditingPlayingAudio(prev => ({
+            ...prev,
+            [postId]: null
+          }))
+        }
+      })
+      
+      if (!editingAudioRefs.current[postId]) {
+        editingAudioRefs.current[postId] = {}
+      }
+      editingAudioRefs.current[postId][previewUrl] = audio
+      audio.load()
+    }
+
+    const audio = editingAudioRefs.current[postId][previewUrl]
+    
+    if (editingPlayingAudio[postId] === previewUrl) {
+      audio.pause()
+      setEditingPlayingAudio(prev => ({ ...prev, [postId]: null }))
+    } else {
+      audio.play()
+      setEditingPlayingAudio(prev => ({ ...prev, [postId]: previewUrl }))
+    }
+  }
+
+  const handleSaveEdit = async (post: PostWithAuthor) => {
+    if (!user) return
+    const postId = post.id
+
+    const content = editingContent[postId]?.trim() || ''
+    const existingMedia = editingExistingMedia[postId] || []
+    const newMedia = editingNewMedia[postId] || []
+
+    if (!content && existingMedia.length === 0 && newMedia.length === 0) {
+      toast.error("Post cannot be empty")
+      return
+    }
+
+    setEditingSubmitting(prev => ({ ...prev, [postId]: true }))
+
+    try {
+      // Update post content
+      const { error: updateError } = await supabase
+        .from('posts')
+        .update({
+          content: content,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', postId)
+
+      if (updateError) throw updateError
+
+      // Upload new media files
+      for (let i = 0; i < newMedia.length; i++) {
+        const media = newMedia[i]
+        const fileName = `${postId}-${Date.now()}-${i}.${media.file.name.split('.').pop()}`
+        const filePath = `${post.community_id}/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('post-media')
+          .upload(filePath, media.file, { upsert: false })
+
+        if (uploadError) throw uploadError
+
+        if (media.type === 'audio') {
+          const { error: deductError } = await supabase.rpc('deduct_points_for_voice_notes', {
+            p_user_id: user.id,
+            p_point_cost: 1
+          })
+          if (deductError) throw deductError
+        }
+
+        const { error: mediaError } = await supabase.from('post_media').insert({
+          post_id: postId,
+          media_type: media.type,
+          storage_path: filePath,
+          file_name: media.file.name,
+          file_size: media.file.size,
+          mime_type: media.file.type,
+          display_order: existingMedia.length + i
+        })
+
+        if (mediaError) throw mediaError
+      }
+
+      await refreshWalletBalance?.()
+
+      // Fetch updated post
+      const { data: updatedPostData, error: fetchError } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          author:users!posts_author_id_fkey(
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_picture
+          ),
+          media:post_media(
+            id,
+            media_type,
+            storage_path,
+            file_name,
+            display_order
+          )
+        `)
+        .eq('id', postId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      toast.success("Post updated successfully")
+      handlePostUpdate(updatedPostData as PostWithAuthor)
+      handleCancelEdit(postId)
+    } catch (error: any) {
+      console.error('Error updating post:', error)
+      toast.error(error.message || 'Failed to update post')
+    } finally {
+      setEditingSubmitting(prev => {
+        const updated = { ...prev }
+        delete updated[postId]
+        return updated
+      })
+    }
+  }
+
+  const handleDeletePost = (postId: string) => {
+    setDeletingPostId(postId)
+  }
+
+  const confirmDeletePost = async () => {
+    if (!deletingPostId) return
+
+    setIsDeleting(true)
+
+    try {
+      // Delete post media from storage first
+      const { data: mediaData } = await supabase
+        .from('post_media')
+        .select('storage_path')
+        .eq('post_id', deletingPostId)
+
+      if (mediaData) {
+        const paths = mediaData.map(m => m.storage_path).filter(Boolean)
+        if (paths.length > 0) {
+          await supabase.storage.from('post-media').remove(paths)
+        }
+      }
+
+      // Delete the post (this will cascade delete media records)
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', deletingPostId)
+
+      if (error) throw error
+
+      // Remove from local state
+      setPosts(prevPosts => prevPosts.filter(p => p.id !== deletingPostId))
+      toast.success("Post deleted successfully")
+      setDeletingPostId(null)
+    } catch (error: any) {
+      console.error('Error deleting post:', error)
+      toast.error('Failed to delete post. Please try again.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handlePostUpdate = (updatedPost: PostWithAuthor) => {
+    setPosts(prevPosts =>
+      prevPosts.map(p => p.id === updatedPost.id ? updatedPost : p)
+    )
+  }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -557,6 +1238,7 @@ export default function FeedView({
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
+    if (diffMins < 1) return "just now"
     if (diffMins < 60) return `${diffMins}m`
     if (diffHours < 24) return `${diffHours}h`
     if (diffDays < 7) return `${diffDays}d`
@@ -602,7 +1284,7 @@ export default function FeedView({
           <div className="sticky top-14 z-[100] flex justify-center py-2 mb-2">
             <button
               onClick={loadNewPosts}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg hover:bg-primary/90 transition-all animate-bounce text-sm font-medium backdrop-blur-sm border border-white/20"
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg hover:bg-primary/90 transition-all animate-bounce text-sm font-medium backdrop-blur-sm border border-white/20 cursor-pointer"
             >
               {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'} - Click to load
             </button>
@@ -643,7 +1325,7 @@ export default function FeedView({
                   </Link>
 
                   {/* Post Info */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-1">
                     <div className="flex flex-col">
                       <span className="text-white/80 text-sm font-medium">
                         {post.author.first_name} {post.author.last_name}
@@ -662,20 +1344,311 @@ export default function FeedView({
                       </>
                     )}
                   </div>
+
+                  {/* Context Menu - Only show for post owner */}
+                  {user && post.author_id === user.id && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center justify-center w-8 h-8 p-0 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
+                        >
+                          <MoreVertical className="h-4 w-4 text-white/70" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {(() => {
+                          const postDate = new Date(post.created_at)
+                          const now = new Date()
+                          const diffMs = now.getTime() - postDate.getTime()
+                          const diffMins = diffMs / 60000
+                          const canEdit = diffMins < 5
+                          
+                          return (
+                            <>
+                              {/* Edit option - only if within 5 minutes */}
+                              {canEdit && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleEditPost(post)
+                                  }}
+                                  className="cursor-pointer"
+                                >
+                                  <Edit className="h-4 w-4 mr-2 text-white/70" />
+                                  Edit
+                                </DropdownMenuItem>
+                              )}
+                              {/* Separator only if Edit option exists */}
+                              {canEdit && <DropdownMenuSeparator />}
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeletePost(post.id)
+                                }}
+                                className="cursor-pointer text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )
+                        })()}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
                 
-                {/* Content Preview */}
-                <p className="text-white/80 text-base line-clamp-3">
-                  {post.content}
-                </p>
+                {/* Content - Edit Mode or View Mode */}
+                {editingPostId === post.id ? (
+                  <div className="space-y-4">
+                    {/* Editable Content */}
+                    <div className="bg-white/10 border border-white/20 rounded-lg p-4">
+                      <textarea
+                        value={editingContent[post.id] || ''}
+                        onChange={(e) => setEditingContent(prev => ({ ...prev, [post.id]: e.target.value }))}
+                        placeholder="What's on your mind?"
+                        className="w-full bg-transparent border-0 text-white placeholder:text-white/40 text-base resize-none focus:outline-none focus:ring-0 min-h-[100px]"
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement
+                          target.style.height = 'auto'
+                          target.style.height = Math.max(100, target.scrollHeight) + 'px'
+                        }}
+                      />
+                    </div>
 
-                {/* Post Media Slider */}
-                {post.media && post.media.length > 0 && (
-                  <PostMediaSlider media={post.media} />
+                    {/* Voice Note Recorder */}
+                    {editingShowVoiceRecorder === post.id && (
+                      <VoiceNoteRecorder
+                        onRecordingComplete={(audioBlob) => handleEditingVoiceNoteComplete(post.id, audioBlob)}
+                        onCancel={() => setEditingShowVoiceRecorder(null)}
+                        maxDurationMinutes={5}
+                        autoStart={true}
+                      />
+                    )}
+
+                    {/* Voice Note Preview - Separate Container */}
+                    {(() => {
+                      const existingVoiceNote = editingExistingMedia[post.id]?.find(m => m.type === 'audio')
+                      const newVoiceNote = editingNewMedia[post.id]?.find(m => m.type === 'audio')
+                      const currentVoiceNote = newVoiceNote || existingVoiceNote
+                      
+                      return currentVoiceNote && (
+                        <div className="rounded-lg overflow-hidden bg-white/10 border border-white/20">
+                          <div className="p-3 relative overflow-hidden">
+                            <div className="flex items-center gap-2">
+                              <div className="font-mono text-sm text-white/80">
+                                {editingAudioProgress[post.id]?.[currentVoiceNote.preview]?.duration
+                                  ? `${formatAudioTime(editingAudioProgress[post.id][currentVoiceNote.preview].current || 0)} / ${formatAudioTime(editingAudioProgress[post.id][currentVoiceNote.preview].duration)}`
+                                  : `0:00 / —`
+                                }
+                              </div>
+                              <div className="flex-1" />
+                              <button
+                                type="button"
+                                onClick={() => handleEditingAudioPlay(post.id, currentVoiceNote.preview)}
+                                className="flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                              >
+                                {editingPlayingAudio[post.id] === currentVoiceNote.preview ? (
+                                  <Pause className="h-4 w-4 text-white/70" />
+                                ) : (
+                                  <Play className="h-4 w-4 text-white/70" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (currentVoiceNote === newVoiceNote) {
+                                    const index = editingNewMedia[post.id]?.findIndex(m => m.preview === currentVoiceNote.preview) ?? -1
+                                    if (index >= 0) handleEditingRemoveNewMedia(post.id, index)
+                                  } else {
+                                    handleEditingRemoveExistingMedia(post.id, currentVoiceNote.id, currentVoiceNote.storagePath)
+                                  }
+                                }}
+                                className="flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
+                              >
+                                <Trash2 className="h-4 w-4 text-white/70" />
+                              </button>
+                            </div>
+                            <div
+                              className="w-full h-2 bg-white/10 rounded-full mt-2 cursor-pointer relative group backdrop-blur-sm overflow-visible"
+                              onClick={(e) => {
+                                const audio = editingAudioRefs.current[post.id]?.[currentVoiceNote.preview]
+                                if (!audio || !editingAudioProgress[post.id]?.[currentVoiceNote.preview]?.duration) return
+                                
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                const clickX = e.clientX - rect.left
+                                const percentage = clickX / rect.width
+                                const newTime = percentage * editingAudioProgress[post.id][currentVoiceNote.preview].duration
+                                
+                                audio.currentTime = Math.max(0, Math.min(newTime, audio.duration))
+                              }}
+                            >
+                              <div
+                                className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
+                                style={{
+                                  width: editingAudioProgress[post.id]?.[currentVoiceNote.preview]?.duration
+                                    ? `${(editingAudioProgress[post.id][currentVoiceNote.preview].current || 0) / editingAudioProgress[post.id][currentVoiceNote.preview].duration * 100}%`
+                                    : '0%'
+                                }}
+                              >
+                                <div
+                                  className={cn(
+                                    "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none",
+                                    editingPlayingAudio[post.id] === currentVoiceNote.preview && "animate-edge-glow"
+                                  )}
+                                  style={{ transform: 'translate(50%, -50%)' }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Images Preview Slider */}
+                    {(() => {
+                      const existingImages = editingExistingMedia[post.id]?.filter(m => m.type !== 'audio') || []
+                      const newImages = editingNewMedia[post.id]?.filter(m => m.type !== 'audio') || []
+                      const allImages = [...existingImages, ...newImages]
+                      
+                      return allImages.length > 0 && (
+                        <div className="relative">
+                          <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth">
+                            {existingImages.map((media) => (
+                              <div
+                                key={`existing-${media.id}`}
+                                className="relative flex-shrink-0 rounded-lg bg-white/10 border border-white/20 group overflow-hidden"
+                                style={{
+                                  width: 'calc((100% - 3 * 0.5rem) / 4)',
+                                  aspectRatio: '1 / 1',
+                                }}
+                              >
+                                <img
+                                  src={media.preview}
+                                  alt="Existing media"
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditingRemoveExistingMedia(post.id, media.id, media.storagePath)}
+                                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X className="h-4 w-4 text-white" />
+                                </button>
+                              </div>
+                            ))}
+                            {newImages.map((media, index) => (
+                              <div
+                                key={`new-${index}`}
+                                className="relative flex-shrink-0 rounded-lg bg-white/10 border border-white/20 group overflow-hidden"
+                                style={{
+                                  width: 'calc((100% - 3 * 0.5rem) / 4)',
+                                  aspectRatio: '1 / 1',
+                                }}
+                              >
+                                <img
+                                  src={media.preview}
+                                  alt="New media"
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const actualIndex = editingNewMedia[post.id]?.findIndex(m => m.preview === media.preview) ?? index
+                                    handleEditingRemoveNewMedia(post.id, actualIndex)
+                                  }}
+                                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X className="h-4 w-4 text-white" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2">
+                      {/* Add Image Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!editingFileInputRefs.current[post.id]) {
+                            const input = document.createElement('input')
+                            input.type = 'file'
+                            input.multiple = true
+                            input.accept = 'image/*'
+                            input.onchange = (e) => handleEditingFileSelect(post.id, e as any)
+                            editingFileInputRefs.current[post.id] = input
+                          }
+                          editingFileInputRefs.current[post.id]?.click()
+                        }}
+                        className="flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                      >
+                        <ImageIcon className="h-4 w-4 text-white/70" />
+                        <span className="sr-only">Add Image</span>
+                      </button>
+
+                      {/* Add Voice Note Button */}
+                      <button
+                        type="button"
+                        onClick={() => setEditingShowVoiceRecorder(editingShowVoiceRecorder === post.id ? null : post.id)}
+                        disabled={!!editingExistingMedia[post.id]?.find(m => m.type === 'audio') || !!editingNewMedia[post.id]?.find(m => m.type === 'audio')}
+                        className="flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Mic className="h-4 w-4 text-white/70" />
+                        <span className="sr-only">Add Voice Note</span>
+                      </button>
+
+                      <div className="flex-1" />
+
+                      {/* Cancel Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleCancelEdit(post.id)}
+                        disabled={editingSubmitting[post.id]}
+                        className="px-4 py-2 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed text-white/70 text-sm"
+                      >
+                        Cancel
+                      </button>
+
+                      {/* Save Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleSaveEdit(post)}
+                        disabled={editingSubmitting[post.id]}
+                        className="flex items-center gap-2 px-4 py-2 rounded-full border transition-all cursor-pointer bg-white/10 border-white/30 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed text-white/80 text-sm font-medium"
+                      >
+                        {editingSubmitting[post.id] ? (
+                          <>Saving...</>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4" />
+                            Save
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Content Preview */}
+                    <p className="text-white/80 text-base line-clamp-3">
+                      {post.content}
+                    </p>
+
+                    {/* Post Media Slider */}
+                    {post.media && post.media.length > 0 && (
+                      <PostMediaSlider media={post.media} author={post.author} />
+                    )}
+                  </>
                 )}
 
-                {/* Boost and Save Buttons */}
-                <div className="flex items-center justify-between gap-4 mt-3">
+                {/* Boost and Save Buttons - Hide when editing */}
+                {editingPostId !== post.id && (
+                  <div className="flex items-center justify-between gap-4 mt-3">
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -734,7 +1707,8 @@ export default function FeedView({
                       />
                     </button>
                   )}
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -757,6 +1731,27 @@ export default function FeedView({
           </Card>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingPostId} onOpenChange={(open) => !open && !isDeleting && setDeletingPostId(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader className="space-y-2">
+            <DialogTitle>Delete Post</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this post? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="destructive"
+              onClick={confirmDeletePost}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Forever"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -395,4 +395,20 @@
     animation: boost-count 0.6s ease-out;
     color: #10b981 !important;
   }
+
+  /* Progress edge glow pulse animation */
+  @keyframes edge-glow-pulse {
+    0%, 100% {
+      opacity: 0.6;
+      transform: translate(50%, -50%) scale(0.9);
+    }
+    50% {
+      opacity: 1;
+      transform: translate(50%, -50%) scale(1.3);
+    }
+  }
+
+  .animate-edge-glow {
+    animation: edge-glow-pulse 1.5s ease-in-out infinite;
+  }
 }

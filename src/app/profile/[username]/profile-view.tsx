@@ -1185,7 +1185,7 @@ export default function ProfileView({
 
                   {/* Post Media Slider */}
                   {post.media && post.media.length > 0 && (
-                    <PostMediaSlider media={post.media} />
+                    <PostMediaSlider media={post.media} author={post.author} />
                   )}
 
                   {/* Boost and Save Buttons */}

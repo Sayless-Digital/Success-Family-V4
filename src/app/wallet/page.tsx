@@ -21,18 +21,37 @@ async function getWalletData(userId: string) {
     supabase.from('bank_accounts').select('id, account_name, bank_name, account_number, account_type').eq('is_active', true),
     supabase
       .from('transactions')
-      .select('id, type, amount_ttd, points_delta, receipt_url, status, created_at')
+      .select('id, type, amount_ttd, points_delta, receipt_url, status, created_at, recipient_user_id')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(50),
     supabase.from('platform_settings').select('buy_price_per_point, user_value_per_point').eq('id', 1).maybeSingle(),
   ])
   const txs = txError ? [] : (transactions ?? [])
+  
+  // Fetch recipient users for transactions that have recipients
+  const recipientIds = Array.from(new Set(txs.map((t: any) => t.recipient_user_id).filter(Boolean)))
+  let recipientMap: Record<string, { name: string; username?: string }> = {}
+  if (recipientIds.length > 0) {
+    const { data: recipients } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, username')
+      .in('id', recipientIds)
+    
+    if (recipients) {
+      for (const r of recipients) {
+        const fullName = r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : null
+        const label = fullName || r.username || r.id
+        recipientMap[r.id] = { name: label, username: r.username || undefined }
+      }
+    }
+  }
+  
   const signed = await Promise.all(
     txs.map(async (t: any) => {
-      if (!t.receipt_url) return { ...t, signed_url: null }
+      if (!t.receipt_url) return { ...t, signed_url: null, recipient_name: t.recipient_user_id ? recipientMap[t.recipient_user_id]?.name : null }
       const { data: signedUrl } = await supabase.storage.from('receipts').createSignedUrl(t.receipt_url, 600)
-      return { ...t, signed_url: signedUrl?.signedUrl || null }
+      return { ...t, signed_url: signedUrl?.signedUrl || null, recipient_name: t.recipient_user_id ? recipientMap[t.recipient_user_id]?.name : null }
     })
   )
   return { wallet, banks: banks ?? [], transactions: signed, settings }
@@ -124,8 +143,11 @@ export default async function WalletPage() {
       <WalletSuccessToast />
 
       {/* Balance row */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="text-3xl font-semibold text-white">{Math.trunc(Number(wallet?.points_balance ?? 0))} pts</div>
+      <div className="flex items-center justify-between gap-4 p-4 rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20">
+        <div>
+          <div className="text-xs font-medium text-white/50 uppercase tracking-wide mb-1">Balance</div>
+          <div className="text-3xl font-bold text-white">{Math.trunc(Number(wallet?.points_balance ?? 0))} <span className="text-xl font-medium text-white/60">pts</span></div>
+        </div>
         <Dialog>
           <DialogTrigger asChild>
             <Button className="bg-white/10 text-white/80 hover:bg-white/20">Top Up</Button>
@@ -178,22 +200,24 @@ export default async function WalletPage() {
 
       {/* Bank details list for multiple accounts */}
       {banks.length > 1 && (
-        <div className="rounded-lg bg-white/10 p-4 space-y-3">
-          <div className="text-white/80 font-medium">Bank Details</div>
-          {banks.map((b: any) => (
-            <div key={b.id} className="rounded-md bg-white/10 p-3 space-y-2">
-              <div className="text-white/80 text-sm mb-1">{b.bank_name}</div>
-              <CopyField label="Account Name" value={b.account_name} />
-              <CopyField label="Account Number" value={b.account_number} />
-              <CopyField label="Account Type" value={b.account_type} />
-            </div>
-          ))}
+        <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-4 space-y-4">
+          <div className="text-white font-semibold text-lg">Bank Details</div>
+          <div className="space-y-3">
+            {banks.map((b: any) => (
+              <div key={b.id} className="rounded-lg bg-white/5 border border-white/10 p-4 space-y-3">
+                <div className="text-white font-medium text-base pb-2 border-b border-white/10">{b.bank_name}</div>
+                <CopyField label="Account Name" value={b.account_name} />
+                <CopyField label="Account Number" value={b.account_number} />
+                <CopyField label="Account Type" value={b.account_type} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Transactions */}
-      <div className="space-y-3">
-        <div className="text-white/80 font-medium">Transactions</div>
+      <div className="space-y-4">
+        <div className="text-white font-semibold text-lg">Transactions</div>
         <div className="hidden md:block">
           <Table>
             <TableHeader>
@@ -203,6 +227,7 @@ export default async function WalletPage() {
                 <TableHead className="text-white/80">Status</TableHead>
                 <TableHead className="text-white/80">TTD</TableHead>
                 <TableHead className="text-white/80">Points</TableHead>
+                <TableHead className="text-white/80">To</TableHead>
                 <TableHead className="text-white/80">Receipt</TableHead>
               </TableRow>
             </TableHeader>
@@ -210,10 +235,24 @@ export default async function WalletPage() {
               {transactions.map((t: any) => (
                 <TableRow key={t.id}>
                   <TableCell className="text-white/80">{new Date(t.created_at).toLocaleString()}</TableCell>
-                  <TableCell className="text-white/80">{t.type.replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())}</TableCell>
+                  <TableCell className={`font-medium ${
+                    t.type === 'point_spend' && t.points_delta < 0
+                      ? 'text-green-400'
+                      : t.type === 'point_refund' && t.points_delta > 0
+                      ? 'text-red-400'
+                      : 'text-white/80'
+                  }`}>
+                    {t.type.replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())}
+                  </TableCell>
                   <TableCell className="text-white/80">{renderStatus(t.status)}</TableCell>
                   <TableCell className="text-white/80">{t.amount_ttd ? Number(t.amount_ttd).toFixed(2) : '—'}</TableCell>
-                  <TableCell className="text-white/80">{t.points_delta}</TableCell>
+                  <TableCell className="text-white/80">{t.points_delta > 0 ? '+' : ''}{t.points_delta}</TableCell>
+                  <TableCell className="text-white/80">
+                    {t.type === 'point_refund' && t.points_delta > 0 
+                      ? 'You'
+                      : t.recipient_name || (t.type === 'point_spend' && t.points_delta < 0 ? 'Platform' : '—')
+                    }
+                  </TableCell>
                   <TableCell className="text-white/80">
                     {t.signed_url ? (
                       <a className="text-white/80 underline" href={t.signed_url} target="_blank" rel="noreferrer">View</a>
@@ -225,43 +264,96 @@ export default async function WalletPage() {
               ))}
               {transactions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-white/60">No transactions yet.</TableCell>
+                  <TableCell colSpan={7} className="text-white/60">No transactions yet.</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
         {/* Mobile cards */}
-        <div className="space-y-3 md:hidden">
+        <div className="space-y-4 md:hidden">
           {transactions.map((t: any) => (
-            <div key={t.id} className="rounded-md bg-white/10 p-3">
-              <div className="flex justify-between text-white/80">
-                <span className="font-medium">{t.type.replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())}</span>
-                <span className="text-xs">{new Date(t.created_at).toLocaleString()}</span>
+            <div key={t.id} className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-4 space-y-3">
+              {/* Header */}
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className={`font-semibold text-base mb-0.5 ${
+                    t.type === 'point_spend' && t.points_delta < 0
+                      ? 'text-green-400'
+                      : t.type === 'point_refund' && t.points_delta > 0
+                      ? 'text-red-400'
+                      : 'text-white'
+                  }`}>
+                    {t.type.replaceAll('_', ' ').replace(/\b\w/g, (char: string) => char.toUpperCase())}
+                  </div>
+                  <div className="text-xs text-white/50">
+                    {new Date(t.created_at).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })}
+                  </div>
+                </div>
+                <div className="ml-3">
+                  {renderStatus(t.status)}
+                </div>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-white/80">
-                <div>
-                  <div className="text-white/60">TTD</div>
-                  <div>{t.amount_ttd ? Number(t.amount_ttd).toFixed(2) : '—'}</div>
+              
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/10">
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-white/50 uppercase tracking-wide">TTD</div>
+                  <div className="text-base font-medium text-white">
+                    {t.amount_ttd ? `TTD ${Number(t.amount_ttd).toFixed(2)}` : '—'}
+                  </div>
                 </div>
-                <div>
-                  <div className="text-white/60">Points</div>
-                  <div>{t.points_delta}</div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-white/50 uppercase tracking-wide">Points</div>
+                  <div className="text-base font-semibold text-white">
+                    {t.points_delta > 0 ? '+' : ''}{t.points_delta || '—'}
+                  </div>
                 </div>
-                <div>
-                  <div className="text-white/60">Status</div>
-                  <div>{renderStatus(t.status)}</div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-white/50 uppercase tracking-wide">To</div>
+                  <div className="text-sm text-white/80">
+                    {t.type === 'point_refund' && t.points_delta > 0 
+                      ? 'You'
+                      : t.recipient_name || (t.type === 'point_spend' && t.points_delta < 0 ? 'Platform' : '—')
+                    }
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-white/50 uppercase tracking-wide">Time</div>
+                  <div className="text-sm text-white/70">
+                    {new Date(t.created_at).toLocaleTimeString('en-US', { 
+                      hour: 'numeric', 
+                      minute: '2-digit' 
+                    })}
+                  </div>
                 </div>
               </div>
+              
+              {/* Receipt Link */}
               {t.signed_url && (
-                <div className="mt-2">
-                  <a className="text-white/80 underline text-sm" href={t.signed_url} target="_blank" rel="noreferrer">View receipt</a>
+                <div className="pt-2 border-t border-white/10">
+                  <a 
+                    className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white transition-colors underline underline-offset-2" 
+                    href={t.signed_url} 
+                    target="_blank" 
+                    rel="noreferrer"
+                  >
+                    View receipt
+                  </a>
                 </div>
               )}
             </div>
           ))}
           {transactions.length === 0 && (
-            <div className="text-white/60">No transactions yet.</div>
+            <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-8 text-center">
+              <p className="text-white/60">No transactions yet.</p>
+            </div>
           )}
         </div>
       </div>

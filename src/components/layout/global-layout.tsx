@@ -148,7 +148,9 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
       <ScrollToTop />
       
       <Toaster
+        key={isMobile ? 'mobile' : 'desktop'}
         position="bottom-center"
+        offset={isMobile ? "3rem" : "0.5rem"}
         theme="dark"
         toastOptions={{
           style: {
@@ -160,8 +162,8 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
             border: '1px solid rgba(255, 255, 255, 0.2)',
             // Adjust position based on sidebar state
             marginLeft: isSidebarPinned && !isMobile ? '8rem' : '0',
-            // Adjust bottom margin on mobile for bottom navigation (48px + spacing)
-            marginBottom: isMobile ? '4rem' : '1rem',
+            // Force bottom margin on mobile to account for bottom nav
+            marginBottom: isMobile ? '3rem' : undefined,
           },
         }}
       />

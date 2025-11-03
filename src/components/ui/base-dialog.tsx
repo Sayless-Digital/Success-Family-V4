@@ -106,7 +106,7 @@ const BaseDialogContent = React.forwardRef<
         {...props}
       >
         <div ref={contentRef} className={cn("h-full overflow-hidden", scrollbarClassName)}>
-          <div className={cn("h-full p-6", contentClassName)}>
+          <div className={cn("h-full p-6 flex flex-col items-center justify-center", contentClassName)}>
             {children}
           </div>
         </div>
@@ -126,7 +126,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "flex flex-col space-y-1.5 text-center",
       className
     )}
     {...props}
@@ -140,7 +140,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "flex flex-col-reverse sm:flex-row sm:justify-center sm:space-x-2",
       className
     )}
     {...props}

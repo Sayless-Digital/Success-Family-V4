@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { signIn, signUp } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Mail, ArrowRight, Loader2 } from "lucide-react"
+import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react"
 import { toast } from "sonner"
 
 interface AuthDialogProps {
@@ -28,6 +28,57 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [showSignUpSuccess, setShowSignUpSuccess] = React.useState(false)
+  const [showSignInPassword, setShowSignInPassword] = React.useState(false)
+  const [showSignUpPassword, setShowSignUpPassword] = React.useState(false)
+  const signInPasswordRef = React.useRef<HTMLInputElement>(null)
+  const signUpPasswordRef = React.useRef<HTMLInputElement>(null)
+  const signInPasswordCursorRef = React.useRef<number | null>(null)
+  const signUpPasswordCursorRef = React.useRef<number | null>(null)
+
+  // Restore cursor position after password visibility toggle
+  React.useEffect(() => {
+    if (signInPasswordCursorRef.current !== null) {
+      const position = signInPasswordCursorRef.current
+      // Small delay to ensure input type change has been processed
+      const timer = setTimeout(() => {
+        const input = signInPasswordRef.current
+        if (input) {
+          input.focus()
+          // Try setting selection multiple times to ensure it sticks
+          input.setSelectionRange(position, position)
+          setTimeout(() => {
+            if (input && document.activeElement === input) {
+              input.setSelectionRange(position, position)
+            }
+          }, 10)
+        }
+        signInPasswordCursorRef.current = null
+      }, 10)
+      return () => clearTimeout(timer)
+    }
+  }, [showSignInPassword])
+
+  React.useEffect(() => {
+    if (signUpPasswordCursorRef.current !== null) {
+      const position = signUpPasswordCursorRef.current
+      // Small delay to ensure input type change has been processed
+      const timer = setTimeout(() => {
+        const input = signUpPasswordRef.current
+        if (input) {
+          input.focus()
+          // Try setting selection multiple times to ensure it sticks
+          input.setSelectionRange(position, position)
+          setTimeout(() => {
+            if (input && document.activeElement === input) {
+              input.setSelectionRange(position, position)
+            }
+          }, 10)
+        }
+        signUpPasswordCursorRef.current = null
+      }, 10)
+      return () => clearTimeout(timer)
+    }
+  }, [showSignUpPassword])
 
   // Update active tab when defaultTab changes
   React.useEffect(() => {
@@ -35,6 +86,8 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       setActiveTab(defaultTab)
       setError(null)
       setShowSignUpSuccess(false)
+      setShowSignInPassword(false)
+      setShowSignUpPassword(false)
     }
   }, [open, defaultTab])
 
@@ -202,15 +255,44 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
 
               <div className="space-y-2">
                 <Label htmlFor="signin-password">Password</Label>
-                <Input
-                  id="signin-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={signInData.password}
-                  onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
-                  required
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <Input
+                    ref={signInPasswordRef}
+                    id="signin-password"
+                    type={showSignInPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={signInData.password}
+                    onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
+                    required
+                    disabled={isLoading}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const input = signInPasswordRef.current
+                      if (input) {
+                        signInPasswordCursorRef.current = input.selectionStart || 0
+                        setShowSignInPassword(!showSignInPassword)
+                      } else {
+                        setShowSignInPassword(!showSignInPassword)
+                      }
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                    disabled={isLoading}
+                  >
+                    {showSignInPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error && (
@@ -276,16 +358,45 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
 
               <div className="space-y-2">
                 <Label htmlFor="signup-password">Password</Label>
-                <Input
-                  id="signup-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={signUpData.password}
-                  onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
-                  required
-                  disabled={isLoading}
-                  minLength={6}
-                />
+                <div className="relative">
+                  <Input
+                    ref={signUpPasswordRef}
+                    id="signup-password"
+                    type={showSignUpPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={signUpData.password}
+                    onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
+                    required
+                    disabled={isLoading}
+                    minLength={6}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const input = signUpPasswordRef.current
+                      if (input) {
+                        signUpPasswordCursorRef.current = input.selectionStart || 0
+                        setShowSignUpPassword(!showSignUpPassword)
+                      } else {
+                        setShowSignUpPassword(!showSignUpPassword)
+                      }
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                    disabled={isLoading}
+                  >
+                    {showSignUpPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Password must be at least 6 characters
                 </p>
