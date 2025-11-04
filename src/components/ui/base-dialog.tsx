@@ -3,9 +3,6 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
-import { useEffect, useRef } from "react"
-import { OverlayScrollbars } from 'overlayscrollbars'
-import 'overlayscrollbars/overlayscrollbars.css'
 
 import { cn } from "@/lib/utils"
 
@@ -42,55 +39,6 @@ const BaseDialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   BaseDialogContentProps
 >(({ className, children, scrollbarClassName, contentClassName, ...props }, ref) => {
-  const contentRef = useRef<HTMLDivElement>(null)
-  const scrollbarInstanceRef = useRef<OverlayScrollbars | null>(null)
-
-  // Initialize OverlayScrollbars when component mounts
-  useEffect(() => {
-    if (!contentRef.current) return
-
-    // Small delay to ensure DOM is ready
-    const timer = setTimeout(() => {
-      if (contentRef.current && !scrollbarInstanceRef.current) {
-        scrollbarInstanceRef.current = OverlayScrollbars(contentRef.current, {
-          scrollbars: {
-            theme: 'custom-overlay',
-            visibility: 'auto',
-            autoHide: 'move',
-            autoHideDelay: 200,
-            dragScroll: true,
-            clickScroll: false,
-          },
-          overflow: {
-            x: 'hidden',
-            y: 'scroll',
-          },
-          paddingAbsolute: false,
-          showNativeOverlaidScrollbars: false,
-        })
-      }
-    }, 0)
-
-    return () => {
-      clearTimeout(timer)
-      if (scrollbarInstanceRef.current) {
-        scrollbarInstanceRef.current.destroy()
-        scrollbarInstanceRef.current = null
-      }
-    }
-  }, [])
-
-  // Update scrollbar instance when content changes or dialog state changes
-  useEffect(() => {
-    if (scrollbarInstanceRef.current) {
-      // Small delay to ensure DOM updates are complete
-      const timer = setTimeout(() => {
-        scrollbarInstanceRef.current?.update()
-      }, 0)
-      return () => clearTimeout(timer)
-    }
-  }, [children])
-
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -116,7 +64,7 @@ const BaseDialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <div ref={contentRef} className={cn("flex-1 min-h-0 overflow-auto", scrollbarClassName)}>
+        <div className={cn("flex-1 min-h-0 overflow-y-auto", scrollbarClassName)}>
           <div className={cn("p-6", contentClassName)}>
             {children}
           </div>
@@ -198,4 +146,3 @@ export {
   DialogTitle,
   DialogDescription,
 }
-

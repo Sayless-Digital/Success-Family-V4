@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   StreamVideo,
@@ -40,6 +40,7 @@ import {
   Minimize2,
   PictureInPicture2,
   Loader2,
+  Settings,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -54,6 +55,28 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Slider,
+} from "@/components/ui/slider"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -119,7 +142,162 @@ function StreamInfo({ event, community }: { event: CommunityEvent; community: an
   )
 }
 
-// Draggable self-view component - portrait orientation (compact)
+// Helper to get initials from name
+function getInitials(name: string | null | undefined): string {
+  if (!name) return 'U'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) {
+    // Multiple words: first letter of first name + first letter of last name
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
+  } else if (parts.length === 1 && parts[0].length >= 2) {
+    // Single word with 2+ characters: first 2 letters
+    return parts[0].substring(0, 2).toUpperCase()
+  } else {
+    // Single character: just that character
+    return parts[0].charAt(0).toUpperCase()
+  }
+}
+
+// Microphone Visualizer Component
+function MicrophoneVisualizer({ deviceId }: { deviceId: string }) {
+  const barRef = React.useRef<HTMLDivElement>(null)
+  const audioContextRef = React.useRef<AudioContext | null>(null)
+  const analyserRef = React.useRef<AnalyserNode | null>(null)
+  const streamRef = React.useRef<MediaStream | null>(null)
+  const animationFrameRef = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    if (!deviceId) return
+
+    const setupAudio = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: deviceId } }
+        })
+        streamRef.current = stream
+
+        const audioContext = new AudioContext()
+        const analyser = audioContext.createAnalyser()
+        analyser.fftSize = 128
+        analyser.smoothingTimeConstant = 0.3
+        const source = audioContext.createMediaStreamSource(stream)
+        source.connect(analyser)
+
+        audioContextRef.current = audioContext
+        analyserRef.current = analyser
+
+        const updateLevel = () => {
+          if (!analyserRef.current || !barRef.current) {
+            animationFrameRef.current = requestAnimationFrame(updateLevel)
+            return
+          }
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount)
+          analyser.getByteFrequencyData(dataArray)
+          
+          // Get peak level instead of average for more responsive visualization
+          const peak = Math.max(...dataArray)
+          const normalized = Math.min(peak / 255, 1)
+          
+          // Direct DOM manipulation for instant updates (no React state delay)
+          barRef.current.style.width = `${normalized * 100}%`
+          animationFrameRef.current = requestAnimationFrame(updateLevel)
+        }
+
+        updateLevel()
+      } catch (error) {
+        console.warn('Could not setup microphone visualization:', error)
+      }
+    }
+
+    setupAudio()
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+      }
+    }
+  }, [deviceId])
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-2 flex-1 bg-white/10 rounded-full overflow-hidden">
+        <div
+          ref={barRef}
+          className="h-full bg-green-500"
+          style={{ width: '0%', transition: 'none' }}
+        />
+      </div>
+      <p className="text-white/60 text-xs">Active</p>
+    </div>
+  )
+}
+
+// Camera Preview Component for Settings Dialog
+function CameraPreview({ deviceId, enabled }: { deviceId: string; enabled: boolean }) {
+  const videoRef = React.useRef<HTMLVideoElement>(null)
+  const streamRef = React.useRef<MediaStream | null>(null)
+
+  React.useEffect(() => {
+    if (!enabled || !deviceId) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null
+      }
+      return
+    }
+
+    const loadStream = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } }
+        })
+        streamRef.current = stream
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play().catch(console.error)
+        }
+      } catch (error) {
+        console.warn('Could not load camera preview:', error)
+      }
+    }
+
+    loadStream()
+
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+    }
+  }, [deviceId, enabled])
+
+  if (!enabled || !deviceId) return null
+
+  return (
+    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden border border-white/20">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-cover"
+      />
+    </div>
+  )
+}
+
+// Draggable self-view component - landscape on desktop, portrait on mobile
 function DraggableSelfView({
   visible,
   isCameraEnabled,
@@ -135,173 +313,234 @@ function DraggableSelfView({
   const PADDING = 16
   const HEADER_HEIGHT = 48
   const BOTTOM_BAR_HEIGHT = 48
-  const VIDEO_WIDTH = 100
-  const VIDEO_HEIGHT = 180
+  
+  // Responsive dimensions: landscape on desktop, portrait on mobile
+  const [isDesktop, setIsDesktop] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : false
+  )
+  
+  const VIDEO_WIDTH = isDesktop ? 240 : 100
+  const VIDEO_HEIGHT = isDesktop ? 135 : 180
+  
+  // React state for position and drag state
+  const [position, setPosition] = React.useState(() => {
+    if (typeof window === 'undefined') return { x: 0, y: 0 }
+    const width = window.innerWidth >= 768 ? 240 : 100
+    const height = window.innerWidth >= 768 ? 135 : 180
+    return {
+      x: window.innerWidth - width - PADDING,
+      y: window.innerHeight - height - BOTTOM_BAR_HEIGHT - PADDING
+    }
+  })
+  
+  const [isDragging, setIsDragging] = React.useState(false)
+  const [dragOffset, setDragOffset] = React.useState({ x: 0, y: 0 })
+  const [opacity, setOpacity] = React.useState(1)
+  const [cursor, setCursor] = React.useState<'grab' | 'grabbing'>('grab')
+  const [transition, setTransition] = React.useState<string>('none')
   
   const elementRef = React.useRef<HTMLDivElement>(null)
-  const positionRef = React.useRef({
-    x: typeof window !== 'undefined' ? window.innerWidth - VIDEO_WIDTH - PADDING : 0,
-    y: typeof window !== 'undefined' ? window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING : 0
-  })
-  const offsetRef = React.useRef({ x: 0, y: 0 })
+  const animationFrameRef = React.useRef<number | null>(null)
+  const pointerIdRef = React.useRef<number | null>(null)
+  const positionRef = React.useRef(position)
+  
+  // Sync positionRef when position changes externally
+  React.useEffect(() => {
+    positionRef.current = position
+  }, [position])
   
   const { useLocalParticipant } = useCallStateHooks()
   const localParticipant = useLocalParticipant()
 
+  // Update desktop state on resize
   React.useEffect(() => {
-    const el = elementRef.current
-    if (!el) return
+    const checkDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768)
+    }
     
-    // Set initial position with hardware acceleration
-    el.style.transform = `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`
+    window.addEventListener('resize', checkDesktop)
+    checkDesktop()
     
-    let isDragging = false
-    let pointerId: number | null = null
-    
-    const getBounds = () => ({
+    return () => window.removeEventListener('resize', checkDesktop)
+  }, [])
+
+  // Update position when desktop state changes
+  React.useEffect(() => {
+    const currentWidth = isDesktop ? 240 : 100
+    const currentHeight = isDesktop ? 135 : 180
+    const bounds = {
       minX: PADDING,
       minY: HEADER_HEIGHT + PADDING,
-      maxX: window.innerWidth - VIDEO_WIDTH - PADDING,
-      maxY: window.innerHeight - VIDEO_HEIGHT - BOTTOM_BAR_HEIGHT - PADDING
+      maxX: window.innerWidth - currentWidth - PADDING,
+      maxY: window.innerHeight - currentHeight - BOTTOM_BAR_HEIGHT - PADDING
+    }
+    
+    setPosition(prev => ({
+      x: Math.min(prev.x, bounds.maxX),
+      y: Math.max(bounds.minY, Math.min(prev.y, bounds.maxY))
+    }))
+  }, [isDesktop])
+
+  // Helper to get bounds
+  const getBounds = React.useCallback(() => {
+    const currentWidth = isDesktop ? 240 : 100
+    const currentHeight = isDesktop ? 135 : 180
+    return {
+      minX: PADDING,
+      minY: HEADER_HEIGHT + PADDING,
+      maxX: window.innerWidth - currentWidth - PADDING,
+      maxY: window.innerHeight - currentHeight - BOTTOM_BAR_HEIGHT - PADDING
+    }
+  }, [isDesktop])
+
+  // Snap to corner function
+  const snapToCorner = React.useCallback(() => {
+    const bounds = getBounds()
+    const currentWidth = isDesktop ? 240 : 100
+    const currentHeight = isDesktop ? 135 : 180
+    const centerX = window.innerWidth / 2
+    const centerY = (window.innerHeight - HEADER_HEIGHT - BOTTOM_BAR_HEIGHT) / 2 + HEADER_HEIGHT
+    
+    setPosition(prev => {
+      const isLeft = prev.x + currentWidth / 2 < centerX
+      const isTop = prev.y + currentHeight / 2 < centerY
+      return {
+        x: isLeft ? bounds.minX : bounds.maxX,
+        y: isTop ? bounds.minY : bounds.maxY
+      }
     })
     
-    const snapToCorner = () => {
+    setTransition('transform 0.2s ease-out')
+    setTimeout(() => setTransition('none'), 200)
+  }, [isDesktop, getBounds])
+
+  // Update position during drag - DIRECT DOM UPDATE (no React state, no RAF delay)
+  const updatePosition = React.useCallback((clientX: number, clientY: number) => {
+    if (!elementRef.current) return
+    
+    const bounds = getBounds()
+    let x = clientX - dragOffset.x
+    let y = clientY - dragOffset.y
+    
+    x = Math.max(bounds.minX, Math.min(x, bounds.maxX))
+    y = Math.max(bounds.minY, Math.min(y, bounds.maxY))
+    
+    // Update DOM directly - zero latency, no React re-render
+    elementRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`
+    
+    // Store in ref for state sync later
+    positionRef.current = { x, y }
+  }, [dragOffset, getBounds])
+
+  // Pointer event handlers
+  const handlePointerDown = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+    pointerIdRef.current = e.pointerId
+    
+    const rect = e.currentTarget.getBoundingClientRect()
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    })
+    
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setCursor('grabbing')
+    setTransition('none')
+    setOpacity(0.9)
+  }, [])
+
+  const handlePointerMove = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // DIRECT update - no RAF delay, immediate response
+    updatePosition(e.clientX, e.clientY)
+  }, [isDragging, updatePosition])
+
+  const handlePointerUp = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    
+    setIsDragging(false)
+    
+    if (pointerIdRef.current !== null && e.currentTarget.hasPointerCapture(pointerIdRef.current)) {
+      e.currentTarget.releasePointerCapture(pointerIdRef.current)
+      pointerIdRef.current = null
+    }
+    
+    // Sync React state with final position
+    setPosition(positionRef.current)
+    
+    setCursor('grab')
+    setOpacity(1)
+    snapToCorner()
+  }, [isDragging, snapToCorner])
+
+  // Touch event handlers (fallback)
+  const handleTouchStart = React.useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (isDragging) return
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const touch = e.touches[0]
+    setIsDragging(true)
+    
+    const rect = e.currentTarget.getBoundingClientRect()
+    setDragOffset({
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top
+    })
+    
+    setTransition('none')
+    setOpacity(0.9)
+  }, [isDragging])
+
+  const handleTouchMove = React.useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const touch = e.touches[0]
+    
+    // DIRECT update - no RAF delay, immediate response
+    updatePosition(touch.clientX, touch.clientY)
+  }, [isDragging, updatePosition])
+
+  const handleTouchEnd = React.useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    e.preventDefault()
+    
+    setIsDragging(false)
+    
+    // Sync React state with final position
+    setPosition(positionRef.current)
+    
+    setOpacity(1)
+    snapToCorner()
+  }, [isDragging, snapToCorner])
+
+  // Handle window resize
+  React.useEffect(() => {
+    const handleResize = () => {
       const bounds = getBounds()
-      const centerX = window.innerWidth / 2
-      const centerY = (window.innerHeight - HEADER_HEIGHT - BOTTOM_BAR_HEIGHT) / 2 + HEADER_HEIGHT
-      
-      const isLeft = positionRef.current.x + VIDEO_WIDTH / 2 < centerX
-      const isTop = positionRef.current.y + VIDEO_HEIGHT / 2 < centerY
-      
-      positionRef.current.x = isLeft ? bounds.minX : bounds.maxX
-      positionRef.current.y = isTop ? bounds.minY : bounds.maxY
-      
-      el.style.transition = 'transform 0.2s ease-out'
-      el.style.transform = `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`
-      setTimeout(() => { el.style.transition = 'none' }, 200)
+      setPosition(prev => ({
+        x: Math.min(prev.x, bounds.maxX),
+        y: Math.max(bounds.minY, Math.min(prev.y, bounds.maxY))
+      }))
     }
     
-    const updatePosition = (clientX: number, clientY: number) => {
-      const bounds = getBounds()
-      let x = clientX - offsetRef.current.x
-      let y = clientY - offsetRef.current.y
-      
-      x = Math.max(bounds.minX, Math.min(x, bounds.maxX))
-      y = Math.max(bounds.minY, Math.min(y, bounds.maxY))
-      
-      positionRef.current.x = x
-      positionRef.current.y = y
-      
-      // Single GPU operation - critical for mobile performance
-      el.style.transform = `translate3d(${x}px, ${y}px, 0)`
-    }
-    
-    // Pointer Events (Desktop + Modern Mobile)
-    const onPointerDown = (e: PointerEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      isDragging = true
-      pointerId = e.pointerId
-      
-      const rect = el.getBoundingClientRect()
-      offsetRef.current.x = e.clientX - rect.left
-      offsetRef.current.y = e.clientY - rect.top
-      
-      el.setPointerCapture(e.pointerId)
-      el.style.cursor = 'grabbing'
-      el.style.transition = 'none'
-      
-      // Mobile: add visual feedback
-      el.style.opacity = '0.9'
-    }
-    
-    const onPointerMove = (e: PointerEvent) => {
-      if (!isDragging) return
-      e.preventDefault()
-      e.stopPropagation()
-      updatePosition(e.clientX, e.clientY)
-    }
-    
-    const onPointerUp = (e: PointerEvent) => {
-      if (!isDragging) return
-      isDragging = false
-      
-      if (pointerId !== null) {
-        el.releasePointerCapture(pointerId)
-        pointerId = null
-      }
-      
-      el.style.cursor = 'grab'
-      el.style.opacity = '1'
-      snapToCorner()
-    }
-    
-    // Touch Events (Legacy Mobile - Fallback)
-    const onTouchStart = (e: TouchEvent) => {
-      if (isDragging) return // Pointer already handling
-      e.preventDefault()
-      e.stopPropagation()
-      
-      const touch = e.touches[0]
-      isDragging = true
-      
-      const rect = el.getBoundingClientRect()
-      offsetRef.current.x = touch.clientX - rect.left
-      offsetRef.current.y = touch.clientY - rect.top
-      
-      el.style.transition = 'none'
-      el.style.opacity = '0.9'
-    }
-    
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isDragging) return
-      e.preventDefault()
-      e.stopPropagation()
-      
-      const touch = e.touches[0]
-      updatePosition(touch.clientX, touch.clientY)
-    }
-    
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!isDragging) return
-      e.preventDefault()
-      isDragging = false
-      
-      el.style.opacity = '1'
-      snapToCorner()
-    }
-    
-    const onResize = () => {
-      const bounds = getBounds()
-      positionRef.current.x = Math.min(positionRef.current.x, bounds.maxX)
-      positionRef.current.y = Math.max(bounds.minY, Math.min(positionRef.current.y, bounds.maxY))
-      el.style.transform = `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`
-    }
-    
-    // Pointer events (primary)
-    el.addEventListener('pointerdown', onPointerDown, { passive: false })
-    el.addEventListener('pointermove', onPointerMove, { passive: false })
-    el.addEventListener('pointerup', onPointerUp, { passive: false })
-    el.addEventListener('pointercancel', onPointerUp, { passive: false })
-    
-    // Touch events (fallback for older mobile browsers)
-    el.addEventListener('touchstart', onTouchStart, { passive: false })
-    el.addEventListener('touchmove', onTouchMove, { passive: false })
-    el.addEventListener('touchend', onTouchEnd, { passive: false })
-    el.addEventListener('touchcancel', onTouchEnd, { passive: false })
-    
-    window.addEventListener('resize', onResize)
-    
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [getBounds])
+
+  // Cleanup animation frame on unmount
+  React.useEffect(() => {
     return () => {
-      el.removeEventListener('pointerdown', onPointerDown)
-      el.removeEventListener('pointermove', onPointerMove)
-      el.removeEventListener('pointerup', onPointerUp)
-      el.removeEventListener('pointercancel', onPointerUp)
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-      el.removeEventListener('touchcancel', onTouchEnd)
-      window.removeEventListener('resize', onResize)
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
     }
   }, [])
 
@@ -310,24 +549,40 @@ function DraggableSelfView({
   return (
     <div
       ref={elementRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       style={{
         position: 'fixed',
         left: 0,
         top: 0,
         zIndex: 30,
-        transform: 'translate3d(0, 0, 0)',
+        // Use position from ref during drag, state only for initial render
+        transform: `translate3d(${positionRef.current.x}px, ${positionRef.current.y}px, 0)`,
+        transition,
         willChange: 'transform',
-        cursor: 'grab',
+        cursor,
+        opacity,
         touchAction: 'none',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         WebkitTouchCallout: 'none',
         WebkitTapHighlightColor: 'transparent',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
       }}
-      className="w-[100px] h-[180px] rounded-xl overflow-hidden shadow-2xl border-2 border-white/10 bg-black/20 backdrop-blur-sm"
+      className={cn(
+        "rounded-xl overflow-hidden shadow-2xl border-2 border-white/10 bg-black/20",
+        isDesktop ? "w-[240px] h-[135px]" : "w-[100px] h-[180px]"
+      )}
     >
       <div className="relative w-full h-full pointer-events-none">
-        {isCameraEnabled ? (
+        {localParticipant?.videoStream ? (
           <>
             <video
               ref={(video) => {
@@ -345,25 +600,34 @@ function DraggableSelfView({
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-contain bg-black"
+              className="w-full h-full object-cover bg-black"
             />
             
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
               <div className="absolute bottom-1.5 left-2 inline-block bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full">
                 <span className="text-white text-xs font-medium whitespace-nowrap">
-                  You
+                  {userName}
                 </span>
               </div>
             </div>
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Avatar className="h-20 w-20 border-4 border-white/20">
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-2">
+            <Avatar className={cn(
+              "border-4 border-white/20",
+              isDesktop ? "h-16 w-16" : "h-12 w-12"
+            )}>
               <AvatarImage src={userImage || undefined} alt={userName} />
-              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-2xl">
-                {userName.charAt(0).toUpperCase()}
+              <AvatarFallback className={cn(
+                "bg-gradient-to-br from-primary to-primary/70 text-white",
+                isDesktop ? "text-xl" : "text-base"
+              )}>
+                {getInitials(userName)}
               </AvatarFallback>
             </Avatar>
+            <span className="text-white text-xs font-medium text-center break-words overflow-hidden line-clamp-2 max-w-full px-1">
+              {userName}
+            </span>
           </div>
         )}
       </div>
@@ -430,7 +694,7 @@ function ParticipantVideo({
           <Avatar className="h-16 w-16 sm:h-20 sm:w-20 border-2 border-white/20">
             <AvatarImage src={participant.image} alt={participant.name} />
             <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xl sm:text-2xl">
-              {participant.name?.charAt(0).toUpperCase() || 'U'}
+              {getInitials(participant.name)}
             </AvatarFallback>
           </Avatar>
           <span className="text-white text-xs font-medium">
@@ -607,7 +871,7 @@ function StreamSidebar({
                 <Avatar className="h-10 w-10 border-2 border-white/20">
                   <AvatarImage src={participant.image} alt={participant.name} />
                   <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-sm">
-                    {participant.name?.charAt(0).toUpperCase() || 'U'}
+                    {getInitials(participant.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -673,11 +937,133 @@ function CallContent({
   const [layout, setLayout] = useState<"speaker" | "grid">("speaker")
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSelfView, setShowSelfView] = useState(true)
-  const [isMicEnabled, setIsMicEnabled] = useState(true)
-  const [isCameraEnabled, setIsCameraEnabled] = useState(true)
   const [isMicLoading, setIsMicLoading] = useState(false)
   const [isCameraLoading, setIsCameraLoading] = useState(false)
+  const [hasMicDevice, setHasMicDevice] = useState(false)
+  const [hasCameraDevice, setHasCameraDevice] = useState(false)
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([])
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedMicId, setSelectedMicId] = useState<string>('')
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('')
+  const [micSensitivity, setMicSensitivity] = useState(50) // 0-100, default 50
+  const sensitivityDisplayRef = useRef<HTMLSpanElement>(null)
+  const sensitivityValueRef = useRef(50) // Ref for real-time value (no re-renders)
+  const sensitivityRafRef = useRef<number | null>(null)
+  const sensitivityTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const router = useRouter()
+
+  // Update display immediately via DOM (no React re-render, no state)
+  const updateSensitivityDisplay = useCallback((value: number) => {
+    // Direct DOM update - zero latency
+    if (sensitivityDisplayRef.current) {
+      sensitivityDisplayRef.current.textContent = `${value}%`
+    }
+    sensitivityValueRef.current = value
+  }, [])
+
+  const commitSensitivityValue = useCallback((value: number) => {
+    // Cancel any pending updates
+    if (sensitivityTimeoutRef.current) {
+      clearTimeout(sensitivityTimeoutRef.current)
+    }
+    if (sensitivityRafRef.current) {
+      cancelAnimationFrame(sensitivityRafRef.current)
+    }
+    
+    // Commit final value to state (only on release)
+    setMicSensitivity(value)
+    updateSensitivityDisplay(value)
+  }, [updateSensitivityDisplay])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (sensitivityTimeoutRef.current) {
+        clearTimeout(sensitivityTimeoutRef.current)
+      }
+      if (sensitivityRafRef.current) {
+        cancelAnimationFrame(sensitivityRafRef.current)
+      }
+    }
+  }, [])
+
+  // Track microphone and camera state from call object
+  const getMicState = () => {
+    if (!call) return false
+    try {
+      return call.microphone.state.status === 'enabled'
+    } catch {
+      return false
+    }
+  }
+
+  const getCameraState = () => {
+    if (!call) return false
+    try {
+      return call.camera.state.status === 'enabled'
+    } catch {
+      return false
+    }
+  }
+
+  const [isMicEnabled, setIsMicEnabled] = React.useState(() => getMicState())
+  const [isCameraEnabled, setIsCameraEnabled] = React.useState(() => getCameraState())
+
+  // Poll state updates (Stream.io doesn't always expose reactive state)
+  React.useEffect(() => {
+    if (!call) return
+
+    const interval = setInterval(() => {
+      setIsMicEnabled(getMicState())
+      setIsCameraEnabled(getCameraState())
+    }, 500)
+
+    return () => clearInterval(interval)
+  }, [call])
+
+  // Check for available devices on mount and when settings dialog opens
+  const refreshDevices = React.useCallback(async () => {
+    try {
+      // Request permissions first to get device labels
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      } catch {
+        // Permissions denied, but we can still enumerate
+      }
+      
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices.filter(device => device.kind === 'audioinput')
+      const videoInputs = devices.filter(device => device.kind === 'videoinput')
+      
+      setMicDevices(audioInputs)
+      setCameraDevices(videoInputs)
+      setHasMicDevice(audioInputs.length > 0)
+      setHasCameraDevice(videoInputs.length > 0)
+      
+      // Set default selected devices
+      if (audioInputs.length > 0 && !selectedMicId) {
+        setSelectedMicId(audioInputs[0].deviceId)
+      }
+      if (videoInputs.length > 0 && !selectedCameraId) {
+        setSelectedCameraId(videoInputs[0].deviceId)
+      }
+    } catch (error) {
+      setHasMicDevice(false)
+      setHasCameraDevice(false)
+    }
+  }, [selectedMicId, selectedCameraId])
+
+  React.useEffect(() => {
+    refreshDevices()
+  }, [refreshDevices])
+
+  // Refresh devices when settings dialog opens
+  React.useEffect(() => {
+    if (showSettingsDialog) {
+      refreshDevices()
+    }
+  }, [showSettingsDialog, refreshDevices])
 
   const handleLeaveCall = async () => {
     try {
@@ -801,109 +1187,116 @@ function CallContent({
 
         {/* Bottom Controls Bar - Mobile nav style */}
         <div className="flex-shrink-0 h-12 z-20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20">
-          <div className="h-full flex items-center justify-between gap-3 px-1">
-            {/* Left: Layout toggle button */}
+          <div className="h-full flex items-center justify-between md:justify-center md:gap-8 px-1">
+            {/* Left: Layout toggle button (view control, less frequently used) */}
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setLayout(layout === "speaker" ? "grid" : "speaker")}
               className="h-10 w-10 rounded-full p-0 bg-white/10 hover:bg-white/20 text-white transition-all duration-200"
-              title={layout === "speaker" ? "Change to Grid" : "Change to Spotlight"}
+              title={layout === "speaker" ? "Spotlight mode" : "Grid mode"}
             >
               {layout === "speaker" ? (
-                <Grid3x3 className="h-4 w-4" />
-              ) : (
                 <User className="h-4 w-4" />
-              )}
-            </Button>
-
-            {/* Center: Call controls */}
-            <div className="flex items-center gap-3">
-              {/* Mic toggle */}
-              <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                if (isMicLoading) return
-                setIsMicLoading(true)
-                try {
-                  const audioTrack = call.microphone
-                  if (audioTrack.state.status === 'enabled') {
-                    await audioTrack.disable()
-                    setIsMicEnabled(false)
-                  } else {
-                    await audioTrack.enable()
-                    setIsMicEnabled(true)
-                  }
-                } catch (error) {
-                  console.error('Error toggling microphone:', error)
-                } finally {
-                  setIsMicLoading(false)
-                }
-              }}
-              disabled={isMicLoading}
-              className={cn(
-                "h-10 w-10 rounded-full p-0 transition-all duration-200",
-                isMicLoading
-                  ? "bg-white/10 text-white cursor-wait"
-                  : isMicEnabled
-                    ? "bg-white/10 hover:bg-white/20 text-white"
-                    : "bg-red-600 hover:bg-red-700 text-white"
-              )}
-              title="Toggle microphone"
-            >
-              {isMicLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isMicEnabled ? (
-                <Mic className="h-4 w-4" />
               ) : (
-                <MicOff className="h-4 w-4" />
+                <Grid3x3 className="h-4 w-4" />
               )}
             </Button>
 
-            {/* Video toggle */}
-            <Button
-                variant="ghost"
-                size="sm"
-                onClick={async () => {
-                  if (isCameraLoading) return
-                  setIsCameraLoading(true)
-                  try {
-                    const videoTrack = call.camera
-                    if (videoTrack.state.status === 'enabled') {
-                      await videoTrack.disable()
-                      setIsCameraEnabled(false)
-                    } else {
-                      await videoTrack.enable()
-                      setIsCameraEnabled(true)
+            {/* Center: Primary call controls (Mic, Camera, Leave) */}
+            <div className="flex items-center gap-2">
+              {/* Media controls group: Mic and Camera together */}
+              <div className="flex items-center gap-1.5">
+                {/* Mic toggle */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    if (isMicLoading || !hasMicDevice) return
+                    setIsMicLoading(true)
+                    try {
+                      if (isMicEnabled) {
+                        await call.microphone.disable()
+                        setIsMicEnabled(false)
+                      } else {
+                        await call.microphone.enable()
+                        setIsMicEnabled(true)
+                      }
+                    } catch (error) {
+                      console.warn('Could not toggle microphone:', error)
+                      setIsMicEnabled(false)
+                    } finally {
+                      setIsMicLoading(false)
                     }
-                  } catch (error) {
-                    console.error('Error toggling camera:', error)
-                  } finally {
-                    setIsCameraLoading(false)
-                  }
-                }}
-                disabled={isCameraLoading}
-                className={cn(
-                  "h-10 w-10 rounded-full p-0 transition-all duration-200",
-                  isCameraLoading
-                    ? "bg-white/10 text-white cursor-wait"
-                    : isCameraEnabled
-                      ? "bg-white/10 hover:bg-white/20 text-white"
-                      : "bg-red-600 hover:bg-red-700 text-white"
-                )}
-                title="Toggle camera"
-              >
-                {isCameraLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isCameraEnabled ? (
-                  <Video className="h-4 w-4" />
-                ) : (
-                  <VideoOff className="h-4 w-4" />
-                )}
-              </Button>
+                  }}
+                  disabled={isMicLoading || !hasMicDevice}
+                  className={cn(
+                    "h-10 w-10 rounded-full p-0 transition-all duration-200",
+                    !hasMicDevice
+                      ? "bg-white/5 text-white/30 cursor-not-allowed"
+                      : isMicLoading
+                        ? "bg-white/10 text-white cursor-wait"
+                        : isMicEnabled
+                          ? "bg-white/10 hover:bg-white/20 text-white"
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                  )}
+                  title={!hasMicDevice ? "No microphone available" : isMicEnabled ? "Mute microphone" : "Unmute microphone"}
+                >
+                  {isMicLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isMicEnabled ? (
+                    <Mic className="h-4 w-4" />
+                  ) : (
+                    <MicOff className="h-4 w-4" />
+                  )}
+                </Button>
 
-              {/* Leave/End call button */}
+                {/* Video toggle */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    if (isCameraLoading || !hasCameraDevice) return
+                    setIsCameraLoading(true)
+                    try {
+                      if (isCameraEnabled) {
+                        await call.camera.disable()
+                        setIsCameraEnabled(false)
+                      } else {
+                        await call.camera.enable()
+                        setIsCameraEnabled(true)
+                      }
+                    } catch (error) {
+                      console.warn('Could not toggle camera:', error)
+                      setIsCameraEnabled(false)
+                    } finally {
+                      setIsCameraLoading(false)
+                    }
+                  }}
+                  disabled={isCameraLoading || !hasCameraDevice}
+                  className={cn(
+                    "h-10 w-10 rounded-full p-0 transition-all duration-200",
+                    !hasCameraDevice
+                      ? "bg-white/5 text-white/30 cursor-not-allowed"
+                      : isCameraLoading
+                        ? "bg-white/10 text-white cursor-wait"
+                        : isCameraEnabled
+                          ? "bg-white/10 hover:bg-white/20 text-white"
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                  )}
+                  title={!hasCameraDevice ? "No camera available" : isCameraEnabled ? "Turn off camera" : "Turn on camera"}
+                >
+                  {isCameraLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isCameraEnabled ? (
+                    <Video className="h-4 w-4" />
+                  ) : (
+                    <VideoOff className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              {/* Leave/End call button (primary action, most prominent) */}
               {isOwner ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -940,8 +1333,20 @@ function CallContent({
               )}
             </div>
 
-            {/* Right: Self-view toggle and People buttons */}
-            <div className="flex items-center gap-2">
+            {/* Right: Secondary controls (Settings, Self-view, People) */}
+            <div className="flex items-center gap-1.5">
+              {/* Settings button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSettingsDialog(true)}
+                className="h-10 w-10 rounded-full p-0 bg-white/10 hover:bg-white/20 text-white transition-all duration-200"
+                title="Settings"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+
+              {/* Self-view toggle */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -956,6 +1361,7 @@ function CallContent({
                 )}
               </Button>
               
+              {/* People button */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -980,6 +1386,253 @@ function CallContent({
           onClose={() => setShowSidebar(false)}
           activeTab={sidebarTab}
         />
+
+        {/* Settings Dialog */}
+        <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white text-xl font-semibold">Settings</DialogTitle>
+            </DialogHeader>
+            
+            <Tabs defaultValue="microphone" className="w-full mt-6">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="microphone" className="flex items-center gap-2">
+                  <Mic className="h-4 w-4" />
+                  <span>Microphone</span>
+                </TabsTrigger>
+                <TabsTrigger value="camera" className="flex items-center gap-2">
+                  <Video className="h-4 w-4" />
+                  <span>Camera</span>
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="microphone" className="mt-4 space-y-4">
+                <div className="space-y-3">
+                  {/* Status and Enable/Disable */}
+                  <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
+                    <div className="flex items-center gap-3">
+                      <Mic className="h-5 w-5 text-white/70" />
+                      <div>
+                        <p className="text-white font-medium text-sm">Microphone Status</p>
+                        <p className="text-white/60 text-xs">
+                          {hasMicDevice 
+                            ? (isMicEnabled ? "Enabled" : "Disabled") 
+                            : "No device available"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        if (isMicLoading || !hasMicDevice) return
+                        setIsMicLoading(true)
+                        try {
+                          if (isMicEnabled) {
+                            await call.microphone.disable()
+                            setIsMicEnabled(false)
+                          } else {
+                            await call.microphone.enable()
+                            setIsMicEnabled(true)
+                          }
+                        } catch (error) {
+                          console.warn('Could not toggle microphone:', error)
+                          setIsMicEnabled(false)
+                          toast.error('Failed to toggle microphone')
+                        } finally {
+                          setIsMicLoading(false)
+                        }
+                      }}
+                      disabled={isMicLoading || !hasMicDevice}
+                      className={cn(
+                        "h-8 px-3 text-xs",
+                        isMicEnabled
+                          ? "bg-red-600 hover:bg-red-700 text-white"
+                          : "bg-white/10 hover:bg-white/20 text-white"
+                      )}
+                    >
+                      {isMicLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : isMicEnabled ? (
+                        "Disable"
+                      ) : (
+                        "Enable"
+                      )}
+                    </Button>
+                  </div>
+                  
+                  {/* Device Selection */}
+                  <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                    <p className="text-white font-medium text-sm mb-3">Device Selection</p>
+                    {micDevices.length > 0 ? (
+                      <Select
+                        value={selectedMicId}
+                        onValueChange={async (deviceId) => {
+                          setSelectedMicId(deviceId)
+                          // Store preference - will be used when enabling next time
+                          toast.success('Microphone device preference saved')
+                        }}
+                        disabled={!hasMicDevice}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select microphone" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {micDevices.map((device) => (
+                            <SelectItem key={device.deviceId} value={device.deviceId}>
+                              {device.label || `Microphone ${micDevices.indexOf(device) + 1}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-white/60 text-xs">No devices available</p>
+                    )}
+                  </div>
+                  
+                  {/* Microphone Sensitivity */}
+                  {hasMicDevice && (
+                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-white font-medium text-sm">Sensitivity</p>
+                        <span ref={sensitivityDisplayRef} className="text-white/60 text-xs">{micSensitivity}%</span>
+                      </div>
+                      <Slider
+                        key={`sensitivity-${micSensitivity}`}
+                        defaultValue={[micSensitivity]}
+                        onValueChange={(value) => {
+                          // Synchronous, direct DOM update - no async, no React
+                          const newValue = value[0]
+                          if (sensitivityDisplayRef.current) {
+                            sensitivityDisplayRef.current.textContent = `${newValue}%`
+                          }
+                          sensitivityValueRef.current = newValue
+                        }}
+                        onValueCommit={(value) => {
+                          // Only update state when user releases (commits)
+                          commitSensitivityValue(value[0])
+                        }}
+                        min={0}
+                        max={100}
+                        step={1}
+                        className="w-full slider-white"
+                      />
+                      <div className="flex items-center justify-between mt-2 text-xs text-white/50">
+                        <span>Low</span>
+                        <span>High</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Microphone Preview */}
+                  {isMicEnabled && hasMicDevice && selectedMicId && (
+                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                      <p className="text-white font-medium text-sm mb-3">Microphone Preview</p>
+                      <MicrophoneVisualizer deviceId={selectedMicId} />
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="camera" className="mt-4 space-y-4">
+                <div className="space-y-3">
+                  {/* Status and Enable/Disable */}
+                  <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
+                    <div className="flex items-center gap-3">
+                      <Video className="h-5 w-5 text-white/70" />
+                      <div>
+                        <p className="text-white font-medium text-sm">Camera Status</p>
+                        <p className="text-white/60 text-xs">
+                          {hasCameraDevice 
+                            ? (isCameraEnabled ? "Enabled" : "Disabled") 
+                            : "No device available"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        if (isCameraLoading || !hasCameraDevice) return
+                        setIsCameraLoading(true)
+                        try {
+                          if (isCameraEnabled) {
+                            await call.camera.disable()
+                            setIsCameraEnabled(false)
+                          } else {
+                            await call.camera.enable()
+                            setIsCameraEnabled(true)
+                          }
+                        } catch (error) {
+                          console.warn('Could not toggle camera:', error)
+                          setIsCameraEnabled(false)
+                          toast.error('Failed to toggle camera')
+                        } finally {
+                          setIsCameraLoading(false)
+                        }
+                      }}
+                      disabled={isCameraLoading || !hasCameraDevice}
+                      className={cn(
+                        "h-8 px-3 text-xs",
+                        isCameraEnabled
+                          ? "bg-red-600 hover:bg-red-700 text-white"
+                          : "bg-white/10 hover:bg-white/20 text-white"
+                      )}
+                    >
+                      {isCameraLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : isCameraEnabled ? (
+                        "Disable"
+                      ) : (
+                        "Enable"
+                      )}
+                    </Button>
+                  </div>
+                  
+                  {/* Device Selection */}
+                  <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                    <p className="text-white font-medium text-sm mb-3">Device Selection</p>
+                    {cameraDevices.length > 0 ? (
+                      <Select
+                        value={selectedCameraId}
+                        onValueChange={async (deviceId) => {
+                          setSelectedCameraId(deviceId)
+                          // Store preference - will be used when enabling next time
+                          toast.success('Camera device preference saved')
+                        }}
+                        disabled={!hasCameraDevice}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select camera" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cameraDevices.map((device) => (
+                            <SelectItem key={device.deviceId} value={device.deviceId}>
+                              {device.label || `Camera ${cameraDevices.indexOf(device) + 1}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-white/60 text-xs">No devices available</p>
+                    )}
+                  </div>
+                  
+                  {/* Camera Preview */}
+                  {isCameraEnabled && hasCameraDevice && selectedCameraId && (
+                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                      <p className="text-white font-medium text-sm mb-3">Camera Preview</p>
+                      <CameraPreview
+                        deviceId={selectedCameraId}
+                        enabled={isCameraEnabled}
+                      />
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </DialogContent>
+        </Dialog>
       </div>
     </StreamCall>
   )
@@ -1059,8 +1712,16 @@ export default function StreamView({
         const callId = event.stream_call_id || event.id
         const streamCall = streamClient.call('default', callId)
 
-        // Join call
+        // Join call with camera and mic disabled by default to prevent errors if devices aren't available
         await streamCall.join({ create: true })
+        
+        // Disable camera and mic after joining
+        try {
+          await streamCall.microphone.disable().catch(() => {})
+          await streamCall.camera.disable().catch(() => {})
+        } catch {
+          // Silently handle - devices might not be available
+        }
 
         if (!mounted) {
           await streamCall.leave().catch(console.error)

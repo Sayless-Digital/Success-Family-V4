@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2, Video } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -223,44 +224,47 @@ export default function FeedView({
     }
   }, [sortedPosts])
 
-  // Real-time subscription for boost counts
+  // Real-time subscription for boost counts - OPTIMIZED with batching and debouncing
   React.useEffect(() => {
     if (!community?.id || posts.length === 0) return
 
-    // Capture current user ID at subscription time
     const currentUserId = user?.id
+    const updateQueue = new Map<string, { count: number; isCurrentUser: boolean; eventType: string }>()
+    let updateTimeout: NodeJS.Timeout | null = null
     
-    // Helper function to refresh all post boost counts
-    const refreshAllBoostCounts = async () => {
-      // Get current posts from state using a ref-like pattern
-      let currentPosts: typeof posts = []
-      setPosts((prev) => {
-        currentPosts = prev
-        return prev
-      })
+    // Debounced batch update function
+    const flushUpdates = () => {
+      if (updateQueue.size === 0) return
       
-      // Wait a bit for DELETE transaction to commit
-      await new Promise(resolve => setTimeout(resolve, 200))
+      const updates = Array.from(updateQueue.entries())
+      updateQueue.clear()
       
-      // Fetch all counts
-      const results = await Promise.all(
-        currentPosts.map(async (post) => {
-          const { data: count, error } = await supabase.rpc('get_post_boost_count', { p_post_id: post.id })
-          return { postId: post.id, count: (!error && count !== null) ? count : post.boost_count }
-        })
-      )
-      
-      // Update all posts at once
-      setPosts((prevPosts) => {
-        return prevPosts.map((p) => {
-          const result = results.find((r) => r.postId === p.id)
-          if (result && result.count !== p.boost_count) {
-            console.log(`🔄 Refreshed boost count for ${p.id}: ${p.boost_count} -> ${result.count}`)
-            return { ...p, boost_count: result.count }
+      setPosts(prevPosts => {
+        return prevPosts.map(p => {
+          const update = updates.find(([id]) => id === p.id)
+          if (!update) return p
+          
+          const [postId, { count, isCurrentUser, eventType }] = update
+          
+          if (isCurrentUser) {
+            return {
+              ...p,
+              boost_count: count,
+              user_has_boosted: eventType === 'INSERT',
+              can_unboost: eventType === 'INSERT'
+            }
           }
-          return p
+          return { ...p, boost_count: count }
         })
       })
+    }
+    
+    // Schedule batch update
+    const scheduleUpdate = (postId: string, count: number, isCurrentUser: boolean, eventType: string) => {
+      updateQueue.set(postId, { count, isCurrentUser, eventType })
+      
+      if (updateTimeout) clearTimeout(updateTimeout)
+      updateTimeout = setTimeout(flushUpdates, 100) // 100ms debounce
     }
     
     const channel = supabase
@@ -273,104 +277,29 @@ export default function FeedView({
           table: 'post_boosts'
         },
         async (payload) => {
-          console.log('🔥 Realtime event:', payload.eventType, 'Post:', (payload.new as any)?.post_id || (payload.old as any)?.post_id, 'User:', (payload.new as any)?.user_id || (payload.old as any)?.user_id)
-          console.log('📦 Full payload:', JSON.stringify(payload, null, 2))
-          
-          // Get post_id and user_id from the event
           const postId = (payload.new as any)?.post_id || (payload.old as any)?.post_id
           const eventUserId = (payload.new as any)?.user_id || (payload.old as any)?.user_id
           
-          // Handle DELETE events that don't include old data (RLS/realtime issue)
-          if (payload.eventType === 'DELETE' && !postId) {
-            console.log('⚠️ DELETE event without post_id - refreshing all post boost counts')
-            await refreshAllBoostCounts()
-            return
-          }
+          if (!postId) return
           
-          // Only process if we have a post ID
-          if (!postId) {
-            console.log('⏭️  Skipping update - missing postId')
-            return
-          }
-          
-          // For DELETE, add delay to ensure DB transaction commits and count is accurate
+          // Add small delay for DELETE to ensure DB consistency
           if (payload.eventType === 'DELETE') {
-            console.log('⏳ Waiting 200ms for DELETE transaction to commit...')
-            await new Promise(resolve => setTimeout(resolve, 200))
+            await new Promise(resolve => setTimeout(resolve, 150))
           }
           
-          // Fetch updated boost count (VOLATILE function ensures fresh data)
-          // Retry logic for DELETE events to ensure accurate count
-          let count: number | null = null
-          let error: any = null
+          // Fetch updated count
+          const { data: count, error } = await supabase.rpc('get_post_boost_count', { p_post_id: postId })
           
-          for (let attempt = 0; attempt < (payload.eventType === 'DELETE' ? 3 : 1); attempt++) {
-            const result = await supabase.rpc('get_post_boost_count', { p_post_id: postId })
-            count = result.data
-            error = result.error
-            
-            console.log(`📊 Fetched boost count for ${postId} (attempt ${attempt + 1}):`, count, error ? `Error: ${error.message}` : '')
-            
-            if (!error && count !== null) {
-              break
-            }
-            
-            // Wait a bit before retrying (only for DELETE)
-            if (attempt < 2 && payload.eventType === 'DELETE') {
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-          }
-          
-          if (error) {
-            console.error('❌ Error fetching boost count after retries:', error)
-            return
-          }
-          
-          if (count === null) {
-            console.log('⏭️  Skipping update - count is null after retries')
-            return
-          }
+          if (error || count === null) return
           
           const isCurrentUser = currentUserId && eventUserId === currentUserId
-          console.log('👤 Is current user?', isCurrentUser, 'User ID:', currentUserId, 'Event user:', eventUserId)
-          
-          // Always update the count - use setPosts to check if post exists and update
-          setPosts(prevPosts => {
-            // Check if post exists in current feed
-            const postExists = prevPosts.some(p => p.id === postId)
-            if (!postExists) {
-              console.log('⏭️  Skipping update - post not in current feed')
-              return prevPosts
-            }
-            
-            // Update the post
-            const updated = prevPosts.map(p => {
-              if (p.id === postId) {
-                console.log('🔄 Updating post', postId, 'from count', p.boost_count, 'to', count, 'eventType:', payload.eventType)
-                // If this is the current user's action, update their boost status
-                if (isCurrentUser) {
-                  console.log('✅ Updating current user boost status:', payload.eventType === 'INSERT' ? 'BOOSTED' : 'UNBOOSTED')
-                  return {
-                    ...p,
-                    boost_count: count,
-                    user_has_boosted: payload.eventType === 'INSERT',
-                    can_unboost: payload.eventType === 'INSERT'
-                  }
-                }
-                // For other users' actions or when we can't determine user, always update the count
-                console.log('👥 Updating count only (other user or unknown)')
-                return { ...p, boost_count: count }
-              }
-              return p
-            })
-            console.log('📝 State updated successfully')
-            return updated
-          })
+          scheduleUpdate(postId, count, isCurrentUser, payload.eventType)
         }
       )
       .subscribe()
 
     return () => {
+      if (updateTimeout) clearTimeout(updateTimeout)
       supabase.removeChannel(channel)
     }
   }, [community?.id, posts.length, user?.id])

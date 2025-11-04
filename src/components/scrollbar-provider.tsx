@@ -1,62 +1,18 @@
 "use client"
 
-import { useEffect, useRef, useState } from 'react'
-import { usePathname } from 'next/navigation'
-import { OverlayScrollbars } from 'overlayscrollbars'
-import 'overlayscrollbars/overlayscrollbars.css'
+import { ReactNode } from 'react'
 
 interface ScrollbarProviderProps {
-  children: React.ReactNode
+  children: ReactNode
 }
 
+/**
+ * Lightweight scrollbar provider using native CSS
+ * Removed OverlayScrollbars for better performance
+ */
 export function ScrollbarProvider({ children }: ScrollbarProviderProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const instanceRef = useRef<OverlayScrollbars | null>(null)
-  const pathname = usePathname()
-  const [isClient, setIsClient] = useState(false)
-
-  useEffect(() => {
-    setIsClient(true)
-  }, [])
-
-  useEffect(() => {
-    if (!isClient) return
-
-    if (containerRef.current && !instanceRef.current) {
-      instanceRef.current = OverlayScrollbars(containerRef.current, {
-        scrollbars: {
-          theme: 'custom-overlay',
-          visibility: 'auto',
-          autoHide: 'move',
-          autoHideDelay: 200,
-          dragScroll: true,
-          clickScroll: false,
-        },
-        overflow: {
-          x: 'hidden',
-          y: 'scroll',
-        },
-        paddingAbsolute: false,
-        showNativeOverlaidScrollbars: false,
-      })
-    }
-
-    return () => {
-      if (instanceRef.current) {
-        instanceRef.current.destroy()
-        instanceRef.current = null
-      }
-    }
-  }, [isClient])
-
-  useEffect(() => {
-    if (instanceRef.current && isClient) {
-      instanceRef.current.update()
-    }
-  }, [pathname, isClient])
-
   return (
-    <div ref={containerRef} className="h-screen w-full">
+    <div className="h-screen w-full overflow-hidden">
       {children}
     </div>
   )

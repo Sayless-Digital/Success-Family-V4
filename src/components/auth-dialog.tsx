@@ -231,7 +231,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
               </div>
             </DialogHeader>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "signin" | "signup")} className="w-full mt-6">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "signin" | "signup")} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="signin">Sign In</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>

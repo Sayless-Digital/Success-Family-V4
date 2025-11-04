@@ -172,105 +172,54 @@
     color: var(--foreground);
   }
   
-  /* Hide native scrollbar to use OverlayScrollbars */
-  html,
-  body {
-    overflow: hidden !important;
-  }
-  
-  /* Hide native scrollbars everywhere - OverlayScrollbars handles scrolling */
+  /* Custom Native Scrollbar Styling - Lightweight and performant */
   * {
-    scrollbar-width: none !important; /* Firefox */
-    -ms-overflow-style: none !important; /* IE/Edge */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
   }
   
   *::-webkit-scrollbar {
-    display: none !important; /* Chrome/Safari */
-  }
-
-  /* Custom Glass-Styled Scrollbar for OverlayScrollbars */
-  .os-scrollbar {
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  .os-scrollbar-vertical {
-    position: absolute !important;
-    right: 0 !important;
-    top: 48px !important;
-    bottom: 0 !important;
-    width: 8px !important;
-    z-index: 900 !important;
-  }
-
-  /* Mobile: thinner scrollbar */
-  @media (max-width: 768px) {
-    .os-scrollbar-vertical {
-      width: 4px !important;
-    }
-  }
-
-  .os-scrollbar > .os-scrollbar-track {
-    background: transparent !important;
-    width: 8px !important;
-    padding: 0 !important;
-  }
-
-  /* Mobile: thinner scrollbar track */
-  @media (max-width: 768px) {
-    .os-scrollbar > .os-scrollbar-track {
-      width: 4px !important;
-    }
-  }
-
-  .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle {
-    background: rgba(255, 255, 255, 0.3) !important;
-    border-radius: 10px !important;
-    backdrop-filter: blur(10px) !important;
-    width: 8px !important;
-    min-height: 40px !important;
-  }
-
-  /* Mobile: thinner scrollbar handle */
-  @media (max-width: 768px) {
-    .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle {
-      width: 4px !important;
-      border-radius: 2px !important;
-      min-height: 30px !important;
-    }
-  }
-
-  .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle:hover {
-    background: rgba(255, 255, 255, 0.5) !important;
-  }
-
-  .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle:active {
-    background: rgba(255, 255, 255, 0.6) !important;
-  }
-
-  .os-viewport {
-    margin-right: 0 !important;
-    padding-right: 0 !important;
-  }
-
-  .os-host {
-    padding-right: 0 !important;
-    overflow: hidden !important;
-    -ms-overflow-style: none !important;
-    scrollbar-width: none !important;
+    width: 8px;
+    height: 8px;
   }
   
-  /* Hide native scrollbar that might appear */
-  .os-host::-webkit-scrollbar {
-    display: none !important;
+  *::-webkit-scrollbar-track {
+    background: transparent;
   }
-
-  .os-content-glue {
-    display: none !important;
+  
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
   }
-
-  .os-host-overflow {
-    margin-right: 0 !important;
+  
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
+  
+  *::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.6);
+  }
+  
+  /* Mobile: thinner scrollbar */
+  @media (max-width: 768px) {
+    * {
+      scrollbar-width: thin;
+    }
+    
+    *::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    
+    *::-webkit-scrollbar-thumb {
+      border-radius: 2px;
+    }
+  }
+  
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
   }
 }
 
@@ -524,4 +473,65 @@
               drop-shadow(0 0 32px rgba(255, 255, 255, 0.15));
     }
   }
+
+  /* Optimize slider performance for mobile */
+  [data-radix-slider-root] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-touch-callout: none !important;
+    contain: layout style paint;
+  }
+
+  [data-radix-slider-track] {
+    contain: layout style paint;
+  }
+
+  [data-radix-slider-thumb] {
+    touch-action: none !important;
+    will-change: transform !important;
+    transform: translateZ(0) !important;
+    -webkit-transform: translateZ(0) !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+    transition: none !important;
+    pointer-events: auto !important;
+  }
+
+  [data-radix-slider-root]:active [data-radix-slider-thumb],
+  [data-radix-slider-root][data-state="dragging"] [data-radix-slider-thumb] {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  [data-radix-slider-range] {
+    will-change: width !important;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transition: none !important;
+  }
+
+  [data-radix-slider-root]:active [data-radix-slider-thumb],
+  [data-radix-slider-root]:active [data-radix-slider-range],
+  [data-radix-slider-root][data-state="dragging"] [data-radix-slider-thumb],
+  [data-radix-slider-root][data-state="dragging"] [data-radix-slider-range] {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* Mobile-specific optimizations */
+  @media (hover: none) and (pointer: coarse) {
+    [data-radix-slider-root] {
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    [data-radix-slider-thumb] {
+      -webkit-user-drag: none;
+      user-drag: none;
+    }
+  }
+
 }
