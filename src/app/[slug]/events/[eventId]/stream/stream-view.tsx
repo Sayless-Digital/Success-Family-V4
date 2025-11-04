@@ -595,61 +595,30 @@ function DraggableSelfView({
       )}
     >
       <div className="relative w-full h-full pointer-events-none">
-        {localParticipant?.videoStream ? (
-          <>
-            <video
-              ref={(video) => {
-                if (video && localParticipant.videoStream) {
-                  if (video.srcObject !== localParticipant.videoStream) {
-                    video.srcObject = localParticipant.videoStream
-                    video.play().catch((error) => {
-                      if (error.name !== 'AbortError') {
-                        console.error('Error playing video:', error)
-                      }
-                    })
-                  }
-                }
-              }}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover bg-black"
-            />
-            
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
-              <div className="absolute bottom-1.5 left-2 inline-block bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full">
-                <span className="text-white text-xs font-medium whitespace-nowrap">
-                  {userName}
-                </span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-2">
-            <Avatar className={cn(
-              "border-4 border-white/20",
-              isDesktop ? "h-16 w-16" : "h-12 w-12"
-            )}>
-              <AvatarImage src={userImage || undefined} alt={userName} />
-              <AvatarFallback className={cn(
-                "bg-gradient-to-br from-primary to-primary/70 text-white",
-                isDesktop ? "text-xl" : "text-base"
-              )}>
-                {getInitials(userName)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-white text-xs font-medium text-center break-words overflow-hidden line-clamp-2 max-w-full px-1">
+        {/* Use GetStream's ParticipantView for reliable video rendering with custom styles */}
+        <div className="absolute inset-0 w-full h-full stream-participant-wrapper stream-preview-small">
+          <ParticipantView
+            participant={localParticipant}
+            className="w-full h-full"
+            trackType="videoTrack"
+          />
+        </div>
+        
+        {/* Name overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
+          <div className="absolute bottom-1.5 left-2 inline-block bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full">
+            <span className="text-white text-xs font-medium whitespace-nowrap">
               {userName}
             </span>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
 }
 
 // Custom Participant Video Component
-// Uses GetStream's ParticipantView for reliable video handling, wrapped with custom styling
+// Uses GetStream's ParticipantView for reliable video, but with custom styling overlays
 function ParticipantVideo({
   participant,
   isHost = false,
@@ -659,26 +628,34 @@ function ParticipantVideo({
   isHost?: boolean
   call?: Call
 }) {
-  // Check if video is published
-  const hasPublishedVideo = participant.publishedTracks && 
-                            Array.isArray(participant.publishedTracks) && 
-                            participant.publishedTracks.includes('videoTrack')
-  const hasVideo = !!participant.videoStream || hasPublishedVideo || !!(participant as any).videoTrack
+  const containerRef = React.useRef<HTMLDivElement>(null)
+
+  // Check if video/audio tracks are published
+  const publishedTracks = participant.publishedTracks as Set<string> | string[] | undefined
+  const hasPublishedVideo = publishedTracks 
+    ? (publishedTracks instanceof Set ? publishedTracks.has('videoTrack') : publishedTracks.includes('videoTrack'))
+    : !!participant.videoStream || !!(participant as any).videoTrack
   
-  // Get connection quality (if available)
-  const networkQuality = (participant as any).networkQuality || 'unsupported'
+  const hasAudioTrack = publishedTracks
+    ? (publishedTracks instanceof Set ? publishedTracks.has('audioTrack') : publishedTracks.includes('audioTrack'))
+    : !!participant.audioStream || !!(participant as any).audioTrack
 
   return (
-    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border-2 border-white/10 backdrop-blur-sm">
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full bg-black rounded-lg overflow-hidden border-2 border-white/10 backdrop-blur-sm"
+    >
       {/* Use GetStream's ParticipantView for reliable video rendering */}
-      <ParticipantView
-        participant={participant}
-        className="w-full h-full"
-        // Disable default styling so we can apply our own
-        trackType="videoTrack"
-      />
+      {/* CSS customizations are in globals.css to make avatars round */}
+      <div className="absolute inset-0 w-full h-full stream-participant-wrapper">
+        <ParticipantView
+          participant={participant}
+          className="w-full h-full"
+          trackType="videoTrack"
+        />
+      </div>
       
-      {/* Custom overlays on top of GetStream component */}
+      {/* Custom overlays on top */}
       {/* Name overlay */}
       <div className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md max-w-[calc(100%-12px)] z-10">
         {isHost && (
@@ -692,40 +669,10 @@ function ParticipantVideo({
         </span>
       </div>
       
-      {/* Connection quality indicator */}
-      {networkQuality === 'poor' && (
-        <div className="absolute top-2 left-2 bg-yellow-500/90 backdrop-blur-sm rounded-full p-1.5 z-10" title="Poor connection">
-          <Signal className="h-3 w-3 text-white" />
-        </div>
-      )}
-      
       {/* Muted indicator */}
-      {!(participant.audioStream || (participant.publishedTracks && Array.isArray(participant.publishedTracks) && participant.publishedTracks.includes('audioTrack'))) && (
+      {!hasAudioTrack && (
         <div className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm rounded-full p-2 z-10">
           <MicOff className="h-4 w-4 text-white" />
-        </div>
-      )}
-      
-      {/* No video fallback - show avatar when video is not available */}
-      {!hasVideo && (
-        <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-black/50">
-          <Avatar className="h-16 w-16 sm:h-20 sm:w-20 border-2 border-white/20">
-            <AvatarImage src={participant.image} alt={participant.name} />
-            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xl sm:text-2xl">
-              {getInitials(participant.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col items-center gap-1">
-            {isHost && (
-              <Badge className="bg-white/20 text-white text-[10px] px-1.5 py-0 h-4 border-0">
-                Host
-              </Badge>
-            )}
-            <span className="text-white text-xs font-medium">
-              {participant.name || 'Unknown'}
-              {participant.isLocalParticipant && ' (You)'}
-            </span>
-          </div>
         </div>
       )}
     </div>
@@ -734,16 +681,14 @@ function ParticipantVideo({
 
 // Custom Speaker Layout - One main speaker, others in sidebar
 function CustomSpeakerLayout({ ownerId, call }: { ownerId: string; call: Call }) {
-  const { useParticipants, useDominantSpeaker } = useCallStateHooks()
+  const { useParticipants } = useCallStateHooks()
   const participants = useParticipants()
-  const dominantSpeaker = useDominantSpeaker()
   
   // Prioritize the host/owner as the main spotlight participant
-  // 1. Dominant speaker (whoever is currently speaking)
-  // 2. Owner with video
-  // 3. Owner without video
-  // 4. Any participant with video
-  // 5. Finally, just first participant
+  // 1. First try to find owner with video
+  // 2. Then try owner without video
+  // 3. Then any participant with video
+  // 4. Finally, just first participant
   const ownerParticipant = participants.find(p => p.userId === ownerId)
   
   // Helper to check if participant has video (check multiple properties)
@@ -754,9 +699,7 @@ function CustomSpeakerLayout({ ownerId, call }: { ownerId: string; call: Call })
              p.videoTrack)
   }
   
-  // Prioritize: dominant speaker > owner > anyone with video
   const mainParticipant = 
-    (dominantSpeaker && participants.find(p => p.sessionId === dominantSpeaker.sessionId)) ||
     (ownerParticipant && hasVideo(ownerParticipant) ? ownerParticipant : null) ||
     ownerParticipant ||
     participants.find(p => hasVideo(p)) ||
@@ -1190,22 +1133,7 @@ function CallContent({
 
           {/* Video Layout */}
         <div className="flex-1 relative min-h-0 z-10">
-          {/* Set viewport for performance optimization - only subscribe to visible videos */}
-          <div 
-            id="video-viewport" 
-            className="absolute inset-0"
-            ref={(el) => {
-              if (el && call) {
-                // Set viewport for visibility tracking optimization
-                // This tells the SDK to only subscribe to videos visible in this container
-                try {
-                  call.setViewport(el)
-                } catch (error) {
-                  console.error('Error setting viewport:', error)
-                }
-              }
-            }}
-          >
+          <div className="absolute inset-0">
             {layout === "speaker" ? (
               <CustomSpeakerLayout ownerId={event.owner_id} call={call} />
             ) : (

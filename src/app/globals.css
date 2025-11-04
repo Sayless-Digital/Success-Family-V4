@@ -535,3 +535,126 @@
   }
 
 }
+
+/* GetStream ParticipantView customizations */
+/* Make GetStream avatars round instead of square - ONLY target actual avatar images, NOT containers */
+.stream-participant-wrapper .str-video__participant-avatar img,
+.stream-participant-wrapper .str-video__avatar img,
+.stream-participant-wrapper [class*="participant-avatar"] img,
+.stream-participant-wrapper [class*="avatar"] img,
+.stream-participant-wrapper .str-video__participant-view [class*="avatar"] img,
+.stream-participant-wrapper .str-video__participant-view [class*="placeholder"] img,
+/* Target img elements that are avatars (not video streams) */
+.stream-participant-wrapper .str-video__participant-view img:not([src*="blob:"]):not([src*="mediastream"]):not(video) {
+  border-radius: 9999px !important;
+  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  overflow: hidden !important;
+}
+
+/* Style GetStream's avatar fallback using CSS custom properties approach */
+/* GetStream video SDK may support CSS variables - apply platform styling via CSS variables if available */
+.stream-participant-wrapper {
+  /* Use CSS custom properties if GetStream supports them */
+  --str-video__avatar-border-radius: 9999px;
+  --str-video__avatar-background: linear-gradient(to bottom right, oklch(0.5149 0.2903 287.7764), oklch(0.5149 0.2903 287.7764 / 0.7));
+  --str-video__avatar-color: oklch(1.0000 0 0);
+  --str-video__avatar-border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Direct styling approach - only style when element doesn't contain img as direct child */
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-avatar:not(:has(> img)),
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) {
+  background: linear-gradient(to bottom right, oklch(0.5149 0.2903 287.7764), oklch(0.5149 0.2903 287.7764 / 0.7)) !important;
+  color: oklch(1.0000 0 0) !important;
+  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 9999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 500 !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Style text/initials in fallback avatars */
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-avatar:not(:has(> img)) > span,
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) > span,
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-avatar:not(:has(> img)) > div:not(:has(> img)),
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) > div:not(:has(> img)) {
+  color: oklch(1.0000 0 0) !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+}
+
+/* Preview small avatars - same approach */
+.stream-preview-small .str-video__participant-view .str-video__participant-avatar:not(:has(> img)),
+.stream-preview-small .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) {
+  background: linear-gradient(to bottom right, oklch(0.5149 0.2903 287.7764), oklch(0.5149 0.2903 287.7764 / 0.7)) !important;
+  color: oklch(1.0000 0 0) !important;
+  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 9999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 500 !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  width: 50px !important;
+  height: 50px !important;
+}
+
+/* Only round placeholder/avatar containers if they directly style the visual element */
+.stream-participant-wrapper .str-video__participant-placeholder:has(img) img,
+.stream-participant-wrapper [class*="placeholder"]:has(img) img {
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+}
+
+/* Hide GetStream's default name/details overlays */
+.str-video__participant-details,
+[class*="participant-details"] {
+  display: none !important;
+}
+
+/* Ensure video fills container properly */
+.str-video__participant-view video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  border-radius: 0 !important;
+}
+
+/* Make avatars smaller in the draggable preview - only avatar elements, not video */
+.stream-preview-small .str-video__participant-avatar,
+.stream-preview-small .str-video__participant-placeholder,
+.stream-preview-small [class*="participant-avatar"]:not([class*="video"]),
+.stream-preview-small [class*="placeholder"]:not([class*="video"]) {
+  width: 50px !important;
+  height: 50px !important;
+  margin: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.stream-preview-small .str-video__participant-avatar img,
+.stream-preview-small .str-video__participant-placeholder img,
+.stream-preview-small [class*="avatar"] img:not([src*="blob:"]):not([src*="mediastream"]),
+.stream-preview-small [class*="placeholder"] img:not([src*="blob:"]):not([src*="mediastream"]) {
+  width: 50px !important;
+  height: 50px !important;
+  object-fit: cover !important;
+  border-radius: 9999px !important;
+}
+
+/* Ensure video elements still fill the container normally */
+.stream-preview-small .str-video__participant-view video,
+.stream-preview-small video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
