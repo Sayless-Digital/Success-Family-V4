@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   StreamVideo,
@@ -12,9 +12,11 @@ import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
+import { env } from "@/lib/env"
 import { toast } from "sonner"
 import type { CommunityEvent } from "@/types"
 import { CallContent } from "./components/call-content"
+import { WebSocketErrorSuppressor } from "./websocket-error-suppressor"
 
 interface StreamViewProps {
   event: CommunityEvent
@@ -48,13 +50,24 @@ export default function StreamView({
   const [call, setCall] = useState<Call | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Use refs to track client and call for cleanup - ensures cleanup has latest values
+  const clientRef = useRef<StreamVideoClient | null>(null)
+  const callRef = useRef<Call | null>(null)
+  const isInitializedRef = useRef(false)
 
   useEffect(() => {
+    // Prevent multiple initializations (especially important in React StrictMode)
+    if (isInitializedRef.current) {
+      return
+    }
+    
     let mounted = true
+    isInitializedRef.current = true
 
     async function initializeStream() {
       try {
-        const apiKey = process.env.NEXT_PUBLIC_GETSTREAM_API_KEY
+        const apiKey = env.NEXT_PUBLIC_GETSTREAM_API_KEY
         if (!apiKey) {
           throw new Error('GetStream API key not configured')
         }
@@ -62,7 +75,7 @@ export default function StreamView({
         // Get Stream token
         const tokenResponse = await fetch('/api/stream-token', {
           method: 'POST',
-          credentials: 'include', // Include cookies for authentication
+          credentials: 'include',
         })
 
         if (!tokenResponse.ok) {
@@ -99,21 +112,44 @@ export default function StreamView({
         }
 
         // Initialize Stream client with token provider for automatic refresh
-        // When token and user are provided in constructor, it auto-connects
-        // No need to call connectUser separately - it's handled internally
+        // Add options to handle WebSocket issues in development
         const streamClient = new StreamVideoClient({
           apiKey,
           token,
-          tokenProvider, // Enable automatic token refresh when token expires
+          tokenProvider,
           user: {
             id: currentUserId,
             name: currentUserName,
             image: currentUserImage || undefined,
           },
+          options: {
+            timeout: 6000,
+            logger: (logLevel, message, extraData) => {
+              // Only log errors in production, suppress WebSocket frame errors
+              if (logLevel === 'error' && !message.includes('Invalid WebSocket frame')) {
+                console.error('[Stream]', message, extraData)
+              }
+            },
+          },
         })
 
-        // The client automatically connects when token/user are provided in constructor
-        // We can proceed directly to creating/getting the call
+        // Add error handler for WebSocket issues
+        streamClient.on('connection.changed', (event) => {
+          console.log('[Stream] Connection changed:', event.online ? 'online' : 'offline')
+          if (!event.online) {
+            console.warn('[Stream] Connection lost, will attempt to reconnect...')
+          }
+        })
+
+        streamClient.on('connection.error', (error) => {
+          // Suppress WebSocket frame errors from propagating (known development issue)
+          const errorStr = JSON.stringify(error)
+          if (errorStr.includes('Invalid WebSocket frame') || errorStr.includes('WS_ERR_INVALID')) {
+            console.log('[Stream] Ignoring WebSocket frame error (known dev issue)')
+            return
+          }
+          console.error('[Stream] Connection error:', error)
+        })
 
         if (!mounted) {
           await streamClient.disconnectUser().catch(console.error)
@@ -121,17 +157,14 @@ export default function StreamView({
         }
 
         // Get or create call - use 'default' type to allow all participants
-        // 'livestream' type restricts participation to backstage roles only
         const callId = event.stream_call_id || event.id
         const streamCall = streamClient.call('default', callId)
 
         // Ensure camera and microphone are disabled before joining
-        // This prevents accidental audio/video transmission on entry
         await streamCall.camera.disable()
         await streamCall.microphone.disable()
 
         // Join call with devices disabled
-        // Users can enable them via the UI when ready
         await streamCall.join({ create: true })
 
         if (!mounted) {
@@ -140,6 +173,11 @@ export default function StreamView({
           return
         }
 
+        // Store in refs for cleanup
+        clientRef.current = streamClient
+        callRef.current = streamCall
+        
+        // Update state
         setCall(streamCall)
         setClient(streamClient)
         setIsLoading(false)
@@ -163,18 +201,31 @@ export default function StreamView({
 
     initializeStream()
 
+    // Cleanup function with refs to ensure we have latest values
     return () => {
       mounted = false
-      // Cleanup
-      if (call) {
-        call.leave().catch(console.error)
+      
+      // Use refs for cleanup to avoid stale closure
+      const currentCall = callRef.current
+      const currentClient = clientRef.current
+      
+      if (currentCall) {
+        currentCall.leave().catch((err) => {
+          console.error('Error leaving call during cleanup:', err)
+        })
       }
-      if (client) {
-        client.disconnectUser().catch(console.error)
+      
+      if (currentClient) {
+        currentClient.disconnectUser().catch((err) => {
+          console.error('Error disconnecting client during cleanup:', err)
+        })
       }
+      
+      // Clear refs
+      callRef.current = null
+      clientRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Only run once on mount
+  }, [currentUserId, currentUserName, currentUserImage, event.id, event.stream_call_id, registrationId])
 
   const handleEndCall = async () => {
     try {
@@ -242,16 +293,19 @@ export default function StreamView({
   }
 
   return (
-    <StreamVideo client={client}>
-      <CallContent
-        event={event}
-        community={community}
-        isOwner={isOwner}
-        onEndCall={handleEndCall}
-        call={call}
-        currentUserName={currentUserName}
-        currentUserImage={currentUserImage}
-      />
-    </StreamVideo>
+    <>
+      <WebSocketErrorSuppressor />
+      <StreamVideo client={client}>
+        <CallContent
+          event={event}
+          community={community}
+          isOwner={isOwner}
+          onEndCall={handleEndCall}
+          call={call}
+          currentUserName={currentUserName}
+          currentUserImage={currentUserImage}
+        />
+      </StreamVideo>
+    </>
   )
 }

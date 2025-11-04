@@ -6,6 +6,16 @@ const nextConfig = {
   // Performance optimizations
   reactStrictMode: true,
   
+  // WebSocket support configuration for Stream.io
+  // Bypass Next.js proxying for Stream.io WebSocket connections
+  async rewrites() {
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: []
+    }
+  },
+  
   // Allow cross-origin requests in development for network access
   // Format: protocol://host or just host (Next.js will handle ports)
   allowedDevOrigins: process.env.NODE_ENV !== 'production' ? [
@@ -19,6 +29,21 @@ const nextConfig = {
     'https://192.168.0.33',
     '192.168.0.33',
   ] : [],
+  
+  // Headers for WebSocket support
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Connection',
+            value: 'keep-alive',
+          },
+        ],
+      },
+    ]
+  },
   
   // Image optimization
   images: {

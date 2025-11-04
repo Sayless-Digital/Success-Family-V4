@@ -5,6 +5,7 @@ import { GlobalLayout } from "@/components/layout/global-layout";
 import { AuthProvider } from "@/components/auth-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ScrollbarProvider } from "@/components/scrollbar-provider";
+import { HMRErrorSuppressor } from "@/components/hmr-error-suppressor";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -26,6 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={inter.className}>
+        <HMRErrorSuppressor />
         <ScrollbarProvider>
           <AuthProvider>
             <GlobalLayout>

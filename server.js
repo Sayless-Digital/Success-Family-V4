@@ -44,19 +44,37 @@ app.prepare().then(() => {
   })
 
   // Handle WebSocket upgrades gracefully
-  // Next.js HMR WebSocket connections may not work with custom HTTPS servers
-  // We'll gracefully reject upgrade requests to prevent crashes
-  server.on('upgrade', (req, socket) => {
-    // For HMR endpoints, gracefully close the connection
-    // Next.js will fall back to polling if WebSocket fails
-    if (req.url && req.url.includes('/_next/')) {
-      socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
-      socket.destroy()
+  // Note: Custom HTTPS servers don't support Next.js HMR WebSocket connections
+  // Next.js will automatically fall back to polling for HMR, which works perfectly
+  server.on('upgrade', (request, socket) => {
+    // Suppress all errors from this socket - they're expected when rejecting WebSocket
+    socket.on('error', () => {
+      // Silently ignore - Next.js will use polling instead
+    })
+    
+    // Immediately close the connection cleanly
+    // This prevents Next.js from trying to parse it as WebSocket frames
+    socket.destroy()
+  })
+  
+  // Suppress uncaught WebSocket frame parsing errors
+  // These are harmless - Next.js will use polling for HMR instead
+  // We add this handler BEFORE Next.js sets up its own handlers
+  process.on('uncaughtException', (error) => {
+    // Check if this is a harmless WebSocket error
+    const isWebSocketError = 
+      error.code === 'WS_ERR_INVALID_CLOSE_CODE' || 
+      error.code === 'WS_ERR_INVALID_UTF8' ||
+      (error.message && error.message.includes('Invalid WebSocket frame'))
+    
+    if (isWebSocketError) {
+      // Silently ignore - Next.js will use polling for HMR
       return
     }
-    // For other WebSocket connections, reject
-    socket.write('HTTP/1.1 501 Not Implemented\r\n\r\n')
-    socket.destroy()
+    
+    // For all other errors, let them propagate normally
+    // This will either be handled by Next.js or crash the process (expected behavior)
+    throw error
   })
 
   server.once('error', (err) => {

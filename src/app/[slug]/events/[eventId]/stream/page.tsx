@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import StreamView from "./stream-view"
+import { StreamErrorBoundary } from "./error-boundary"
 
 interface StreamPageProps {
   params: Promise<{
@@ -91,15 +92,17 @@ export default async function StreamPage({ params }: StreamPageProps) {
     .maybeSingle()
 
   return (
-    <StreamView
-      event={event}
-      community={community}
-      currentUserId={user.id}
-      currentUserName={userName}
-      currentUserImage={userProfile?.profile_picture}
-      isOwner={isOwner}
-      registrationId={registration?.id}
-    />
+    <StreamErrorBoundary communitySlug={community.slug}>
+      <StreamView
+        event={event}
+        community={community}
+        currentUserId={user.id}
+        currentUserName={userName}
+        currentUserImage={userProfile?.profile_picture}
+        isOwner={isOwner}
+        registrationId={registration?.id}
+      />
+    </StreamErrorBoundary>
   )
 }
 

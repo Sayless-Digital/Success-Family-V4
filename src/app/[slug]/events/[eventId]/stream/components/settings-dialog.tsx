@@ -17,9 +17,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
   call: Call
   isMicEnabled: boolean
-  setIsMicEnabled: (enabled: boolean) => void
   isCameraEnabled: boolean
-  setIsCameraEnabled: (enabled: boolean) => void
   isMicLoading: boolean
   setIsMicLoading: (loading: boolean) => void
   isCameraLoading: boolean
@@ -45,9 +43,7 @@ export function SettingsDialog({
   onOpenChange,
   call,
   isMicEnabled,
-  setIsMicEnabled,
   isCameraEnabled,
-  setIsCameraEnabled,
   isMicLoading,
   setIsMicLoading,
   isCameraLoading,
@@ -106,15 +102,19 @@ export function SettingsDialog({
                     try {
                       if (isMicEnabled) {
                         await call.microphone.disable()
-                        setIsMicEnabled(false)
                       } else {
                         await call.microphone.enable()
-                        setIsMicEnabled(true)
                       }
-                    } catch (error) {
-                      console.warn('Could not toggle microphone:', error)
-                      setIsMicEnabled(false)
-                      toast.error('Failed to toggle microphone')
+                    } catch (error: any) {
+                      console.error('Could not toggle microphone:', error)
+                      // Handle specific GetStream error codes
+                      if (error.code === 'ERR_PERMISSION_DENIED') {
+                        toast.error('Microphone permission denied')
+                      } else if (error.code === 'ERR_DEVICE_NOT_FOUND') {
+                        toast.error('Microphone not found')
+                      } else {
+                        toast.error('Failed to toggle microphone')
+                      }
                     } finally {
                       setIsMicLoading(false)
                     }
@@ -144,8 +144,21 @@ export function SettingsDialog({
                   <Select
                     value={selectedMicId}
                     onValueChange={async (deviceId) => {
-                      setSelectedMicId(deviceId)
-                      toast.success('Microphone device preference saved')
+                      try {
+                        setSelectedMicId(deviceId)
+                        // Apply device change to active call
+                        if (isMicEnabled) {
+                          await call.microphone.disable()
+                          await call.microphone.select(deviceId)
+                          await call.microphone.enable()
+                        } else {
+                          await call.microphone.select(deviceId)
+                        }
+                        toast.success('Microphone device changed')
+                      } catch (error: any) {
+                        console.error('Failed to switch microphone device:', error)
+                        toast.error('Failed to switch microphone device')
+                      }
                     }}
                     disabled={!hasMicDevice}
                   >
@@ -223,15 +236,19 @@ export function SettingsDialog({
                     try {
                       if (isCameraEnabled) {
                         await call.camera.disable()
-                        setIsCameraEnabled(false)
                       } else {
                         await call.camera.enable()
-                        setIsCameraEnabled(true)
                       }
-                    } catch (error) {
-                      console.warn('Could not toggle camera:', error)
-                      setIsCameraEnabled(false)
-                      toast.error('Failed to toggle camera')
+                    } catch (error: any) {
+                      console.error('Could not toggle camera:', error)
+                      // Handle specific GetStream error codes
+                      if (error.code === 'ERR_PERMISSION_DENIED') {
+                        toast.error('Camera permission denied')
+                      } else if (error.code === 'ERR_DEVICE_NOT_FOUND') {
+                        toast.error('Camera not found')
+                      } else {
+                        toast.error('Failed to toggle camera')
+                      }
                     } finally {
                       setIsCameraLoading(false)
                     }
@@ -261,8 +278,21 @@ export function SettingsDialog({
                   <Select
                     value={selectedCameraId}
                     onValueChange={async (deviceId) => {
-                      setSelectedCameraId(deviceId)
-                      toast.success('Camera device preference saved')
+                      try {
+                        setSelectedCameraId(deviceId)
+                        // Apply device change to active call
+                        if (isCameraEnabled) {
+                          await call.camera.disable()
+                          await call.camera.select(deviceId)
+                          await call.camera.enable()
+                        } else {
+                          await call.camera.select(deviceId)
+                        }
+                        toast.success('Camera device changed')
+                      } catch (error: any) {
+                        console.error('Failed to switch camera device:', error)
+                        toast.error('Failed to switch camera device')
+                      }
                     }}
                     disabled={!hasCameraDevice}
                   >

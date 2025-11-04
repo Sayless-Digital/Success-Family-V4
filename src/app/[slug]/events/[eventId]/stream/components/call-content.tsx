@@ -19,7 +19,7 @@ import {
   PictureInPicture2,
   Users,
 } from "lucide-react"
-import { StreamCall, type Call } from "@stream-io/video-react-sdk"
+import { StreamCall, type Call, useCallStateHooks } from "@stream-io/video-react-sdk"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -79,7 +79,6 @@ export function CallContent({
   const [micSensitivity, setMicSensitivity] = useState(50) // 0-100, default 50
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'spotlight' | 'grid'>('spotlight')
-  const router = useRouter()
 
   // Detect mobile device
   React.useEffect(() => {
@@ -108,40 +107,6 @@ export function CallContent({
   const handleMobileViewChange = React.useCallback((view: 'spotlight' | 'grid') => {
     setMobileView(view)
   }, [])
-
-  // Track microphone and camera state from call object
-  const getMicState = () => {
-    if (!call) return false
-    try {
-      return call.microphone.state.status === 'enabled'
-    } catch {
-      return false
-    }
-  }
-
-  const getCameraState = () => {
-    if (!call) return false
-    try {
-      return call.camera.state.status === 'enabled'
-    } catch {
-      return false
-    }
-  }
-
-  const [isMicEnabled, setIsMicEnabled] = React.useState(() => getMicState())
-  const [isCameraEnabled, setIsCameraEnabled] = React.useState(() => getCameraState())
-
-  // Poll state updates (Stream.io doesn't always expose reactive state)
-  React.useEffect(() => {
-    if (!call) return
-
-    const interval = setInterval(() => {
-      setIsMicEnabled(getMicState())
-      setIsCameraEnabled(getCameraState())
-    }, 500)
-
-    return () => clearInterval(interval)
-  }, [call])
 
   // Check for available devices on mount and when settings dialog opens
   const refreshDevices = React.useCallback(async () => {
@@ -185,6 +150,134 @@ export function CallContent({
       refreshDevices()
     }
   }, [showSettingsDialog, refreshDevices])
+
+  return (
+    <StreamCall call={call}>
+      <CallContentInner
+        event={event}
+        community={community}
+        isOwner={isOwner}
+        onEndCall={onEndCall}
+        call={call}
+        currentUserName={currentUserName}
+        currentUserImage={currentUserImage}
+        showSidebar={showSidebar}
+        setShowSidebar={setShowSidebar}
+        sidebarTab={sidebarTab}
+        setSidebarTab={setSidebarTab}
+        layout={layout}
+        setLayout={setLayout}
+        isFullscreen={isFullscreen}
+        setIsFullscreen={setIsFullscreen}
+        showSelfView={showSelfView}
+        setShowSelfView={setShowSelfView}
+        isMicLoading={isMicLoading}
+        setIsMicLoading={setIsMicLoading}
+        isCameraLoading={isCameraLoading}
+        setIsCameraLoading={setIsCameraLoading}
+        hasMicDevice={hasMicDevice}
+        hasCameraDevice={hasCameraDevice}
+        showSettingsDialog={showSettingsDialog}
+        setShowSettingsDialog={setShowSettingsDialog}
+        micDevices={micDevices}
+        cameraDevices={cameraDevices}
+        selectedMicId={selectedMicId}
+        setSelectedMicId={setSelectedMicId}
+        selectedCameraId={selectedCameraId}
+        setSelectedCameraId={setSelectedCameraId}
+        micSensitivity={micSensitivity}
+        setMicSensitivity={setMicSensitivity}
+        isMobile={isMobile}
+        mobileView={mobileView}
+        handleMobileViewChange={handleMobileViewChange}
+        refreshDevices={refreshDevices}
+      />
+    </StreamCall>
+  )
+}
+
+/**
+ * Inner component that uses StreamCall hooks
+ * Must be rendered inside StreamCall context
+ */
+function CallContentInner({
+  event,
+  community,
+  isOwner,
+  onEndCall,
+  call,
+  currentUserName,
+  currentUserImage,
+  showSidebar,
+  setShowSidebar,
+  sidebarTab,
+  setSidebarTab,
+  layout,
+  setLayout,
+  isFullscreen,
+  setIsFullscreen,
+  showSelfView,
+  setShowSelfView,
+  isMicLoading,
+  setIsMicLoading,
+  isCameraLoading,
+  setIsCameraLoading,
+  hasMicDevice,
+  hasCameraDevice,
+  showSettingsDialog,
+  setShowSettingsDialog,
+  micDevices,
+  cameraDevices,
+  selectedMicId,
+  setSelectedMicId,
+  selectedCameraId,
+  setSelectedCameraId,
+  micSensitivity,
+  setMicSensitivity,
+  isMobile,
+  mobileView,
+  handleMobileViewChange,
+  refreshDevices,
+}: CallContentProps & {
+  showSidebar: boolean
+  setShowSidebar: (show: boolean) => void
+  sidebarTab: "participants" | "chat"
+  setSidebarTab: (tab: "participants" | "chat") => void
+  layout: "speaker" | "grid"
+  setLayout: (layout: "speaker" | "grid") => void
+  isFullscreen: boolean
+  setIsFullscreen: (isFullscreen: boolean) => void
+  showSelfView: boolean
+  setShowSelfView: (show: boolean) => void
+  isMicLoading: boolean
+  setIsMicLoading: (loading: boolean) => void
+  isCameraLoading: boolean
+  setIsCameraLoading: (loading: boolean) => void
+  hasMicDevice: boolean
+  hasCameraDevice: boolean
+  showSettingsDialog: boolean
+  setShowSettingsDialog: (show: boolean) => void
+  micDevices: MediaDeviceInfo[]
+  cameraDevices: MediaDeviceInfo[]
+  selectedMicId: string
+  setSelectedMicId: (id: string) => void
+  selectedCameraId: string
+  setSelectedCameraId: (id: string) => void
+  micSensitivity: number
+  setMicSensitivity: (sensitivity: number) => void
+  isMobile: boolean
+  mobileView: 'spotlight' | 'grid'
+  handleMobileViewChange: (view: 'spotlight' | 'grid') => void
+  refreshDevices: () => Promise<void>
+}) {
+  const router = useRouter()
+
+  // Use GetStream's reactive hooks for device state (must be inside StreamCall context)
+  const { useMicrophoneState, useCameraState } = useCallStateHooks()
+  const { microphone } = useMicrophoneState()
+  const { camera } = useCameraState()
+  const isMicEnabled = microphone?.status === 'enabled'
+  const isCameraEnabled = camera?.status === 'enabled'
 
   const handleLeaveCall = async () => {
     try {
@@ -241,9 +334,7 @@ export function CallContent({
   }
 
   return (
-    <StreamCall call={call}>
-      {/* Full screen - header and mobile nav are hidden on stream pages */}
-      <div className="fixed inset-0 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 flex flex-col overflow-hidden">
         {/* Aurora Background */}
         <div className="fixed inset-0 z-0 overflow-hidden w-full h-full">
           <div className="w-full h-full">
@@ -352,15 +443,19 @@ export function CallContent({
                     try {
                       if (isMicEnabled) {
                         await call.microphone.disable()
-                        setIsMicEnabled(false)
                       } else {
                         await call.microphone.enable()
-                        setIsMicEnabled(true)
                       }
-                    } catch (error) {
-                      console.warn('Could not toggle microphone:', error)
-                      setIsMicEnabled(false)
-                      toast.error('Failed to enable microphone')
+                    } catch (error: any) {
+                      console.error('Could not toggle microphone:', error)
+                      // Handle specific GetStream error codes
+                      if (error.code === 'ERR_PERMISSION_DENIED') {
+                        toast.error('Microphone permission denied')
+                      } else if (error.code === 'ERR_DEVICE_NOT_FOUND') {
+                        toast.error('Microphone not found')
+                      } else {
+                        toast.error('Failed to toggle microphone')
+                      }
                     } finally {
                       setIsMicLoading(false)
                     }
@@ -397,15 +492,19 @@ export function CallContent({
                     try {
                       if (isCameraEnabled) {
                         await call.camera.disable()
-                        setIsCameraEnabled(false)
                       } else {
                         await call.camera.enable()
-                        setIsCameraEnabled(true)
                       }
-                    } catch (error) {
-                      console.warn('Could not toggle camera:', error)
-                      setIsCameraEnabled(false)
-                      toast.error('Failed to enable camera')
+                    } catch (error: any) {
+                      console.error('Could not toggle camera:', error)
+                      // Handle specific GetStream error codes
+                      if (error.code === 'ERR_PERMISSION_DENIED') {
+                        toast.error('Camera permission denied')
+                      } else if (error.code === 'ERR_DEVICE_NOT_FOUND') {
+                        toast.error('Camera not found')
+                      } else {
+                        toast.error('Failed to toggle camera')
+                      }
                     } finally {
                       setIsCameraLoading(false)
                     }
@@ -532,9 +631,7 @@ export function CallContent({
           onOpenChange={setShowSettingsDialog}
           call={call}
           isMicEnabled={isMicEnabled}
-          setIsMicEnabled={setIsMicEnabled}
           isCameraEnabled={isCameraEnabled}
-          setIsCameraEnabled={setIsCameraEnabled}
           isMicLoading={isMicLoading}
           setIsMicLoading={setIsMicLoading}
           isCameraLoading={isCameraLoading}
@@ -550,7 +647,6 @@ export function CallContent({
           micSensitivity={micSensitivity}
           setMicSensitivity={setMicSensitivity}
         />
-      </div>
-    </StreamCall>
+    </div>
   )
 }
