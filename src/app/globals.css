@@ -547,8 +547,11 @@
 /* Target img elements that are avatars (not video streams) */
 .stream-participant-wrapper .str-video__participant-view img:not([src*="blob:"]):not([src*="mediastream"]):not(video) {
   border-radius: 9999px !important;
-  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  border: 4px solid rgba(255, 255, 255, 0.2) !important;
   overflow: hidden !important;
+  width: 80px !important;
+  height: 80px !important;
+  object-fit: cover !important;
 }
 
 /* Style GetStream's avatar fallback using CSS custom properties approach */
@@ -563,27 +566,49 @@
 
 /* Direct styling approach - only style when element doesn't contain img as direct child */
 .stream-participant-wrapper .str-video__participant-view .str-video__participant-avatar:not(:has(> img)),
-.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) {
-  background: linear-gradient(to bottom right, oklch(0.5149 0.2903 287.7764), oklch(0.5149 0.2903 287.7764 / 0.7)) !important;
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)),
+.stream-participant-wrapper .str-video__participant-view [class*="avatar"]:not(:has(> img)),
+.stream-participant-wrapper .str-video__participant-view [class*="placeholder"]:not(:has(> img)) {
+  background: rgba(255, 255, 255, 0.1) !important;
   color: oklch(1.0000 0 0) !important;
-  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  border: 4px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 9999px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
+  font-size: 1.5rem !important;
   backdrop-filter: blur(8px) !important;
   -webkit-backdrop-filter: blur(8px) !important;
+  width: 80px !important;
+  height: 80px !important;
+  max-width: 80px !important;
+  max-height: 80px !important;
+  margin: auto !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
 }
 
 /* Style text/initials in fallback avatars */
 .stream-participant-wrapper .str-video__participant-view .str-video__participant-avatar:not(:has(> img)) > span,
 .stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) > span,
 .stream-participant-wrapper .str-video__participant-view .str-video__participant-avatar:not(:has(> img)) > div:not(:has(> img)),
-.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) > div:not(:has(> img)) {
+.stream-participant-wrapper .str-video__participant-view .str-video__participant-placeholder:not(:has(> img)) > div:not(:has(> img)),
+.stream-participant-wrapper .str-video__participant-view [class*="avatar"]:not(:has(> img)) > span,
+.stream-participant-wrapper .str-video__participant-view [class*="placeholder"]:not(:has(> img)) > span,
+.stream-participant-wrapper .str-video__participant-view [class*="avatar"]:not(:has(> img)) > div:not(:has(> img)),
+.stream-participant-wrapper .str-video__participant-view [class*="placeholder"]:not(:has(> img)) > div:not(:has(> img)) {
   color: oklch(1.0000 0 0) !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
+  font-size: 1.5rem !important;
   text-transform: uppercase !important;
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 /* Preview small avatars - same approach */
@@ -620,7 +645,7 @@
 .str-video__participant-view video {
   width: 100% !important;
   height: 100% !important;
-  object-fit: contain !important;
+  object-fit: cover !important;
   border-radius: 0 !important;
 }
 

@@ -10,9 +10,19 @@ interface CommunityPageProps {
 
 export default async function CommunityPage({ params }: CommunityPageProps) {
   const { slug } = await params
+  
+  // Early return for static assets that shouldn't be treated as community slugs
+  // Common static file extensions that browsers request
+  const staticFileExtensions = ['.ico', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.txt', '.xml', '.json']
+  const isStaticFile = staticFileExtensions.some(ext => slug.toLowerCase().endsWith(ext))
+  
+  if (isStaticFile) {
+    notFound()
+  }
+  
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community data
+  // Fetch community data - use maybeSingle() to avoid error when no rows found
   const { data: community, error } = await supabase
     .from('communities')
     .select(`
@@ -26,7 +36,7 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
       )
     `)
     .eq('slug', slug)
-    .single()
+    .maybeSingle()
 
   if (error) {
     console.error('Community fetch error:', JSON.stringify(error, null, 2))

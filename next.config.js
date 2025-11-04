@@ -6,6 +6,20 @@ const nextConfig = {
   // Performance optimizations
   reactStrictMode: true,
   
+  // Allow cross-origin requests in development for network access
+  // Format: protocol://host or just host (Next.js will handle ports)
+  allowedDevOrigins: process.env.NODE_ENV !== 'production' ? [
+    'http://localhost:3000',
+    'https://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://127.0.0.1:3000',
+    'http://192.168.0.33:3000',
+    'https://192.168.0.33:3000',
+    'http://192.168.0.33',
+    'https://192.168.0.33',
+    '192.168.0.33',
+  ] : [],
+  
   // Image optimization
   images: {
     formats: ['image/avif', 'image/webp'],

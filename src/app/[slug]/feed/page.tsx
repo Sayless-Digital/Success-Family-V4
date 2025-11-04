@@ -34,7 +34,7 @@ export default async function FeedPage({ params }: FeedPageProps) {
       .select('id')
       .eq('community_id', community.id)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
     
     isMember = !!membership
   }

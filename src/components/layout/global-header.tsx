@@ -29,12 +29,13 @@ interface GlobalHeaderProps {
 }
 
 export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: GlobalHeaderProps) {
-  const { user, userProfile, walletBalance, signOut, isLoading } = useAuth()
+  const { user, userProfile, walletBalance, signOut, isLoading, refreshProfile } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
   const [userCommunities, setUserCommunities] = React.useState<Community[]>([])
   const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
+  const [isRetryingProfile, setIsRetryingProfile] = React.useState(false)
   
   // Memoize user initials to prevent unnecessary re-renders
   const userInitials = React.useMemo(() => {
@@ -43,6 +44,16 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
     const lastInitial = userProfile.last_name?.[0] || ""
     return (firstInitial + lastInitial).toUpperCase() || "U"
   }, [userProfile?.first_name, userProfile?.last_name])
+
+  // Handle profile retry
+  const handleRetryProfile = React.useCallback(async () => {
+    setIsRetryingProfile(true)
+    try {
+      await refreshProfile()
+    } finally {
+      setIsRetryingProfile(false)
+    }
+  }, [refreshProfile])
 
   // Fetch user's communities
   React.useEffect(() => {
@@ -222,8 +233,18 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
         <div className="flex items-center gap-2">
           {isLoading ? (
-            // Show loading state to prevent flash
-            <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+            // Show loading state to prevent flash - but with timeout protection
+            <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse" />
+          ) : user && !userProfile && !isRetryingProfile ? (
+            // User is authenticated but profile failed to load - show retry option
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs hover:bg-white/20 touch-feedback"
+              onClick={handleRetryProfile}
+            >
+              Retry Loading Profile
+            </Button>
           ) : !user ? (
             <>
               <Button

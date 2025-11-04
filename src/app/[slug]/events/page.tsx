@@ -65,7 +65,7 @@ export default async function CommunityEventsPage({ params }: CommunityEventsPag
     .from('platform_settings')
     .select('stream_start_cost, stream_join_cost')
     .eq('id', 1)
-    .single()
+    .maybeSingle()
 
   // Check if user is authenticated and get their membership status
   const { data: { user } } = await supabase.auth.getUser()

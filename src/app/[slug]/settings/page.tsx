@@ -29,7 +29,7 @@ export default async function CommunitySettingsPage({ params }: CommunitySetting
       annual_price
     `)
     .eq('slug', slug)
-    .single()
+    .maybeSingle()
 
   if (error || !community) {
     notFound()

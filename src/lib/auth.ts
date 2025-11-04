@@ -131,13 +131,22 @@ export async function getCurrentUser() {
 }
 
 /**
- * Get user profile from users table
+ * Get user profile from users table with caching to prevent redundant fetches
  */
+const profileCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_DURATION = 5000 // 5 seconds cache
+
 export async function getUserProfile(userId: string) {
   try {
     if (!userId) {
       console.warn("getUserProfile called with empty userId")
       return null
+    }
+
+    // Check cache first
+    const cached = profileCache.get(userId)
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return cached.data
     }
 
     const { data, error } = await supabase
@@ -148,12 +157,28 @@ export async function getUserProfile(userId: string) {
 
     if (error) {
       console.error("Error fetching user profile:", error)
+      // Return cached data if available, even if expired
+      if (cached) {
+        console.log("Returning stale cache due to error")
+        return cached.data
+      }
       return null
+    }
+
+    // Update cache
+    if (data) {
+      profileCache.set(userId, { data, timestamp: Date.now() })
     }
 
     return data
   } catch (error) {
     console.error("Exception in getUserProfile:", error)
+    // Return cached data if available
+    const cached = profileCache.get(userId)
+    if (cached) {
+      console.log("Returning stale cache due to exception")
+      return cached.data
+    }
     return null
   }
 }

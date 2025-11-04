@@ -13,25 +13,37 @@ export default async function StreamPage({ params }: StreamPageProps) {
   const { slug, eventId } = await params
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community
-  const { data: community } = await supabase
+  // Fetch community - use maybeSingle() to avoid error when no rows found
+  const { data: community, error: communityError } = await supabase
     .from('communities')
     .select('id, name, slug, owner_id')
     .eq('slug', slug)
-    .single()
+    .maybeSingle()
 
-  if (!community) {
+  if (communityError) {
+    console.error('Community fetch error:', communityError)
     notFound()
   }
 
-  // Fetch event
-  const { data: event } = await supabase
+  if (!community) {
+    console.error('Community not found for slug:', slug)
+    notFound()
+  }
+
+  // Fetch event - use maybeSingle() to avoid error when no rows found
+  const { data: event, error: eventError } = await supabase
     .from('community_events')
     .select('*')
     .eq('id', eventId)
-    .single()
+    .maybeSingle()
+
+  if (eventError) {
+    console.error('Event fetch error:', eventError)
+    notFound()
+  }
 
   if (!event || event.community_id !== community.id) {
+    console.error('Event not found or does not belong to community:', { eventId, communityId: community.id })
     notFound()
   }
 
@@ -42,12 +54,12 @@ export default async function StreamPage({ params }: StreamPageProps) {
     notFound() // Should redirect to auth, but for now just 404
   }
 
-  // Get user profile
+  // Get user profile - use maybeSingle() to avoid error when no rows found
   const { data: userProfile } = await supabase
     .from('users')
     .select('first_name, last_name, username, profile_picture')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
   // Build full name from first and last name
   const userName = userProfile
@@ -62,7 +74,7 @@ export default async function StreamPage({ params }: StreamPageProps) {
     .eq('event_id', eventId)
     .eq('user_id', user.id)
     .is('cancelled_at', null)
-    .single()
+    .maybeSingle()
 
   const isRegistered = !!registration
 
@@ -76,7 +88,7 @@ export default async function StreamPage({ params }: StreamPageProps) {
     .from('platform_settings')
     .select('stream_start_cost, stream_join_cost')
     .eq('id', 1)
-    .single()
+    .maybeSingle()
 
   return (
     <StreamView

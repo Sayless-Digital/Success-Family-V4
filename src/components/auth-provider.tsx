@@ -18,15 +18,57 @@ interface AuthContextType {
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
 
+// Helper function to fetch profile with retry logic
+async function fetchProfileWithRetry(
+  userId: string,
+  maxRetries = 3,
+  timeout = 10000
+): Promise<User | null> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Create timeout promise
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), timeout)
+      })
+
+      // Race between profile fetch and timeout
+      const profile = await Promise.race([
+        getUserProfile(userId),
+        timeoutPromise
+      ])
+
+      if (profile) {
+        return profile
+      }
+
+      // If profile is null but no error, wait before retry (except on last attempt)
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
+    } catch (error) {
+      console.error(`Profile fetch attempt ${attempt} failed:`, error)
+      
+      // Wait before retry (except on last attempt)
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
+    }
+  }
+  
+  return null
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<SupabaseUser | null>(null)
   const [userProfile, setUserProfile] = React.useState<User | null>(null)
   const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  const [profileError, setProfileError] = React.useState(false)
 
   // Initialize auth state on mount
   React.useEffect(() => {
     let isMounted = true
+    let authInitialized = false
 
     // Get initial session
     const initializeAuth = async () => {
@@ -36,16 +78,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isMounted) return
 
         if (session?.user) {
-          const profile = await getUserProfile(session.user.id)
+          // Set user immediately
+          setUser(session.user)
+          
+          // Fetch profile with retry logic
+          const profile = await fetchProfileWithRetry(session.user.id)
+          
+          if (!isMounted) return
+          
           if (profile) {
-            setUser(session.user)
             setUserProfile(profile)
+            setProfileError(false)
+          } else {
+            console.warn("Failed to fetch user profile after retries")
+            setProfileError(true)
+            // Don't sign out - keep user authenticated but show error state
           }
         }
       } catch (error) {
         console.error("Error initializing auth:", error)
       } finally {
         if (isMounted) {
+          authInitialized = true
           setIsLoading(false)
         }
       }
@@ -58,20 +112,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         if (!isMounted) return
 
+        // Don't process auth changes until initial auth is complete
+        if (!authInitialized) return
+
+        if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setUserProfile(null)
+          setProfileError(false)
+          return
+        }
+
         if (session?.user) {
-          const profile = await getUserProfile(session.user.id)
+          // Set user immediately
+          setUser(session.user)
+          
+          // Fetch profile with retry logic
+          const profile = await fetchProfileWithRetry(session.user.id)
+          
+          if (!isMounted) return
+          
           if (profile) {
-            setUser(session.user)
             setUserProfile(profile)
+            setProfileError(false)
           } else {
-            // Profile doesn't exist, sign out
-            await supabase.auth.signOut()
-            setUser(null)
-            setUserProfile(null)
+            console.warn("Failed to fetch user profile in auth state change")
+            setProfileError(true)
+            // Don't sign out automatically - this could be a temporary network issue
+            // Only sign out if this is a new sign-in and profile doesn't exist
+            if (event === 'SIGNED_IN') {
+              console.error("New user sign-in but no profile found - signing out")
+              await supabase.auth.signOut()
+              setUser(null)
+              setUserProfile(null)
+            }
           }
         } else {
           setUser(null)
           setUserProfile(null)
+          setProfileError(false)
         }
       }
     )
@@ -98,12 +176,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
     
     try {
-      const profile = await getUserProfile(user.id)
+      // Use retry logic for profile refresh
+      const profile = await fetchProfileWithRetry(user.id)
       if (profile) {
         setUserProfile(profile)
+        setProfileError(false)
+      } else {
+        console.error('Failed to refresh profile after retries')
+        setProfileError(true)
       }
     } catch (error) {
       console.error('Error refreshing profile:', error)
+      setProfileError(true)
     }
   }, [user])
 

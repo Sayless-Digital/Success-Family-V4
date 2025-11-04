@@ -25,11 +25,14 @@ const httpsOptions = {
   cert: fs.readFileSync(certPath),
 }
 
-const app = next({ dev, hostname, port, turbo: dev })
+// Initialize Next.js app
+// Note: To use Turbopack, run "next dev --turbo" directly
+// Custom servers don't support the turbo flag, but HMR still works
+const app = next({ dev, hostname, port })
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
-  createServer(httpsOptions, async (req, res) => {
+  const server = createServer(httpsOptions, async (req, res) => {
     try {
       const parsedUrl = parse(req.url, true)
       await handle(req, res, parsedUrl)
@@ -38,10 +41,30 @@ app.prepare().then(() => {
       res.statusCode = 500
       res.end('internal server error')
     }
-  }).once('error', (err) => {
+  })
+
+  // Handle WebSocket upgrades gracefully
+  // Next.js HMR WebSocket connections may not work with custom HTTPS servers
+  // We'll gracefully reject upgrade requests to prevent crashes
+  server.on('upgrade', (req, socket) => {
+    // For HMR endpoints, gracefully close the connection
+    // Next.js will fall back to polling if WebSocket fails
+    if (req.url && req.url.includes('/_next/')) {
+      socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
+      socket.destroy()
+      return
+    }
+    // For other WebSocket connections, reject
+    socket.write('HTTP/1.1 501 Not Implemented\r\n\r\n')
+    socket.destroy()
+  })
+
+  server.once('error', (err) => {
     console.error(err)
     process.exit(1)
-  }).listen(port, hostname, () => {
+  })
+
+  server.listen(port, hostname, () => {
     const os = require('os')
     const networkInterfaces = os.networkInterfaces()
     let localIp = 'localhost'
@@ -73,4 +96,3 @@ app.prepare().then(() => {
     console.log('')
   })
 })
-

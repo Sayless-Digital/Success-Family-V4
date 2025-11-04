@@ -22,7 +22,7 @@ export default async function ProfilePage(props: PageProps) {
     .from('users')
     .select('*')
     .eq('username', username)
-    .single()
+    .maybeSingle()
 
   if (error || !user) {
     notFound()

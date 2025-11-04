@@ -24,7 +24,7 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
       owner:users!communities_owner_id_fkey(id, username, first_name, last_name, profile_picture)
     `)
     .eq('slug', slug)
-    .single()
+    .maybeSingle()
 
   if (error || !community) {
     notFound()
