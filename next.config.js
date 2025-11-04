@@ -21,54 +21,9 @@ const nextConfig = {
     } : false,
   },
   
-  // Bundle optimization
-  webpack: (config, { isServer }) => {
-    // Optimize for production
-    if (!isServer) {
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          chunks: 'all',
-          cacheGroups: {
-            default: false,
-            vendors: false,
-            // Vendor chunk for node_modules
-            vendor: {
-              name: 'vendor',
-              chunks: 'all',
-              test: /node_modules/,
-              priority: 20
-            },
-            // Common chunk for shared code
-            common: {
-              name: 'common',
-              minChunks: 2,
-              chunks: 'all',
-              priority: 10,
-              reuseExistingChunk: true,
-              enforce: true
-            },
-            // React chunk
-            react: {
-              name: 'react',
-              chunks: 'all',
-              test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
-              priority: 30
-            },
-            // Three.js chunk (for Silk animation)
-            three: {
-              name: 'three',
-              chunks: 'all',
-              test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/,
-              priority: 25
-            }
-          }
-        }
-      };
-    }
-    
-    return config;
-  },
+  // Turbopack is enabled by default in Next.js 16
+  // Empty config confirms we're using Turbopack with its default optimizations
+  turbopack: {},
   
   // Experimental features for performance
   experimental: {

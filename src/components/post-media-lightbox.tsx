@@ -29,7 +29,6 @@ export function PostMediaLightbox({
   const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 })
   const imageRef = React.useRef<HTMLImageElement>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)
-  const dialogContentRef = React.useRef<HTMLDivElement>(null)
 
   // Sort media by display_order
   const sortedMedia = React.useMemo(() => {
@@ -51,20 +50,6 @@ export function PostMediaLightbox({
     setPosition({ x: 0, y: 0 })
   }, [currentIndex])
 
-  // Hide default close button
-  React.useEffect(() => {
-    if (open) {
-      const hideDefaultClose = () => {
-        const defaultCloseButton = dialogContentRef.current?.querySelector('button[class*="rounded-sm"][class*="right-4"]')
-        if (defaultCloseButton) {
-          (defaultCloseButton as HTMLElement).style.display = 'none'
-        }
-      }
-      // Use setTimeout to ensure DOM is ready
-      const timeout = setTimeout(hideDefaultClose, 0)
-      return () => clearTimeout(timeout)
-    }
-  }, [open])
 
   const currentMedia = sortedMedia[currentIndex]
   const currentImageUrl = currentMedia ? imageUrls[currentMedia.id] : null
@@ -162,7 +147,7 @@ export function PostMediaLightbox({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent ref={dialogContentRef} className="!max-w-[95vw] !max-h-[95dvh] !w-[95vw] !h-[95dvh] !top-[2.5dvh] !left-[2.5vw] !right-auto !bottom-auto !translate-x-0 !translate-y-0 p-0 border-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md !overflow-hidden">
+      <DialogContent hideCloseButton className="!max-w-[95vw] !max-h-[95dvh] !w-[95vw] !h-[95dvh] !top-[2.5dvh] !left-[2.5vw] !right-auto !bottom-auto !translate-x-0 !translate-y-0 p-0 border-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md !overflow-hidden">
         {/* Visually Hidden Title for Accessibility */}
         <DialogTitle className="sr-only">
           Post Image {currentIndex + 1} of {sortedMedia.length}

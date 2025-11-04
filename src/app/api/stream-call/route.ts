@@ -118,8 +118,10 @@ export async function POST(request: NextRequest) {
 
       // Create call using Node SDK (proper server-side method)
       // Note: When using server-side auth, either data.created_by or data.created_by_id must be provided
+      // Using 'default' type instead of 'livestream' to allow all users to participate
+      // 'livestream' type restricts participation to backstage roles only
       const response = await client.video.getOrCreateCall({
-        type: 'livestream',
+        type: 'default',
         id: eventId,
         data: {
           created_by_id: user.id, // Required for server-side auth

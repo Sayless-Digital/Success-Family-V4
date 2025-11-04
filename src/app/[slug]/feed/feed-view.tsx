@@ -292,7 +292,7 @@ export default function FeedView({
           
           if (error || count === null) return
           
-          const isCurrentUser = currentUserId && eventUserId === currentUserId
+          const isCurrentUser = !!(currentUserId && eventUserId === currentUserId)
           scheduleUpdate(postId, count, isCurrentUser, payload.eventType)
         }
       )

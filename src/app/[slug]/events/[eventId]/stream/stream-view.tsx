@@ -13,6 +13,7 @@ import {
   ScreenShareButton,
   useCallStateHooks,
   PaginatedGridLayout,
+  ParticipantView,
 } from "@stream-io/video-react-sdk"
 import "@stream-io/video-react-sdk/dist/css/styles.css"
 import {
@@ -401,17 +402,29 @@ function DraggableSelfView({
     const centerX = window.innerWidth / 2
     const centerY = (window.innerHeight - HEADER_HEIGHT - BOTTOM_BAR_HEIGHT) / 2 + HEADER_HEIGHT
     
-    setPosition(prev => {
-      const isLeft = prev.x + currentWidth / 2 < centerX
-      const isTop = prev.y + currentHeight / 2 < centerY
-      return {
-        x: isLeft ? bounds.minX : bounds.maxX,
-        y: isTop ? bounds.minY : bounds.maxY
-      }
-    })
+    // Calculate target position
+    const isLeft = positionRef.current.x + currentWidth / 2 < centerX
+    const isTop = positionRef.current.y + currentHeight / 2 < centerY
+    const targetX = isLeft ? bounds.minX : bounds.maxX
+    const targetY = isTop ? bounds.minY : bounds.maxY
     
-    setTransition('transform 0.2s ease-out')
-    setTimeout(() => setTransition('none'), 200)
+    // Enable transition FIRST
+    setTransition('transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)')
+    
+    // Update position in next frame so browser can animate
+    requestAnimationFrame(() => {
+      if (elementRef.current) {
+        // Update ref for immediate DOM update
+        positionRef.current = { x: targetX, y: targetY }
+        // Update DOM directly with transition
+        elementRef.current.style.transform = `translate3d(${targetX}px, ${targetY}px, 0)`
+        // Sync state for React
+        setPosition({ x: targetX, y: targetY })
+      }
+      
+      // Clear transition after animation
+      setTimeout(() => setTransition('none'), 300)
+    })
   }, [isDesktop, getBounds])
 
   // Update position during drag - DIRECT DOM UPDATE (no React state, no RAF delay)
@@ -636,78 +649,83 @@ function DraggableSelfView({
 }
 
 // Custom Participant Video Component
+// Uses GetStream's ParticipantView for reliable video handling, wrapped with custom styling
 function ParticipantVideo({
-  participant
+  participant,
+  isHost = false,
+  call
 }: {
   participant: any
+  isHost?: boolean
+  call?: Call
 }) {
-  const videoRef = React.useRef<HTMLVideoElement>(null)
-  const hasVideo = !!participant.videoStream
-
-  React.useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    const updateVideoStream = async () => {
-      try {
-        if (hasVideo && participant.videoStream) {
-          if (video.srcObject !== participant.videoStream) {
-            video.srcObject = participant.videoStream
-            await video.play().catch((error) => {
-              if (error.name !== 'AbortError') {
-                console.error('Error playing video:', error)
-              }
-            })
-          }
-        } else {
-          video.srcObject = null
-        }
-      } catch (error) {
-        console.error('Error updating video stream:', error)
-      }
-    }
-
-    updateVideoStream()
-  }, [participant.videoStream, participant.sessionId, hasVideo])
+  // Check if video is published
+  const hasPublishedVideo = participant.publishedTracks && 
+                            Array.isArray(participant.publishedTracks) && 
+                            participant.publishedTracks.includes('videoTrack')
+  const hasVideo = !!participant.videoStream || hasPublishedVideo || !!(participant as any).videoTrack
+  
+  // Get connection quality (if available)
+  const networkQuality = (participant as any).networkQuality || 'unsupported'
 
   return (
     <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border-2 border-white/10 backdrop-blur-sm">
-      {hasVideo && participant.videoStream ? (
-        <>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted={participant.isLocalParticipant}
-            className="w-full h-full object-contain bg-black"
-          />
-          {/* Name overlay */}
-          <div className="absolute bottom-1.5 left-1.5 inline-block bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md max-w-[calc(100%-12px)]">
-            <span className="text-white text-xs font-medium truncate block">
-              {participant.name || 'Unknown'}
-              {participant.isLocalParticipant && ' (You)'}
-            </span>
-          </div>
-        </>
-      ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+      {/* Use GetStream's ParticipantView for reliable video rendering */}
+      <ParticipantView
+        participant={participant}
+        className="w-full h-full"
+        // Disable default styling so we can apply our own
+        trackType="videoTrack"
+      />
+      
+      {/* Custom overlays on top of GetStream component */}
+      {/* Name overlay */}
+      <div className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md max-w-[calc(100%-12px)] z-10">
+        {isHost && (
+          <Badge className="bg-white/20 text-white text-[10px] px-1.5 py-0 h-4 border-0">
+            Host
+          </Badge>
+        )}
+        <span className="text-white text-xs font-medium truncate block">
+          {participant.name || 'Unknown'}
+          {participant.isLocalParticipant && ' (You)'}
+        </span>
+      </div>
+      
+      {/* Connection quality indicator */}
+      {networkQuality === 'poor' && (
+        <div className="absolute top-2 left-2 bg-yellow-500/90 backdrop-blur-sm rounded-full p-1.5 z-10" title="Poor connection">
+          <Signal className="h-3 w-3 text-white" />
+        </div>
+      )}
+      
+      {/* Muted indicator */}
+      {!(participant.audioStream || (participant.publishedTracks && Array.isArray(participant.publishedTracks) && participant.publishedTracks.includes('audioTrack'))) && (
+        <div className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm rounded-full p-2 z-10">
+          <MicOff className="h-4 w-4 text-white" />
+        </div>
+      )}
+      
+      {/* No video fallback - show avatar when video is not available */}
+      {!hasVideo && (
+        <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-black/50">
           <Avatar className="h-16 w-16 sm:h-20 sm:w-20 border-2 border-white/20">
             <AvatarImage src={participant.image} alt={participant.name} />
             <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xl sm:text-2xl">
               {getInitials(participant.name)}
             </AvatarFallback>
           </Avatar>
-          <span className="text-white text-xs font-medium">
-            {participant.name || 'Unknown'}
-            {participant.isLocalParticipant && ' (You)'}
-          </span>
-        </div>
-      )}
-      
-      {/* Muted indicator */}
-      {!(participant.audioStream || (participant.publishedTracks && Array.from(participant.publishedTracks).includes('audio'))) && (
-        <div className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm rounded-full p-2">
-          <MicOff className="h-4 w-4 text-white" />
+          <div className="flex flex-col items-center gap-1">
+            {isHost && (
+              <Badge className="bg-white/20 text-white text-[10px] px-1.5 py-0 h-4 border-0">
+                Host
+              </Badge>
+            )}
+            <span className="text-white text-xs font-medium">
+              {participant.name || 'Unknown'}
+              {participant.isLocalParticipant && ' (You)'}
+            </span>
+          </div>
         </div>
       )}
     </div>
@@ -715,12 +733,34 @@ function ParticipantVideo({
 }
 
 // Custom Speaker Layout - One main speaker, others in sidebar
-function CustomSpeakerLayout() {
-  const { useParticipants } = useCallStateHooks()
+function CustomSpeakerLayout({ ownerId, call }: { ownerId: string; call: Call }) {
+  const { useParticipants, useDominantSpeaker } = useCallStateHooks()
   const participants = useParticipants()
+  const dominantSpeaker = useDominantSpeaker()
   
-  // Find the dominant speaker or first participant with video, or just first participant
-  const mainParticipant = participants.find(p => p.videoStream) || participants[0]
+  // Prioritize the host/owner as the main spotlight participant
+  // 1. Dominant speaker (whoever is currently speaking)
+  // 2. Owner with video
+  // 3. Owner without video
+  // 4. Any participant with video
+  // 5. Finally, just first participant
+  const ownerParticipant = participants.find(p => p.userId === ownerId)
+  
+  // Helper to check if participant has video (check multiple properties)
+  const hasVideo = (p: any) => {
+    const tracks = p.publishedTracks as any
+    return !!(p.videoStream || 
+             (tracks && Array.isArray(tracks) && (tracks.includes('videoTrack') || tracks.includes('video'))) ||
+             p.videoTrack)
+  }
+  
+  // Prioritize: dominant speaker > owner > anyone with video
+  const mainParticipant = 
+    (dominantSpeaker && participants.find(p => p.sessionId === dominantSpeaker.sessionId)) ||
+    (ownerParticipant && hasVideo(ownerParticipant) ? ownerParticipant : null) ||
+    ownerParticipant ||
+    participants.find(p => hasVideo(p)) ||
+    participants[0]
   const otherParticipants = participants.filter(p => p.sessionId !== mainParticipant?.sessionId)
 
   if (!mainParticipant) {
@@ -735,7 +775,11 @@ function CustomSpeakerLayout() {
     <div className="w-full h-full flex gap-2 p-2">
       {/* Main speaker */}
       <div className="flex-1">
-        <ParticipantVideo participant={mainParticipant} />
+        <ParticipantVideo 
+          participant={mainParticipant} 
+          isHost={mainParticipant?.userId === ownerId}
+          call={call}
+        />
       </div>
       
       {/* Other participants sidebar */}
@@ -743,7 +787,11 @@ function CustomSpeakerLayout() {
         <div className="w-48 flex flex-col gap-2 overflow-y-auto">
           {otherParticipants.map((participant) => (
             <div key={participant.sessionId} className="aspect-video">
-              <ParticipantVideo participant={participant} />
+              <ParticipantVideo 
+                participant={participant} 
+                isHost={participant.userId === ownerId}
+                call={call}
+              />
             </div>
           ))}
         </div>
@@ -753,9 +801,18 @@ function CustomSpeakerLayout() {
 }
 
 // Custom Grid Layout - All participants in grid
-function CustomGridLayout() {
+function CustomGridLayout({ ownerId, call }: { ownerId: string; call: Call }) {
   const { useParticipants } = useCallStateHooks()
   const participants = useParticipants()
+  
+  // Sort participants: host first, then others
+  const sortedParticipants = [...participants].sort((a, b) => {
+    const aIsOwner = a.userId === ownerId
+    const bIsOwner = b.userId === ownerId
+    if (aIsOwner && !bIsOwner) return -1
+    if (!aIsOwner && bIsOwner) return 1
+    return 0
+  })
   
   const getGridColumns = (count: number) => {
     if (count === 1) return 1
@@ -765,9 +822,9 @@ function CustomGridLayout() {
     return 4
   }
 
-  const columns = getGridColumns(participants.length)
+  const columns = getGridColumns(sortedParticipants.length)
 
-  if (participants.length === 0) {
+  if (sortedParticipants.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <p className="text-white/60">Waiting for participants...</p>
@@ -783,9 +840,13 @@ function CustomGridLayout() {
           gridTemplateColumns: `repeat(${columns}, 1fr)`,
         }}
       >
-        {participants.map((participant) => (
+        {sortedParticipants.map((participant) => (
           <div key={participant.sessionId} className="w-full" style={{ aspectRatio: '16/9' }}>
-            <ParticipantVideo participant={participant} />
+            <ParticipantVideo 
+              participant={participant} 
+              isHost={participant.userId === ownerId}
+              call={call}
+            />
           </div>
         ))}
       </div>
@@ -888,7 +949,7 @@ function StreamSidebar({
                       <MicOff className="h-3 w-3 text-white/70" />
                     </div>
                   )}
-                  {!participant.videoStream && (
+                  {!(participant.videoStream || ((participant.publishedTracks as any) && Array.isArray(participant.publishedTracks) && ((participant.publishedTracks as any).includes('videoTrack') || (participant.publishedTracks as any).includes('video'))) || (participant as any).videoTrack) && (
                     <div className="h-6 w-6 rounded-full bg-white/10 flex items-center justify-center">
                       <VideoOff className="h-3 w-3 text-white/70" />
                     </div>
@@ -947,46 +1008,7 @@ function CallContent({
   const [selectedMicId, setSelectedMicId] = useState<string>('')
   const [selectedCameraId, setSelectedCameraId] = useState<string>('')
   const [micSensitivity, setMicSensitivity] = useState(50) // 0-100, default 50
-  const sensitivityDisplayRef = useRef<HTMLSpanElement>(null)
-  const sensitivityValueRef = useRef(50) // Ref for real-time value (no re-renders)
-  const sensitivityRafRef = useRef<number | null>(null)
-  const sensitivityTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const router = useRouter()
-
-  // Update display immediately via DOM (no React re-render, no state)
-  const updateSensitivityDisplay = useCallback((value: number) => {
-    // Direct DOM update - zero latency
-    if (sensitivityDisplayRef.current) {
-      sensitivityDisplayRef.current.textContent = `${value}%`
-    }
-    sensitivityValueRef.current = value
-  }, [])
-
-  const commitSensitivityValue = useCallback((value: number) => {
-    // Cancel any pending updates
-    if (sensitivityTimeoutRef.current) {
-      clearTimeout(sensitivityTimeoutRef.current)
-    }
-    if (sensitivityRafRef.current) {
-      cancelAnimationFrame(sensitivityRafRef.current)
-    }
-    
-    // Commit final value to state (only on release)
-    setMicSensitivity(value)
-    updateSensitivityDisplay(value)
-  }, [updateSensitivityDisplay])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (sensitivityTimeoutRef.current) {
-        clearTimeout(sensitivityTimeoutRef.current)
-      }
-      if (sensitivityRafRef.current) {
-        cancelAnimationFrame(sensitivityRafRef.current)
-      }
-    }
-  }, [])
 
   // Track microphone and camera state from call object
   const getMicState = () => {
@@ -1166,13 +1188,28 @@ function CallContent({
           </div>
         </div>
 
-        {/* Video Layout */}
+          {/* Video Layout */}
         <div className="flex-1 relative min-h-0 z-10">
-          <div className="absolute inset-0">
+          {/* Set viewport for performance optimization - only subscribe to visible videos */}
+          <div 
+            id="video-viewport" 
+            className="absolute inset-0"
+            ref={(el) => {
+              if (el && call) {
+                // Set viewport for visibility tracking optimization
+                // This tells the SDK to only subscribe to videos visible in this container
+                try {
+                  call.setViewport(el)
+                } catch (error) {
+                  console.error('Error setting viewport:', error)
+                }
+              }
+            }}
+          >
             {layout === "speaker" ? (
-              <CustomSpeakerLayout />
+              <CustomSpeakerLayout ownerId={event.owner_id} call={call} />
             ) : (
-              <CustomGridLayout />
+              <CustomGridLayout ownerId={event.owner_id} call={call} />
             )}
           </div>
           
@@ -1219,12 +1256,14 @@ function CallContent({
                         await call.microphone.disable()
                         setIsMicEnabled(false)
                       } else {
+                        // Enable microphone (automatically publishes audio to other participants)
                         await call.microphone.enable()
                         setIsMicEnabled(true)
                       }
                     } catch (error) {
                       console.warn('Could not toggle microphone:', error)
                       setIsMicEnabled(false)
+                      toast.error('Failed to enable microphone')
                     } finally {
                       setIsMicLoading(false)
                     }
@@ -1263,12 +1302,14 @@ function CallContent({
                         await call.camera.disable()
                         setIsCameraEnabled(false)
                       } else {
+                        // Enable camera (automatically publishes video to other participants)
                         await call.camera.enable()
                         setIsCameraEnabled(true)
                       }
                     } catch (error) {
                       console.warn('Could not toggle camera:', error)
                       setIsCameraEnabled(false)
+                      toast.error('Failed to enable camera')
                     } finally {
                       setIsCameraLoading(false)
                     }
@@ -1432,6 +1473,7 @@ function CallContent({
                             await call.microphone.disable()
                             setIsMicEnabled(false)
                           } else {
+                            // Enable microphone (automatically publishes audio to other participants)
                             await call.microphone.enable()
                             setIsMicEnabled(true)
                           }
@@ -1495,22 +1537,12 @@ function CallContent({
                     <div className="p-3 bg-white/5 rounded-lg border border-white/10">
                       <div className="flex items-center justify-between mb-3">
                         <p className="text-white font-medium text-sm">Sensitivity</p>
-                        <span ref={sensitivityDisplayRef} className="text-white/60 text-xs">{micSensitivity}%</span>
+                        <span className="text-white/60 text-xs tabular-nums">{micSensitivity}%</span>
                       </div>
                       <Slider
-                        key={`sensitivity-${micSensitivity}`}
-                        defaultValue={[micSensitivity]}
+                        value={[micSensitivity]}
                         onValueChange={(value) => {
-                          // Synchronous, direct DOM update - no async, no React
-                          const newValue = value[0]
-                          if (sensitivityDisplayRef.current) {
-                            sensitivityDisplayRef.current.textContent = `${newValue}%`
-                          }
-                          sensitivityValueRef.current = newValue
-                        }}
-                        onValueCommit={(value) => {
-                          // Only update state when user releases (commits)
-                          commitSensitivityValue(value[0])
+                          setMicSensitivity(value[0])
                         }}
                         min={0}
                         max={100}
@@ -1560,6 +1592,7 @@ function CallContent({
                             await call.camera.disable()
                             setIsCameraEnabled(false)
                           } else {
+                            // Enable camera (automatically publishes video to other participants)
                             await call.camera.enable()
                             setIsCameraEnabled(true)
                           }
@@ -1682,10 +1715,33 @@ export default function StreamView({
 
         if (!mounted) return
 
-        // Initialize Stream client with token
+        // Create token provider function for automatic token refresh
+        const tokenProvider = async () => {
+          const tokenResponse = await fetch('/api/stream-token', {
+            method: 'POST',
+            credentials: 'include',
+          })
+          
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.json().catch(() => ({}))
+            throw new Error(errorData.error || `Failed to refresh token: ${tokenResponse.status}`)
+          }
+          
+          const { token: newToken } = await tokenResponse.json()
+          if (!newToken) {
+            throw new Error('No token received from server')
+          }
+          
+          return newToken
+        }
+
+        // Initialize Stream client with token provider for automatic refresh
+        // When token and user are provided in constructor, it auto-connects
+        // No need to call connectUser separately - it's handled internally
         const streamClient = new StreamVideoClient({
           apiKey,
           token,
+          tokenProvider, // Enable automatic token refresh when token expires
           user: {
             id: currentUserId,
             name: currentUserName,
@@ -1693,35 +1749,22 @@ export default function StreamView({
           },
         })
 
-        // Connect user
-        await streamClient.connectUser(
-          {
-            id: currentUserId,
-            name: currentUserName,
-            image: currentUserImage || undefined,
-          },
-          token
-        )
+        // The client automatically connects when token/user are provided in constructor
+        // We can proceed directly to creating/getting the call
 
         if (!mounted) {
           await streamClient.disconnectUser().catch(console.error)
           return
         }
 
-        // Get or create call
+        // Get or create call - use 'default' type to allow all participants
+        // 'livestream' type restricts participation to backstage roles only
         const callId = event.stream_call_id || event.id
         const streamCall = streamClient.call('default', callId)
 
-        // Join call with camera and mic disabled by default to prevent errors if devices aren't available
+        // Join call - mic and camera will start disabled by default
+        // Users can enable them via the UI, which will publish tracks to other participants
         await streamCall.join({ create: true })
-        
-        // Disable camera and mic after joining
-        try {
-          await streamCall.microphone.disable().catch(() => {})
-          await streamCall.camera.disable().catch(() => {})
-        } catch {
-          // Silently handle - devices might not be available
-        }
 
         if (!mounted) {
           await streamCall.leave().catch(console.error)
