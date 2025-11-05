@@ -74,10 +74,10 @@ export function MicrophoneVisualizer({ deviceId }: { deviceId: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 bg-white/10 rounded-full overflow-hidden">
+      <div className="h-2 flex-1 bg-white/20 rounded-full overflow-visible">
         <div
           ref={barRef}
-          className="h-full bg-green-500"
+          className="h-full bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.6),0_0_16px_rgba(255,255,255,0.4)]"
           style={{ width: '0%', transition: 'none' }}
         />
       </div>

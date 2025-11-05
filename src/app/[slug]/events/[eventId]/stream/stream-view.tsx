@@ -204,6 +204,7 @@ export default function StreamView({
     // Cleanup function with refs to ensure we have latest values
     return () => {
       mounted = false
+      isInitializedRef.current = false // Reset flag to allow re-initialization
       
       // Use refs for cleanup to avoid stale closure
       const currentCall = callRef.current

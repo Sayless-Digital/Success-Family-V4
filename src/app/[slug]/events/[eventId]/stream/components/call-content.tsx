@@ -10,6 +10,8 @@ import {
   MicOff,
   Video,
   VideoOff,
+  Volume2,
+  VolumeX,
   Phone,
   LogOut,
   PhoneOff,
@@ -69,6 +71,7 @@ export function CallContent({
   const [showSelfView, setShowSelfView] = useState(true)
   const [isMicLoading, setIsMicLoading] = useState(false)
   const [isCameraLoading, setIsCameraLoading] = useState(false)
+  const [isSpeakerLoading, setIsSpeakerLoading] = useState(false)
   const [hasMicDevice, setHasMicDevice] = useState(false)
   const [hasCameraDevice, setHasCameraDevice] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
@@ -135,10 +138,26 @@ export function CallContent({
         setSelectedCameraId(videoInputs[0].deviceId)
       }
     } catch (error) {
+      console.error('[Device Enumeration Error]', error)
       setHasMicDevice(false)
       setHasCameraDevice(false)
     }
   }, [selectedMicId, selectedCameraId])
+
+  // Listen for device changes
+  React.useEffect(() => {
+    const handleDeviceChange = () => {
+      console.log('[Device Change Detected]')
+      refreshDevices()
+    }
+
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
+      }
+    }
+  }, [refreshDevices])
 
   React.useEffect(() => {
     refreshDevices()
@@ -175,6 +194,8 @@ export function CallContent({
         setIsMicLoading={setIsMicLoading}
         isCameraLoading={isCameraLoading}
         setIsCameraLoading={setIsCameraLoading}
+        isSpeakerLoading={isSpeakerLoading}
+        setIsSpeakerLoading={setIsSpeakerLoading}
         hasMicDevice={hasMicDevice}
         hasCameraDevice={hasCameraDevice}
         showSettingsDialog={showSettingsDialog}
@@ -222,6 +243,8 @@ function CallContentInner({
   setIsMicLoading,
   isCameraLoading,
   setIsCameraLoading,
+  isSpeakerLoading,
+  setIsSpeakerLoading,
   hasMicDevice,
   hasCameraDevice,
   showSettingsDialog,
@@ -234,6 +257,10 @@ function CallContentInner({
   setSelectedCameraId,
   micSensitivity,
   setMicSensitivity,
+  speakerDevices,
+  selectedSpeakerId,
+  setSelectedSpeakerId,
+  hasSpeakerDevice,
   isMobile,
   mobileView,
   handleMobileViewChange,
@@ -253,6 +280,8 @@ function CallContentInner({
   setIsMicLoading: (loading: boolean) => void
   isCameraLoading: boolean
   setIsCameraLoading: (loading: boolean) => void
+  isSpeakerLoading: boolean
+  setIsSpeakerLoading: (loading: boolean) => void
   hasMicDevice: boolean
   hasCameraDevice: boolean
   showSettingsDialog: boolean
@@ -273,11 +302,48 @@ function CallContentInner({
   const router = useRouter()
 
   // Use GetStream's reactive hooks for device state (must be inside StreamCall context)
-  const { useMicrophoneState, useCameraState } = useCallStateHooks()
+  const { useMicrophoneState, useCameraState, useSpeakerState } = useCallStateHooks()
   const { microphone } = useMicrophoneState()
   const { camera } = useCameraState()
-  const isMicEnabled = microphone?.status === 'enabled'
-  const isCameraEnabled = camera?.status === 'enabled'
+  const { speaker } = useSpeakerState()
+  
+  // Use local state to track mic/camera status since Stream SDK's reactive state may not update immediately
+  const [localMicEnabled, setLocalMicEnabled] = React.useState<boolean>(microphone?.status === 'enabled')
+  const [localCameraEnabled, setLocalCameraEnabled] = React.useState<boolean>(camera?.status === 'enabled')
+  
+  // Update local state when Stream SDK state changes
+  React.useEffect(() => {
+    if (microphone?.status !== undefined) {
+      setLocalMicEnabled(microphone.status === 'enabled')
+    }
+  }, [microphone?.status])
+  
+  React.useEffect(() => {
+    if (camera?.status !== undefined) {
+      setLocalCameraEnabled(camera.status === 'enabled')
+    }
+  }, [camera?.status])
+  
+  const isMicEnabled = localMicEnabled
+  const isCameraEnabled = localCameraEnabled
+  // Track speaker enabled state (volume > 0)
+  // Use local state to track volume since Stream SDK's reactive state may not update immediately
+  const [localSpeakerVolume, setLocalSpeakerVolume] = React.useState<number>(speaker?.volume ?? 1)
+  const previousSpeakerVolumeRef = React.useRef<number>(1) // Store previous volume for unmute
+  
+  // Update local volume when speaker volume changes (sync with Stream SDK)
+  React.useEffect(() => {
+    if (speaker?.volume !== undefined && speaker.volume !== localSpeakerVolume) {
+      setLocalSpeakerVolume(speaker.volume)
+      if (speaker.volume > 0) {
+        previousSpeakerVolumeRef.current = speaker.volume
+      }
+    }
+  }, [speaker?.volume])
+  
+  const currentSpeakerVolume = localSpeakerVolume
+  const isSpeakerEnabled = currentSpeakerVolume > 0
+  // Note: hasSpeakerDevice comes from props, speakers are always available as output device
 
   const handleLeaveCall = async () => {
     try {
@@ -443,8 +509,10 @@ function CallContentInner({
                     try {
                       if (isMicEnabled) {
                         await call.microphone.disable()
+                        setLocalMicEnabled(false) // Update local state immediately
                       } else {
                         await call.microphone.enable()
+                        setLocalMicEnabled(true) // Update local state immediately
                       }
                     } catch (error: any) {
                       console.error('Could not toggle microphone:', error)
@@ -492,8 +560,10 @@ function CallContentInner({
                     try {
                       if (isCameraEnabled) {
                         await call.camera.disable()
+                        setLocalCameraEnabled(false) // Update local state immediately
                       } else {
                         await call.camera.enable()
+                        setLocalCameraEnabled(true) // Update local state immediately
                       }
                     } catch (error: any) {
                       console.error('Could not toggle camera:', error)
@@ -528,6 +598,73 @@ function CallContentInner({
                     <Video className="h-4 w-4" />
                   ) : (
                     <VideoOff className="h-4 w-4" />
+                  )}
+                </Button>
+
+                {/* Speaker/Playback toggle */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    console.log('[Speaker Toggle] Button clicked', { isSpeakerLoading, isSpeakerEnabled, currentSpeakerVolume, speaker: !!speaker })
+                    if (isSpeakerLoading) {
+                      console.log('[Speaker Toggle] Already loading, skipping')
+                      return
+                    }
+                    setIsSpeakerLoading(true)
+                    try {
+                      if (!speaker) {
+                        console.error('[Speaker Toggle] Speaker object not available')
+                        toast.error('Speaker not available')
+                        return
+                      }
+                      const targetVolume = isSpeakerEnabled ? 0 : (previousSpeakerVolumeRef.current > 0 ? previousSpeakerVolumeRef.current : 1)
+                      console.log('[Speaker Toggle] Setting volume to', targetVolume, 'from', currentSpeakerVolume)
+                      
+                      // Check if speaker has setVolume method
+                      if (typeof speaker.setVolume !== 'function') {
+                        console.error('[Speaker Toggle] speaker.setVolume is not a function', speaker)
+                        toast.error('Speaker API not available')
+                        return
+                      }
+                      
+                      if (isSpeakerEnabled) {
+                        // Store current volume before muting
+                        previousSpeakerVolumeRef.current = currentSpeakerVolume
+                        await speaker.setVolume(0)
+                        setLocalSpeakerVolume(0) // Update local state immediately
+                        console.log('[Speaker Toggle] Volume set to 0 (muted)')
+                      } else {
+                        // Restore previous volume or default to 1
+                        const restoreVolume = previousSpeakerVolumeRef.current > 0 ? previousSpeakerVolumeRef.current : 1
+                        await speaker.setVolume(restoreVolume)
+                        setLocalSpeakerVolume(restoreVolume) // Update local state immediately
+                        console.log('[Speaker Toggle] Volume restored to', restoreVolume)
+                      }
+                    } catch (error: any) {
+                      console.error('[Speaker Toggle] Error toggling speaker:', error)
+                      toast.error(`Failed to toggle speaker: ${error.message || 'Unknown error'}`)
+                    } finally {
+                      setIsSpeakerLoading(false)
+                    }
+                  }}
+                  disabled={isSpeakerLoading}
+                  className={cn(
+                    "h-10 w-10 rounded-full p-0 transition-all duration-200",
+                    isSpeakerLoading
+                      ? "bg-white/10 text-white cursor-wait"
+                      : isSpeakerEnabled
+                        ? "bg-white/10 hover:bg-white/20 text-white"
+                        : "bg-red-600 hover:bg-red-700 text-white"
+                  )}
+                  title={isSpeakerEnabled ? "Mute speaker" : "Unmute speaker"}
+                >
+                  {isSpeakerLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isSpeakerEnabled ? (
+                    <Volume2 className="h-4 w-4" />
+                  ) : (
+                    <VolumeX className="h-4 w-4" />
                   )}
                 </Button>
               </div>
@@ -642,10 +779,11 @@ function CallContentInner({
           cameraDevices={cameraDevices}
           selectedMicId={selectedMicId}
           setSelectedMicId={setSelectedMicId}
-          selectedCameraId={selectedCameraId}
-          setSelectedCameraId={setSelectedCameraId}
-          micSensitivity={micSensitivity}
-          setMicSensitivity={setMicSensitivity}
+                  selectedCameraId={selectedCameraId}
+        setSelectedCameraId={setSelectedCameraId}
+        micSensitivity={micSensitivity}
+        setMicSensitivity={setMicSensitivity}
+        refreshDevices={refreshDevices}
         />
     </div>
   )

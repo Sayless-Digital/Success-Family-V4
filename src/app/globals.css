@@ -431,6 +431,19 @@
     opacity: 0.65;
   }
 
+  /* Exclude Select dropdown items from button feedback animation */
+  [data-radix-select-item]:active,
+  [data-radix-select-trigger]:active,
+  [data-radix-select-scroll-up-button]:active,
+  [data-radix-select-scroll-down-button]:active,
+  button[data-radix-select-trigger]:active,
+  button[data-radix-select-item]:active,
+  [role="option"]:active {
+    transform: none !important;
+    opacity: 1 !important;
+    scale: 1 !important;
+  }
+
   /* Tab trigger feedback */
   [role="tab"]:active,
   [data-radix-tabs-trigger]:active {
