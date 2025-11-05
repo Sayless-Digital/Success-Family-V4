@@ -82,19 +82,22 @@ export function SettingsDialog({
   const isMicEnabled = localMicEnabled
   const isCameraEnabled = localCameraEnabled
   // Use local state to track volume since Stream SDK's reactive state may not update immediately
-  const [localSpeakerVolume, setLocalSpeakerVolume] = React.useState<number>(speaker?.volume ?? 1)
+  // Access volume through type assertion since Stream SDK types may not expose it directly
+  const speakerVolume = (speaker as any)?.volume ?? 1
+  const [localSpeakerVolume, setLocalSpeakerVolume] = React.useState<number>(speakerVolume)
   const [isSpeakerLoading, setIsSpeakerLoading] = React.useState(false)
   const previousSpeakerVolumeRef = React.useRef<number>(1) // Store previous volume for unmute
   
   // Update local volume when speaker volume changes (sync with Stream SDK)
   React.useEffect(() => {
-    if (speaker?.volume !== undefined && speaker.volume !== localSpeakerVolume) {
-      setLocalSpeakerVolume(speaker.volume)
-      if (speaker.volume > 0) {
-        previousSpeakerVolumeRef.current = speaker.volume
+    const currentVolume = (speaker as any)?.volume
+    if (currentVolume !== undefined && currentVolume !== localSpeakerVolume) {
+      setLocalSpeakerVolume(currentVolume)
+      if (currentVolume > 0) {
+        previousSpeakerVolumeRef.current = currentVolume
       }
     }
-  }, [speaker?.volume])
+  }, [speaker, localSpeakerVolume])
   
   const currentSpeakerVolume = localSpeakerVolume
   const isSpeakerEnabled = currentSpeakerVolume > 0

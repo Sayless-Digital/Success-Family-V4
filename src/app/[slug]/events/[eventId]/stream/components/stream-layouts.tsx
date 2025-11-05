@@ -28,7 +28,7 @@ export function MobileSwipeableLayout({ ownerId, call, onViewChange }: LayoutPro
   const minSwipeDistance = 50
 
   // Notify parent of view changes (only on actual changes, not on mount)
-  const prevViewRef = React.useRef<'spotlight' | 'grid'>()
+  const prevViewRef = React.useRef<'spotlight' | 'grid' | undefined>(undefined)
   
   React.useEffect(() => {
     if (onViewChange && prevViewRef.current !== undefined && prevViewRef.current !== currentView) {
