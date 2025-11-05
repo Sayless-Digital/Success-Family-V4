@@ -48,13 +48,17 @@ export function ParticipantVideo({
       </div>
       
       {/* Custom overlays on top */}
-      {/* Name overlay */}
-      <div className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md max-w-[calc(100%-12px)] z-10">
-        {isHost && (
+      {/* Host badge - top of container */}
+      {isHost && (
+        <div className="absolute top-0.5 left-1.5 z-10">
           <Badge className="bg-white/20 text-white text-[10px] px-1.5 py-0 h-4 border-0">
             Host
           </Badge>
-        )}
+        </div>
+      )}
+      
+      {/* Name overlay */}
+      <div className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-md max-w-[calc(100%-12px)] z-10">
         <span className="text-white text-xs font-medium truncate block">
           {participant.name || 'Unknown'}
           {participant.isLocalParticipant && ' (You)'}

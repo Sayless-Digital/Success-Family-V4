@@ -486,14 +486,22 @@ export default function CommunityEventsView({
 
     try {
       // Charge user upfront and transfer to owner
-      const { error } = await supabase
+      const { data, error } = await supabase
         .rpc('deduct_points_for_stream_join', {
           p_user_id: currentUserId,
           p_event_id: eventId,
           p_point_cost: streamJoinCost,
         })
 
-      if (error) throw error
+      if (error) {
+        console.error('RPC error:', error)
+        // Check if it's a network error
+        if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+          toast.error('Network error. Please check your connection and try again.')
+          return
+        }
+        throw error
+      }
 
       toast.success(`Registered for event! ${streamJoinCost} point(s) charged.`)
       
@@ -504,7 +512,68 @@ export default function CommunityEventsView({
       await refreshWalletBalance()
     } catch (error: any) {
       console.error('Error registering for event:', error)
-      toast.error(error.message || 'Failed to register for event')
+      // Provide more specific error messages
+      if (error?.message) {
+        toast.error(error.message)
+      } else if (error?.code === 'PGRST116' || error?.message?.includes('function') || error?.message?.includes('does not exist')) {
+        toast.error('Database function not found. Please ensure the migration has been applied.')
+      } else {
+        toast.error('Failed to register for event. Please try again.')
+      }
+    }
+  }
+
+  const handleRegisterAndJoin = async (eventId: string) => {
+    if (!user || !currentUserId) {
+      toast.error("Please sign in to register for events")
+      return
+    }
+
+    // Check wallet balance
+    if (walletBalance === null || walletBalance < streamJoinCost) {
+      toast.error(`Insufficient points. You need ${streamJoinCost} point(s) to join this event.`)
+      return
+    }
+
+    try {
+      // Charge user upfront and transfer to owner
+      const { data, error } = await supabase
+        .rpc('deduct_points_for_stream_join', {
+          p_user_id: currentUserId,
+          p_event_id: eventId,
+          p_point_cost: streamJoinCost,
+        })
+
+      if (error) {
+        console.error('RPC error:', error)
+        // Check if it's a network error
+        if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+          toast.error('Network error. Please check your connection and try again.')
+          return
+        }
+        throw error
+      }
+
+      toast.success(`Registered and joining stream! ${streamJoinCost} point(s) charged.`)
+      
+      // Update local state
+      setUserRegistrations(prev => [...prev, eventId])
+      
+      // Refresh wallet balance
+      await refreshWalletBalance()
+      
+      // Navigate to stream immediately
+      router.push(`/${community.slug}/events/${eventId}/stream`)
+    } catch (error: any) {
+      console.error('Error registering and joining:', error)
+      // Provide more specific error messages
+      if (error?.message) {
+        toast.error(error.message)
+      } else if (error?.code === 'PGRST116' || error?.message?.includes('function') || error?.message?.includes('does not exist')) {
+        toast.error('Database function not found. Please ensure the migration has been applied.')
+      } else {
+        toast.error('Failed to register and join stream. Please try again.')
+      }
     }
   }
 
@@ -681,6 +750,7 @@ export default function CommunityEventsView({
                 isOwner={isOwner && event.owner_id === currentUserId}
                 isRegistered={userRegistrations.includes(event.id)}
                 onRegister={() => handleRegisterForEvent(event.id)}
+                onRegisterAndJoin={() => handleRegisterAndJoin(event.id)}
                 onCancelRegistration={() => handleCancelRegistration(event.id)}
                 onDelete={() => setDeleteDialogOpen(event.id)}
                 onGoLive={() => handleGoLive(event.id)}
@@ -895,6 +965,7 @@ interface EventCardProps {
   isOwner: boolean
   isRegistered: boolean
   onRegister?: () => void
+  onRegisterAndJoin?: () => void
   onCancelRegistration?: () => void
   onDelete?: () => void
   onGoLive?: () => void
@@ -907,6 +978,7 @@ function EventCard({
   isOwner, 
   isRegistered,
   onRegister,
+  onRegisterAndJoin,
   onCancelRegistration,
   onDelete,
   onGoLive,
@@ -1006,7 +1078,7 @@ function EventCard({
                 </Button>
               )}
               
-              {!isOwner && event.status === 'live' && onJoinStream && (
+              {!isOwner && event.status === 'live' && isRegistered && onJoinStream && (
                 <Button
                   size="sm"
                   onClick={onJoinStream}
@@ -1027,7 +1099,18 @@ function EventCard({
                 </Button>
               )}
               
-              {!isOwner && isRegistered && event.status === 'scheduled' && onCancelRegistration && (
+              {!isOwner && !isRegistered && event.status === 'live' && onRegisterAndJoin && (
+                <Button
+                  size="sm"
+                  onClick={onRegisterAndJoin}
+                  className="bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 hover:border-red-500/50 transition-all"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Register and Join ({streamJoinCost} points)
+                </Button>
+              )}
+              
+              {!isOwner && isRegistered && (event.status === 'scheduled' || event.status === 'live') && onCancelRegistration && (
                 <Button
                   size="sm"
                   variant="outline"

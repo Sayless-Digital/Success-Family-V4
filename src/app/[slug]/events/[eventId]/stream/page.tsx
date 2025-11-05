@@ -79,10 +79,9 @@ export default async function StreamPage({ params }: StreamPageProps) {
 
   const isRegistered = !!registration
 
-  // TEMPORARILY DISABLED: Allow anyone to join live streams
-  // if (!isOwner && !isRegistered && event.status === 'scheduled') {
-  //   notFound() // Can't join if not registered and event isn't live yet
-  // }
+  if (!isOwner && !isRegistered && event.status === 'scheduled') {
+    notFound() // Can't join if not registered and event isn't live yet
+  }
 
   // Get Stream API key
   const { data: settings } = await supabase
