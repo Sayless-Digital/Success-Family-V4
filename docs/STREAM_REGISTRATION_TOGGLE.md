@@ -2,9 +2,9 @@
 
 This document explains how to toggle the registration requirement for joining live streams.
 
-## Current Status: Registration DISABLED (Open Access)
+## Current Status: Registration ENABLED (Required)
 
-Currently, **anyone can join any live stream** without registration or payment. This is useful for testing and development.
+Currently, **users must register (and pay) before joining live streams**. This ensures proper access control and payment processing.
 
 ---
 

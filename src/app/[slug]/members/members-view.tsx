@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { Crown, Calendar, Search, Home, Users, MessageSquare, Shield, Video } from "lucide-react"
+import { Crown, Calendar, Search, Home, Users, MessageSquare, Shield, Video, VideoIcon } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -50,6 +50,7 @@ export default function CommunityMembersView({
     if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
     if (pathname === `/${community.slug}/feed`) return "feed"
     if (pathname === `/${community.slug}/events`) return "events"
+    if (pathname === `/${community.slug}/recordings`) return "recordings"
     if (pathname === `/${community.slug}/members`) return "members"
     if (pathname === `/${community.slug}/settings`) return "settings"
     return "home"
@@ -98,6 +99,14 @@ export default function CommunityMembersView({
                 Events
               </Link>
             </TabsTrigger>
+            {(isOwner || userMembership) && (
+              <TabsTrigger value="recordings" asChild>
+                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2">
+                  <VideoIcon className="h-4 w-4" />
+                  Recordings
+                </Link>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="members" asChild>
               <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
                 <Users className="h-4 w-4" />

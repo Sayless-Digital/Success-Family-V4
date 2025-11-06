@@ -21,18 +21,37 @@ export function HMRErrorSuppressor() {
     const originalError = console.error
     const originalWarn = console.warn
     const originalLog = console.log
+    const originalWindowError = window.onerror
 
-    // Pattern to match Next.js HMR WebSocket errors
-    const hmrWebSocketPattern = /WebSocket connection to 'wss?:\/\/.*\/_next\/(webpack-hmr|static\/hmr)/i
+    // Patterns to match Next.js HMR WebSocket errors
+    // These errors occur because custom HTTPS servers don't support WebSocket upgrades
+    // Next.js automatically falls back to polling, which works fine
     const hmrErrorPatterns = [
-      hmrWebSocketPattern,
+      /WebSocket connection to 'wss?:\/\/.*\/_next\/(webpack-hmr|static\/hmr)/i,
+      /WebSocket connection to.*webpack-hmr/i,
+      /WebSocket connection to.*_next\/webpack-hmr/i,
       /failed to connect to the development server/i,
       /webpack-hmr/i,
+      /_next\/webpack-hmr/i,
+      /wss?:\/\/.*:3000\/_next\/webpack-hmr/i,
     ]
 
     // Helper to check if message should be suppressed
     const shouldSuppress = (args: unknown[]): boolean => {
-      const message = args.join(' ')
+      // Convert all arguments to string and join
+      const message = args.map(arg => {
+        if (typeof arg === 'string') return arg
+        if (typeof arg === 'object' && arg !== null) {
+          try {
+            return JSON.stringify(arg)
+          } catch {
+            return String(arg)
+          }
+        }
+        return String(arg)
+      }).join(' ')
+      
+      // Check if any pattern matches
       return hmrErrorPatterns.some(pattern => pattern.test(message))
     }
 
@@ -41,18 +60,36 @@ export function HMRErrorSuppressor() {
       if (!shouldSuppress(args)) {
         originalError.apply(console, args)
       }
+      // Silently suppress HMR errors
     }
 
     console.warn = (...args: unknown[]) => {
       if (!shouldSuppress(args)) {
         originalWarn.apply(console, args)
       }
+      // Silently suppress HMR warnings
     }
 
     console.log = (...args: unknown[]) => {
       if (!shouldSuppress(args)) {
         originalLog.apply(console, args)
       }
+      // Silently suppress HMR logs
+    }
+    
+    // Also suppress uncaught errors from WebSocket initialization
+    // This catches errors that occur before React hydration
+    window.onerror = (message, source, lineno, colno, error) => {
+      const messageStr = String(message)
+      if (hmrErrorPatterns.some(pattern => pattern.test(messageStr))) {
+        // Suppress HMR WebSocket errors
+        return true // Prevent default error handling
+      }
+      // Call original handler for other errors
+      if (originalWindowError) {
+        return originalWindowError(message, source, lineno, colno, error)
+      }
+      return false
     }
 
     // Log once that we're suppressing these errors
@@ -61,11 +98,12 @@ export function HMRErrorSuppressor() {
       'color: #888; font-style: italic;'
     )
 
-    // Cleanup: restore original console methods
+    // Cleanup: restore original console methods and window error handler
     return () => {
       console.error = originalError
       console.warn = originalWarn
       console.log = originalLog
+      window.onerror = originalWindowError
     }
   }, [])
 

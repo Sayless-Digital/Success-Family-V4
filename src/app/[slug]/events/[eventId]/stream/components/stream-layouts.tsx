@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useCallStateHooks, type Call } from "@stream-io/video-react-sdk"
+import { useCallStateHooks, type Call, hasScreenShare } from "@stream-io/video-react-sdk"
 import { cn } from "@/lib/utils"
 import { ParticipantVideo } from "./participant-video"
 import { ChevronLeft, ChevronRight } from "lucide-react"
@@ -11,6 +11,8 @@ interface LayoutProps {
   ownerId: string
   call: Call
   onViewChange?: (view: 'spotlight' | 'grid') => void
+  localScreenShareEnabled?: boolean
+  localParticipant?: any
 }
 
 /**
@@ -18,7 +20,7 @@ interface LayoutProps {
  * View 1: Full-screen host spotlight only
  * View 2: All participants grid
  */
-export function MobileSwipeableLayout({ ownerId, call, onViewChange }: LayoutProps) {
+export function MobileSwipeableLayout({ ownerId, call, onViewChange, localScreenShareEnabled, localParticipant }: LayoutProps) {
   const [currentView, setCurrentView] = React.useState<'spotlight' | 'grid'>('spotlight')
   const [touchStart, setTouchStart] = React.useState<number | null>(null)
   const [touchEnd, setTouchEnd] = React.useState<number | null>(null)
@@ -134,14 +136,70 @@ export function MobileSwipeableLayout({ ownerId, call, onViewChange }: LayoutPro
 /**
  * Mobile Spotlight View - Shows ONLY the host in full-screen
  */
-function MobileSpotlightView({ ownerId, call }: LayoutProps) {
+function MobileSpotlightView({ ownerId, call, localScreenShareEnabled, localParticipant }: LayoutProps) {
   const { useParticipants } = useCallStateHooks()
   const participants = useParticipants()
+  
+  // Helper to check if participant has video (check multiple properties)
+  // Handles numeric track IDs (like [3]) which Stream.io SDK uses
+  const hasVideo = (p: any) => {
+    const tracks = p.publishedTracks as any
+    const tracksArray = tracks instanceof Set ? Array.from(tracks) : (Array.isArray(tracks) ? tracks : [])
+    
+    // If any tracks exist (even numeric IDs), assume video is available
+    if (tracksArray.length > 0) {
+      // Check for explicit video track names
+      const tracksAsStrings = tracksArray.map(t => String(t).toLowerCase())
+      if (tracksAsStrings.includes('videotrack') || tracksAsStrings.includes('video') || tracksAsStrings.some(t => t.includes('video'))) {
+        return true
+      }
+      // If tracks exist but no explicit name, check if videoStream exists
+      // Numeric track IDs mean a track was published
+      if (p.videoStream || (p as any).videoTrack) {
+        return true
+      }
+      // If tracks exist (numeric IDs), assume video is available
+      return true
+    }
+    
+    // Fallback to direct property checks
+    return !!(p.videoStream || (p as any).videoTrack)
+  }
+  
+  // Helper to check if participant has screen share
+  // Use Stream.io SDK's built-in hasScreenShare utility (recommended approach)
+  // Fallback to localScreenShareEnabled for local participant if SDK utility doesn't work
+  const participantHasScreenShare = (p: any) => {
+    // Use SDK utility first (most reliable - works for both local and remote participants)
+    if (typeof hasScreenShare === 'function') {
+      try {
+        return hasScreenShare(p)
+      } catch (e) {
+        // SDK utility error - fall through to fallback
+      }
+    }
+    
+    // Fallback: For local participant, use localScreenShareEnabled state
+    if (p.isLocalParticipant && localScreenShareEnabled && hasVideo(p)) {
+      return true
+    }
+    
+    return false
+  }
   
   // Find the host/owner
   const hostParticipant = participants.find(p => p.userId === ownerId)
   
-  if (!hostParticipant) {
+  // Check if host is sharing screen
+  const hostIsSharingScreen = hostParticipant && participantHasScreenShare(hostParticipant)
+  
+  // If host is sharing screen, prioritize that
+  // Otherwise show host video or any participant with screen share
+  const displayParticipant = hostIsSharingScreen ? hostParticipant 
+    : (hostParticipant || participants.find(p => participantHasScreenShare(p)) || participants[0])
+  const isSharingScreen = displayParticipant && participantHasScreenShare(displayParticipant)
+  
+  if (!displayParticipant) {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <p className="text-white/60">Waiting for host...</p>
@@ -153,9 +211,10 @@ function MobileSpotlightView({ ownerId, call }: LayoutProps) {
     <div className="w-full h-full flex items-center justify-center p-2">
       <div className="w-full h-full">
         <ParticipantVideo
-          participant={hostParticipant}
-          isHost={true}
+          participant={displayParticipant}
+          isHost={displayParticipant.userId === ownerId}
           call={call}
+          trackType={isSharingScreen ? "screenShareTrack" : "videoTrack"}
         />
       </div>
     </div>
@@ -167,7 +226,7 @@ function MobileSpotlightView({ ownerId, call }: LayoutProps) {
  * Prioritizes the host/owner as the main spotlight participant
  * Used on desktop/tablet devices
  */
-export function CustomSpeakerLayout({ ownerId, call }: LayoutProps) {
+export function CustomSpeakerLayout({ ownerId, call, localScreenShareEnabled, localParticipant }: LayoutProps) {
   const { useParticipants } = useCallStateHooks()
   const participants = useParticipants()
   const [isPortrait, setIsPortrait] = React.useState(false)
@@ -181,18 +240,67 @@ export function CustomSpeakerLayout({ ownerId, call }: LayoutProps) {
   const ownerParticipant = participants.find(p => p.userId === ownerId)
   
   // Helper to check if participant has video (check multiple properties)
+  // Handles numeric track IDs (like [3]) which Stream.io SDK uses
+  // MUST be defined before hasScreenShare since hasScreenShare uses it
   const hasVideo = (p: any) => {
     const tracks = p.publishedTracks as any
-    return !!(p.videoStream ||
-             (tracks && Array.isArray(tracks) && (tracks.includes('videoTrack') || tracks.includes('video'))) ||
-             p.videoTrack)
+    const tracksArray = tracks instanceof Set ? Array.from(tracks) : (Array.isArray(tracks) ? tracks : [])
+    
+    // If any tracks exist (even numeric IDs), assume video is available
+    if (tracksArray.length > 0) {
+      // Check for explicit video track names
+      const tracksAsStrings = tracksArray.map(t => String(t).toLowerCase())
+      if (tracksAsStrings.includes('videotrack') || tracksAsStrings.includes('video') || tracksAsStrings.some(t => t.includes('video'))) {
+        return true
+      }
+      // If tracks exist but no explicit name, check if videoStream exists
+      // Numeric track IDs mean a track was published
+      if (p.videoStream || (p as any).videoTrack) {
+        return true
+      }
+      // If tracks exist (numeric IDs), assume video is available
+      return true
+    }
+    
+    // Fallback to direct property checks
+    return !!(p.videoStream || (p as any).videoTrack)
   }
   
+  // Helper to check if participant has screen share
+  // Use Stream.io SDK's built-in hasScreenShare utility (recommended approach)
+  // Fallback to localScreenShareEnabled for local participant if SDK utility doesn't work
+  const participantHasScreenShare = (p: any) => {
+    // Use SDK utility first (most reliable - works for both local and remote participants)
+    if (typeof hasScreenShare === 'function') {
+      try {
+        return hasScreenShare(p)
+      } catch (e) {
+        // SDK utility error - fall through to fallback
+      }
+    }
+    
+    // Fallback: For local participant, use localScreenShareEnabled state
+    if (p.isLocalParticipant && localScreenShareEnabled && hasVideo(p)) {
+      return true
+    }
+    
+    return false
+  }
+  
+  // Prioritize: 1. Owner with screen share, 2. Any participant with screen share, 3. Owner with video, 4. Any participant with video, 5. Owner, 6. First participant
+  const screenShareParticipant = participants.find(p => participantHasScreenShare(p))
+  const ownerWithScreenShare = ownerParticipant && participantHasScreenShare(ownerParticipant)
+  
   const mainParticipant =
+    (ownerWithScreenShare ? ownerParticipant : null) ||
+    (screenShareParticipant || null) ||
     (ownerParticipant && hasVideo(ownerParticipant) ? ownerParticipant : null) ||
     ownerParticipant ||
     participants.find(p => hasVideo(p)) ||
     participants[0]
+  
+  // Check if main participant is sharing screen
+  const isMainSharingScreen = mainParticipant && participantHasScreenShare(mainParticipant)
   const otherParticipants = participants.filter(p => p.sessionId !== mainParticipant?.sessionId)
 
   // Detect video orientation
@@ -240,6 +348,7 @@ export function CustomSpeakerLayout({ ownerId, call }: LayoutProps) {
             participant={mainParticipant}
             isHost={mainParticipant?.userId === ownerId}
             call={call}
+            trackType={isMainSharingScreen ? "screenShareTrack" : "videoTrack"}
           />
         </div>
       </div>
@@ -263,6 +372,7 @@ export function CustomSpeakerLayout({ ownerId, call }: LayoutProps) {
                 participant={participant}
                 isHost={participant.userId === ownerId}
                 call={call}
+                trackType={participantHasScreenShare(participant) ? "screenShareTrack" : "videoTrack"}
               />
             </div>
           ))}
@@ -278,7 +388,7 @@ export function CustomSpeakerLayout({ ownerId, call }: LayoutProps) {
  * On mobile: Single column, full-screen cards, scrollable vertically
  * On desktop: Responsive grid layout
  */
-export function CustomGridLayout({ ownerId, call }: LayoutProps) {
+export function CustomGridLayout({ ownerId, call, localScreenShareEnabled, localParticipant }: LayoutProps) {
   const { useParticipants } = useCallStateHooks()
   const participants = useParticipants()
   const [isMobile, setIsMobile] = React.useState(false)
@@ -295,10 +405,66 @@ export function CustomGridLayout({ ownerId, call }: LayoutProps) {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
   
-  // Sort participants: host first, then others
+  // Helper to check if participant has video (check multiple properties)
+  // Handles numeric track IDs (like [3]) which Stream.io SDK uses
+  // MUST be defined before hasScreenShare since hasScreenShare uses it
+  const hasVideo = (p: any) => {
+    const tracks = p.publishedTracks as any
+    const tracksArray = tracks instanceof Set ? Array.from(tracks) : (Array.isArray(tracks) ? tracks : [])
+    
+    // If any tracks exist (even numeric IDs), assume video is available
+    if (tracksArray.length > 0) {
+      // Check for explicit video track names
+      const tracksAsStrings = tracksArray.map(t => String(t).toLowerCase())
+      if (tracksAsStrings.includes('videotrack') || tracksAsStrings.includes('video') || tracksAsStrings.some(t => t.includes('video'))) {
+        return true
+      }
+      // If tracks exist but no explicit name, check if videoStream exists
+      // Numeric track IDs mean a track was published
+      if (p.videoStream || (p as any).videoTrack) {
+        return true
+      }
+      // If tracks exist (numeric IDs), assume video is available
+      return true
+    }
+    
+    // Fallback to direct property checks
+    return !!(p.videoStream || (p as any).videoTrack)
+  }
+  
+  // Helper to check if participant has screen share
+  // Use Stream.io SDK's built-in hasScreenShare utility (recommended approach)
+  // Fallback to localScreenShareEnabled for local participant if SDK utility doesn't work
+  const participantHasScreenShare = (p: any) => {
+    // Use SDK utility first (most reliable - works for both local and remote participants)
+    if (typeof hasScreenShare === 'function') {
+      try {
+        return hasScreenShare(p)
+      } catch (e) {
+        // SDK utility error - fall through to fallback
+      }
+    }
+    
+    // Fallback: For local participant, use localScreenShareEnabled state
+    if (p.isLocalParticipant && localScreenShareEnabled && hasVideo(p)) {
+      return true
+    }
+    
+    return false
+  }
+  
+  // Sort participants: screen share first, then host, then others
   const sortedParticipants = [...participants].sort((a, b) => {
+    const aHasScreenShare = participantHasScreenShare(a)
+    const bHasScreenShare = participantHasScreenShare(b)
     const aIsOwner = a.userId === ownerId
     const bIsOwner = b.userId === ownerId
+    
+    // Prioritize screen share
+    if (aHasScreenShare && !bHasScreenShare) return -1
+    if (!aHasScreenShare && bHasScreenShare) return 1
+    
+    // Then prioritize host
     if (aIsOwner && !bIsOwner) return -1
     if (!aIsOwner && bIsOwner) return 1
     return 0
@@ -337,6 +503,7 @@ export function CustomGridLayout({ ownerId, call }: LayoutProps) {
                 participant={participant}
                 isHost={participant.userId === ownerId}
                 call={call}
+                trackType={participantHasScreenShare(participant) ? "screenShareTrack" : "videoTrack"}
               />
             </div>
           ))}
@@ -360,6 +527,7 @@ export function CustomGridLayout({ ownerId, call }: LayoutProps) {
               participant={participant}
               isHost={participant.userId === ownerId}
               call={call}
+              trackType={hasScreenShare(participant) ? "screenShareTrack" : "videoTrack"}
             />
           </div>
         ))}

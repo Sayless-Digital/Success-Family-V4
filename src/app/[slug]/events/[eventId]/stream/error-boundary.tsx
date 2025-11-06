@@ -1,6 +1,7 @@
 "use client"
 
 import { Component, ReactNode } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -19,9 +20,12 @@ interface State {
 /**
  * Error Boundary for Stream View
  * Catches WebSocket frame errors that are common in development
+ * 
+ * Note: Error boundaries must be class components, but we need router from hooks.
+ * We'll use a wrapper component to provide the router.
  */
-export class StreamErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+class StreamErrorBoundaryInner extends Component<Props & { router: ReturnType<typeof useRouter> }, State> {
+  constructor(props: Props & { router: ReturnType<typeof useRouter> }) {
     super(props)
     this.state = { hasError: false }
   }
@@ -65,7 +69,8 @@ export class StreamErrorBoundary extends Component<Props, State> {
               </p>
               <Button
                 onClick={() => {
-                  window.location.href = `/${this.props.communitySlug}/events`
+                  // Use Next.js router instead of window.location to avoid full page refresh
+                  this.props.router.push(`/${this.props.communitySlug}/events`)
                 }}
                 className="bg-white/10 text-white/80 hover:bg-white/20"
               >
@@ -80,4 +85,16 @@ export class StreamErrorBoundary extends Component<Props, State> {
 
     return this.props.children
   }
+}
+
+/**
+ * Wrapper component that provides router to the error boundary
+ */
+export function StreamErrorBoundary({ children, communitySlug, onError }: Props) {
+  const router = useRouter()
+  return (
+    <StreamErrorBoundaryInner router={router} communitySlug={communitySlug} onError={onError}>
+      {children}
+    </StreamErrorBoundaryInner>
+  )
 }

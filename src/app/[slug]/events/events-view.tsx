@@ -3,14 +3,13 @@
 import React, { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import { Video, Calendar, Clock, Users, Play, Plus, X, Trash2, Edit, MoreVertical, Home, MessageSquare, Shield, Crown } from "lucide-react"
+import { Video, Calendar, Clock, Users, Play, Plus, X, Trash2, Edit, MoreVertical, Home, MessageSquare, Shield, Crown, VideoIcon } from "lucide-react"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { PageHeader } from "@/components/ui/page-header"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { CustomDateTimePicker } from "@/components/ui/custom-date-time-picker"
@@ -76,6 +75,7 @@ export default function CommunityEventsView({
     if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
     if (pathname === `/${community.slug}/feed`) return "feed"
     if (pathname === `/${community.slug}/events`) return "events"
+    if (pathname === `/${community.slug}/recordings`) return "recordings"
     if (pathname === `/${community.slug}/members`) return "members"
     if (pathname === `/${community.slug}/settings`) return "settings"
     return "home"
@@ -705,6 +705,14 @@ export default function CommunityEventsView({
                 Events
               </Link>
             </TabsTrigger>
+            {isOwner && (
+              <TabsTrigger value="recordings" asChild>
+                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2">
+                  <VideoIcon className="h-4 w-4" />
+                  Recordings
+                </Link>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="members" asChild>
               <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
@@ -722,9 +730,8 @@ export default function CommunityEventsView({
           </TabsList>
         </Tabs>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <PageHeader title="Events" subtitle="Schedule and join live streams" className="mb-0" />
-          {isOwner && (
+        {isOwner && (
+          <div className="flex justify-end">
             <Button
               onClick={() => setCreateDialogOpen(true)}
               className="bg-white/10 text-white/80 hover:bg-white/20 w-full sm:w-auto flex-shrink-0 cursor-pointer"
@@ -732,8 +739,8 @@ export default function CommunityEventsView({
               <Plus className="h-4 w-4 mr-2" />
               Create Event
             </Button>
-          )}
-        </div>
+          </div>
+        )}
 
       {/* Live Events */}
       {liveEvents.length > 0 && (

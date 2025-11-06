@@ -113,13 +113,11 @@ export function SettingsDialog({
         await navigator.mediaDevices.getUserMedia({ audio: true })
       } catch (permError) {
         // Permission denied or not needed, continue anyway
-        console.log('[Playback] Audio permission not available (may affect device labels):', permError)
       }
       
       const devices = await navigator.mediaDevices.enumerateDevices()
       const audioOutputs = devices.filter(device => device.kind === 'audiooutput')
       setAllSpeakerDevices(audioOutputs)
-      console.log('[Playback] Enumerated speaker devices:', audioOutputs.map(d => ({ id: d.deviceId, label: d.label || 'Unknown device' })))
     } catch (error) {
       console.error('[Playback] Error enumerating speaker devices:', error)
     }
@@ -130,13 +128,6 @@ export function SettingsDialog({
   const speakerDevices = allSpeakerDevices.length > 0 ? allSpeakerDevices : streamSpeakerDevices
   const selectedSpeakerId = selectedDevice || ''
   const hasSpeakerDevice = speakerDevices.length > 0
-  
-  // Log what we found
-  React.useEffect(() => {
-    if (open && speakerDevices.length > 0) {
-      console.log('[Playback] Available speaker devices:', speakerDevices.map(d => ({ id: d.deviceId, label: d.label, selected: d.deviceId === selectedSpeakerId })))
-    }
-  }, [open, speakerDevices, selectedSpeakerId])
   
   // Enumerate devices when dialog opens or playback tab might be viewed
   React.useEffect(() => {

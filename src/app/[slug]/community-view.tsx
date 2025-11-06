@@ -2,7 +2,7 @@
 
 import React, { useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, Home, Video } from "lucide-react"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, Home, Video, VideoIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +57,7 @@ export default function CommunityView({
     if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
     if (pathname === `/${community.slug}/feed`) return "feed"
     if (pathname === `/${community.slug}/events`) return "events"
+    if (pathname === `/${community.slug}/recordings`) return "recordings"
     if (pathname === `/${community.slug}/members`) return "members"
     if (pathname === `/${community.slug}/settings`) return "settings"
     return "home"
@@ -170,6 +171,14 @@ export default function CommunityView({
                 Events
               </Link>
             </TabsTrigger>
+            {(isOwner || isMember) && (
+              <TabsTrigger value="recordings" asChild>
+                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
+                  <VideoIcon className="h-4 w-4" />
+                  Recordings
+                </Link>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="members" asChild>
               <Link href={`/${community.slug}/members`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
                 <Users className="h-4 w-4" />

@@ -65,38 +65,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = React.useState(true)
   const [profileError, setProfileError] = React.useState(false)
 
+  // Helper to clear all auth state
+  const clearAuthState = React.useCallback(() => {
+    setUser(null)
+    setUserProfile(null)
+    setWalletBalance(null)
+    setProfileError(false)
+  }, [])
+
+  // Use refs to access current state without causing re-subscriptions
+  const userRef = React.useRef<SupabaseUser | null>(null)
+  const userProfileRef = React.useRef<User | null>(null)
+
+  // Update refs when state changes
+  React.useEffect(() => {
+    userRef.current = user
+    userProfileRef.current = userProfile
+  }, [user, userProfile])
+
   // Initialize auth state on mount
   React.useEffect(() => {
     let isMounted = true
     let authInitialized = false
+    let isProcessingAuthChange = false
 
     // Get initial session
     const initializeAuth = async () => {
       try {
+        // First, get session from cookies (fast, for instant UI)
         const { data: { session } } = await supabase.auth.getSession()
         
         if (!isMounted) return
 
         if (session?.user) {
-          // Set user immediately
-          setUser(session.user)
+          // CRITICAL: Validate session with server using getUser()
+          // This ensures the session is actually valid, not just cached in cookies
+          const { data: { user }, error } = await supabase.auth.getUser()
+          
+          if (!isMounted) return
+          
+          if (error || !user) {
+            // Session is invalid - clear state (stale cookies)
+            console.warn("Session validation failed:", error?.message || "No user")
+            clearAuthState()
+            userRef.current = null
+            userProfileRef.current = null
+            return
+          }
+          
+          // Session is valid - set user
+          setUser(user)
+          userRef.current = user
           
           // Fetch profile with retry logic
-          const profile = await fetchProfileWithRetry(session.user.id)
+          const profile = await fetchProfileWithRetry(user.id)
           
           if (!isMounted) return
           
           if (profile) {
             setUserProfile(profile)
+            userProfileRef.current = profile
             setProfileError(false)
           } else {
             console.warn("Failed to fetch user profile after retries")
             setProfileError(true)
             // Don't sign out - keep user authenticated but show error state
           }
+        } else {
+          // No session, ensure state is cleared
+          clearAuthState()
+          userRef.current = null
+          userProfileRef.current = null
         }
       } catch (error) {
         console.error("Error initializing auth:", error)
+        if (isMounted) {
+          clearAuthState()
+          userRef.current = null
+          userProfileRef.current = null
+        }
       } finally {
         if (isMounted) {
           authInitialized = true
@@ -113,43 +160,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isMounted) return
 
         // Don't process auth changes until initial auth is complete
-        if (!authInitialized) return
-
-        if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setUserProfile(null)
-          setProfileError(false)
+        if (!authInitialized) {
+          // Queue the event to be processed after initialization
+          // This prevents race conditions
           return
         }
 
-        if (session?.user) {
-          // Set user immediately
-          setUser(session.user)
-          
-          // Fetch profile with retry logic
-          const profile = await fetchProfileWithRetry(session.user.id)
-          
-          if (!isMounted) return
-          
-          if (profile) {
-            setUserProfile(profile)
-            setProfileError(false)
-          } else {
-            console.warn("Failed to fetch user profile in auth state change")
-            setProfileError(true)
-            // Don't sign out automatically - this could be a temporary network issue
-            // Only sign out if this is a new sign-in and profile doesn't exist
-            if (event === 'SIGNED_IN') {
-              console.error("New user sign-in but no profile found - signing out")
-              await supabase.auth.signOut()
-              setUser(null)
-              setUserProfile(null)
+        // Prevent concurrent auth state processing
+        if (isProcessingAuthChange) {
+          console.warn("Auth state change already processing, skipping")
+          return
+        }
+
+        isProcessingAuthChange = true
+
+        try {
+          if (event === 'SIGNED_OUT' || !session?.user) {
+            // Clear all state on sign out
+            clearAuthState()
+            userRef.current = null
+            userProfileRef.current = null
+            return
+          }
+
+          // For SIGNED_IN or TOKEN_REFRESHED events
+          if (session.user) {
+            // Only update if user actually changed to prevent unnecessary re-renders
+            const currentUserId = userRef.current?.id
+            const newUserId = session.user.id
+
+            if (currentUserId !== newUserId) {
+              // User changed - set user immediately
+              setUser(session.user)
+              userRef.current = session.user
+            }
+            
+            // Always try to fetch profile (it might have been updated)
+            const profile = await fetchProfileWithRetry(session.user.id)
+            
+            if (!isMounted) return
+            
+            if (profile) {
+              setUserProfile(profile)
+              userProfileRef.current = profile
+              setProfileError(false)
+            } else {
+              // Profile fetch failed - but don't sign out automatically
+              // This could be a temporary network issue
+              console.warn("Failed to fetch user profile in auth state change")
+              setProfileError(true)
+              
+              // Only clear user state if this is a SIGNED_IN event and we have no profile
+              // This handles the case where a user signs in but their profile doesn't exist yet
+              if (event === 'SIGNED_IN' && !userProfileRef.current) {
+                console.warn("New sign-in but profile not found - keeping user but showing error")
+                // Don't auto-sign-out - let the user retry or handle it manually
+              }
             }
           }
-        } else {
-          setUser(null)
-          setUserProfile(null)
-          setProfileError(false)
+        } finally {
+          isProcessingAuthChange = false
         }
       }
     )
@@ -158,19 +228,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [clearAuthState])
 
-  const handleSignOut = async () => {
+  const handleSignOut = React.useCallback(async () => {
     try {
-      await supabase.auth.signOut()
-      setUser(null)
-      setUserProfile(null)
+      // Clear state immediately for better UX
+      clearAuthState()
+      userRef.current = null
+      userProfileRef.current = null
+      
+      // Sign out from Supabase (this clears cookies server-side)
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error("Sign out error:", error)
+      }
+      
+      // Force a page reload to ensure all cookies/storage are cleared
+      // This is necessary because Next.js SSR can cache auth state
+      if (typeof window !== 'undefined') {
+        // Use replace instead of href to avoid adding to history
+        window.location.replace('/')
+      }
     } catch (error) {
       console.error("Error signing out:", error)
-      setUser(null)
-      setUserProfile(null)
+      // Ensure state is cleared even on error
+      clearAuthState()
+      userRef.current = null
+      userProfileRef.current = null
+      
+      // Still force reload to clear any cached state
+      if (typeof window !== 'undefined') {
+        window.location.replace('/')
+      }
     }
-  }
+  }, [clearAuthState])
 
   const refreshProfile = React.useCallback(async () => {
     if (!user) return
@@ -219,6 +311,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    let isMounted = true
+
     // Initial fetch
     refreshWalletBalance()
 
@@ -234,6 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
+          if (!isMounted) return
           const newBalance = (payload.new as any).points_balance
           setWalletBalance(Number(newBalance))
         }
@@ -241,6 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .subscribe()
 
     return () => {
+      isMounted = false
       supabase.removeChannel(channel)
     }
   }, [user, refreshWalletBalance])

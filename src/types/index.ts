@@ -202,11 +202,20 @@ export interface EventRegistration {
 export interface EventRecording {
   id: string
   event_id: string
+  community_id: string
   stream_recording_id: string
   storage_path?: string
+  storage_url?: string
+  stream_recording_url?: string
+  thumbnail_url?: string
   post_id?: string
+  title?: string
+  description?: string
   duration_seconds?: number
   file_size_bytes?: number
+  started_at?: string
+  ended_at?: string
+  is_processing?: boolean
   created_at: string
   saved_at?: string
 }

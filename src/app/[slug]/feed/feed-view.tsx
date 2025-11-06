@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2, Video } from "lucide-react"
+import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2, Video, VideoIcon } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
@@ -141,6 +141,7 @@ export default function FeedView({
     if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
     if (pathname === `/${community.slug}/feed`) return "feed"
     if (pathname === `/${community.slug}/events`) return "events"
+    if (pathname === `/${community.slug}/recordings`) return "recordings"
     if (pathname === `/${community.slug}/members`) return "members"
     if (pathname === `/${community.slug}/settings`) return "settings"
     return "home"
@@ -1354,6 +1355,14 @@ export default function FeedView({
                 Events
               </Link>
             </TabsTrigger>
+            {(isMember || currentUserId === community.owner_id) && (
+              <TabsTrigger value="recordings" asChild>
+                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2">
+                  <VideoIcon className="h-4 w-4" />
+                  Recordings
+                </Link>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="members" asChild>
               <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
