@@ -25,7 +25,7 @@ import {
   Circle,
   Square,
 } from "lucide-react"
-import { StreamCall, type Call, useCallStateHooks } from "@stream-io/video-react-sdk"
+import { StreamCall, type Call, useCallStateHooks, hasScreenShare } from "@stream-io/video-react-sdk"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -433,15 +433,38 @@ function CallContentInner({
   // Also check participant's published tracks for screen share
   React.useEffect(() => {
     if (localParticipant) {
-      const publishedTracks = localParticipant.publishedTracks as Set<string> | string[] | undefined
-      const hasScreenShare = publishedTracks
-        ? (publishedTracks instanceof Set 
-            ? publishedTracks.has('screenShareTrack') 
-            : publishedTracks.includes('screenShareTrack'))
-        : !!(localParticipant as any).screenShareStream || !!(localParticipant as any).screenShareTrack
+      // Use SDK's hasScreenShare utility (most reliable)
+      let hasScreenShareValue = false
+      if (typeof hasScreenShare === 'function') {
+        try {
+          hasScreenShareValue = hasScreenShare(localParticipant)
+        } catch (e) {
+          // Fallback to manual check if SDK utility fails
+          const publishedTracks = localParticipant.publishedTracks as any
+          const tracksArray = publishedTracks instanceof Set 
+            ? Array.from(publishedTracks) 
+            : (Array.isArray(publishedTracks) ? publishedTracks : [])
+          const tracksAsStrings = tracksArray.map((t: any) => String(t).toLowerCase())
+          hasScreenShareValue = tracksAsStrings.includes('screensharetrack') || 
+                                tracksAsStrings.some((t: string) => t.includes('screenshare')) ||
+                                !!(localParticipant as any).screenShareStream || 
+                                !!(localParticipant as any).screenShareTrack
+        }
+      } else {
+        // Fallback if hasScreenShare is not available
+        const publishedTracks = localParticipant.publishedTracks as any
+        const tracksArray = publishedTracks instanceof Set 
+          ? Array.from(publishedTracks) 
+          : (Array.isArray(publishedTracks) ? publishedTracks : [])
+        const tracksAsStrings = tracksArray.map((t: any) => String(t).toLowerCase())
+        hasScreenShareValue = tracksAsStrings.includes('screensharetrack') || 
+                              tracksAsStrings.some((t: string) => t.includes('screenshare')) ||
+                              !!(localParticipant as any).screenShareStream || 
+                              !!(localParticipant as any).screenShareTrack
+      }
       
-      if (hasScreenShare !== localScreenShareEnabled) {
-        setLocalScreenShareEnabled(hasScreenShare)
+      if (hasScreenShareValue !== localScreenShareEnabled) {
+        setLocalScreenShareEnabled(hasScreenShareValue)
       }
     }
   }, [localParticipant, localScreenShareEnabled])
