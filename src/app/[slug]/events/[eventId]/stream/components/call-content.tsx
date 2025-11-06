@@ -463,11 +463,15 @@ function CallContentInner({
                               !!(localParticipant as any).screenShareTrack
       }
       
-      if (hasScreenShareValue !== localScreenShareEnabled) {
-        setLocalScreenShareEnabled(hasScreenShareValue)
-      }
+      // Only update if value actually changed to prevent infinite loops
+      setLocalScreenShareEnabled(prev => {
+        if (prev !== hasScreenShareValue) {
+          return hasScreenShareValue
+        }
+        return prev
+      })
     }
-  }, [localParticipant, localScreenShareEnabled])
+  }, [localParticipant])
   
   const isMicEnabled = localMicEnabled
   const isCameraEnabled = localCameraEnabled
