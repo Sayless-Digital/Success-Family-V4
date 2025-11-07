@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
+import { getCommunityBySlug } from "@/lib/community-cache"
 import CommunityMembersView from "./members-view"
 
 interface CommunityMembersPageProps {
@@ -12,35 +13,31 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
   const { slug } = await params
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community data
-  const { data: community, error } = await supabase
-    .from('communities')
-    .select(`
-      id,
-      name,
-      slug,
-      description,
-      owner_id,
-      owner:users!communities_owner_id_fkey(id, username, first_name, last_name, profile_picture)
-    `)
-    .eq('slug', slug)
-    .maybeSingle()
-
-  if (error || !community) {
+  // Fetch community data (cached)
+  const community = await getCommunityBySlug(slug)
+  if (!community) {
     notFound()
   }
 
-  // Fetch all members
-  const { data: membersData, error: membersError } = await supabase
-    .from('community_members')
-    .select(`
-      id,
-      role,
-      joined_at,
-      user:users(id, username, first_name, last_name, profile_picture, bio)
-    `)
-    .eq('community_id', community.id)
-    .order('joined_at', { ascending: true })
+  // Parallel fetch: members and user data
+  const [membersResult, userResult] = await Promise.all([
+    // Fetch all members
+    supabase
+      .from('community_members')
+      .select(`
+        id,
+        role,
+        joined_at,
+        user:users(id, username, first_name, last_name, profile_picture, bio)
+      `)
+      .eq('community_id', community.id)
+      .order('joined_at', { ascending: true }),
+    // Get user
+    supabase.auth.getUser()
+  ])
+
+  const { data: membersData, error: membersError } = membersResult
+  const { data: { user } } = userResult
 
   if (membersError) {
     console.error('Error fetching members:', membersError)
@@ -53,8 +50,6 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
   })) || []
 
   // Check if user is authenticated and get their membership status
-  const { data: { user } } = await supabase.auth.getUser()
-  
   let userMembership = null
   let isOwner = false
   

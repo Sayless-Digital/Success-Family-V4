@@ -27,6 +27,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const [isMobile, setIsMobile] = useState(true)
   
   const isStreamPage = pathname?.includes('/stream')
+  const isHomePage = pathname === '/'
 
   useEffect(() => {
     const checkMobile = () => {
@@ -86,18 +87,21 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
 
   return (
     <div className="h-dvh bg-background overflow-x-hidden flex flex-col relative">
-      {/* Silk Background - Optimized with dynamic import */}
-      <div className="fixed inset-0 z-0 overflow-hidden w-full h-full">
-        <div className="w-full h-full">
-          <Silk
-            speed={isStreamPage ? 0 : (isMobile ? 0.5 : 1.0)}
-            scale={1}
-            color={isMobile ? "#0d041f" : "#0a0318"}
-            noiseIntensity={isMobile ? 0.5 : 1}
-            rotation={0}
-          />
+      {/* Silk Background - On all pages */}
+      {!isStreamPage && (
+        <div className="fixed inset-0 z-0 overflow-hidden w-full h-full opacity-100">
+          <div className="w-full h-full">
+            <Silk
+              key={pathname}
+              speed={5}
+              scale={1}
+              color={isHomePage ? "#7004dc" : "#2d0354"}
+              noiseIntensity={1.5}
+              rotation={0}
+            />
+          </div>
         </div>
-      </div>
+      )}
       
       {!isStreamPage && (
         <>

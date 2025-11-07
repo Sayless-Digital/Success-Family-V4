@@ -1,14 +1,14 @@
 "use client"
 
 import React, { useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Shield, Heart, Home, Video, VideoIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import Link from "next/link"
+import { CommunityNavigation } from "@/components/community-navigation"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -46,24 +46,10 @@ export default function CommunityView({
   currentUserId 
 }: CommunityViewProps) {
   const router = useRouter()
-  const pathname = usePathname()
   
   const isOwner = currentUserId === community.owner_id
   const isMember = !!userMembership
   const isActive = community.is_active
-
-  // Determine active tab based on pathname
-  const getActiveTab = () => {
-    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
-    if (pathname === `/${community.slug}/feed`) return "feed"
-    if (pathname === `/${community.slug}/events`) return "events"
-    if (pathname === `/${community.slug}/recordings`) return "recordings"
-    if (pathname === `/${community.slug}/members`) return "members"
-    if (pathname === `/${community.slug}/settings`) return "settings"
-    return "home"
-  }
-
-  const activeTab = getActiveTab()
   
   // Join dialog state
   const [joinDialogOpen, setJoinDialogOpen] = useState(false)
@@ -151,50 +137,11 @@ export default function CommunityView({
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Navigation Tabs */}
-        <Tabs value={activeTab} className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="home" asChild>
-              <Link href={`/${community.slug}`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                <Home className="h-4 w-4" />
-                Home
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="feed" asChild>
-              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                <MessageSquare className="h-4 w-4" />
-                Feed
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="events" asChild>
-              <Link href={`/${community.slug}/events`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                <Video className="h-4 w-4" />
-                Events
-              </Link>
-            </TabsTrigger>
-            {(isOwner || isMember) && (
-              <TabsTrigger value="recordings" asChild>
-                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                  <VideoIcon className="h-4 w-4" />
-                  Recordings
-                </Link>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="members" asChild>
-              <Link href={`/${community.slug}/members`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                <Users className="h-4 w-4" />
-                Members
-              </Link>
-            </TabsTrigger>
-            {(isOwner || isMember) && (
-              <TabsTrigger value="settings" asChild>
-                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2 touch-feedback">
-                  <Shield className="h-4 w-4" />
-                  Settings
-                </Link>
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
+        <CommunityNavigation 
+          slug={community.slug} 
+          isOwner={isOwner} 
+          isMember={isMember} 
+        />
 
         {/* Community Header */}
         <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
@@ -293,15 +240,6 @@ export default function CommunityView({
               className="border-white/20 text-white hover:bg-white/10 touch-feedback"
             >
               Leave Community
-            </Button>
-          )}
-          
-          {isOwner && (
-            <Button asChild size="lg" variant="outline" className="border-white/20 text-white hover:bg-white/10 touch-feedback">
-              <Link href={`/${community.slug}/settings`}>
-                <Shield className="h-5 w-5 mr-2" />
-                Manage Community
-              </Link>
             </Button>
           )}
         </div>

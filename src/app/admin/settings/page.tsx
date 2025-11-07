@@ -13,7 +13,9 @@ async function getSettings() {
     buy_price_per_point: 1.0, 
     user_value_per_point: 1.0,
     stream_start_cost: 1,
-    stream_join_cost: 1
+    stream_join_cost: 1,
+    storage_purchase_price_per_gb: 10,
+    storage_monthly_cost_per_gb: 4
   }
 }
 
@@ -40,11 +42,15 @@ export default async function AdminSettingsPage() {
     const userValue = Number(formData.get('user_value_per_point'))
     const streamStartCost = Number(formData.get('stream_start_cost'))
     const streamJoinCost = Number(formData.get('stream_join_cost'))
+    const storagePurchasePrice = Number(formData.get('storage_purchase_price_per_gb'))
+    const storageMonthlyCost = Number(formData.get('storage_monthly_cost_per_gb'))
 
     if (!Number.isFinite(buyPrice) || buyPrice <= 0) return
     if (!Number.isFinite(userValue) || userValue <= 0) return
     if (!Number.isFinite(streamStartCost) || streamStartCost < 0) return
     if (!Number.isFinite(streamJoinCost) || streamJoinCost < 0) return
+    if (!Number.isFinite(storagePurchasePrice) || storagePurchasePrice < 0) return
+    if (!Number.isFinite(storageMonthlyCost) || storageMonthlyCost < 0) return
 
     await supabase
       .from('platform_settings')
@@ -53,7 +59,9 @@ export default async function AdminSettingsPage() {
         buy_price_per_point: buyPrice, 
         user_value_per_point: userValue,
         stream_start_cost: Math.floor(streamStartCost),
-        stream_join_cost: Math.floor(streamJoinCost)
+        stream_join_cost: Math.floor(streamJoinCost),
+        storage_purchase_price_per_gb: Math.floor(storagePurchasePrice),
+        storage_monthly_cost_per_gb: Math.floor(storageMonthlyCost)
       })
   }
 
@@ -90,6 +98,20 @@ export default async function AdminSettingsPage() {
             <Label htmlFor="stream_join_cost" className="text-white/80">Points to Join Stream (goes to event owner)</Label>
             <Input id="stream_join_cost" name="stream_join_cost" type="number" step="1" min="0" defaultValue={settings.stream_join_cost || 1} />
             <p className="text-white/60 text-xs">Charged upfront when users register for an event. Refunded if user cancels or event is cancelled.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white/90">Storage Pricing</h3>
+          <div className="space-y-2">
+            <Label htmlFor="storage_purchase_price_per_gb" className="text-white/80">Storage Purchase Price (points per GB)</Label>
+            <Input id="storage_purchase_price_per_gb" name="storage_purchase_price_per_gb" type="number" step="1" min="0" defaultValue={settings.storage_purchase_price_per_gb ?? 10} />
+            <p className="text-white/60 text-xs">One-time purchase price per GB to increase storage limit.</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="storage_monthly_cost_per_gb" className="text-white/80">Storage Monthly Cost (points per GB)</Label>
+            <Input id="storage_monthly_cost_per_gb" name="storage_monthly_cost_per_gb" type="number" step="1" min="0" defaultValue={settings.storage_monthly_cost_per_gb ?? 4} />
+            <p className="text-white/60 text-xs">Monthly cost per GB for storage used over 1 GB free tier. Charged on the 1st of each month.</p>
           </div>
         </div>
 

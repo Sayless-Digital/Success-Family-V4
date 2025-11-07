@@ -122,12 +122,7 @@ export function ParticipantVideo({
         </span>
       </div>
       
-      {/* Muted indicator */}
-      {!hasAudioTrack && (
-        <div className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm rounded-full p-2 z-10">
-          <MicOff className="h-4 w-4 text-white" />
-        </div>
-      )}
+      {/* Muted indicator - Hidden when recording is active (recording indicator takes priority) */}
     </div>
   )
 }

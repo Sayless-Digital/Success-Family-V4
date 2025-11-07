@@ -84,6 +84,8 @@ export interface PlatformSettings {
   user_value_per_point: number
   stream_start_cost: number // Points charged to create/start a stream (goes to platform)
   stream_join_cost: number // Points charged to join a stream (goes to event owner)
+  storage_purchase_price_per_gb?: number // One-time purchase price per GB in points
+  storage_monthly_cost_per_gb?: number // Monthly cost per GB in points (for storage over 1 GB free)
   updated_at: string
 }
 
@@ -207,7 +209,6 @@ export interface EventRecording {
   storage_path?: string
   storage_url?: string
   stream_recording_url?: string
-  thumbnail_url?: string
   post_id?: string
   title?: string
   description?: string
@@ -218,6 +219,20 @@ export interface EventRecording {
   is_processing?: boolean
   created_at: string
   saved_at?: string
+  // Joined fields for storage page
+  event?: CommunityEvent
+  community?: Community
+}
+
+export interface UserStorage {
+  user_id: string
+  total_storage_bytes: number
+  storage_limit_bytes: number
+  monthly_cost_points: number
+  last_billing_date?: string
+  last_calculated_at: string
+  created_at: string
+  updated_at: string
 }
 
 // Database types

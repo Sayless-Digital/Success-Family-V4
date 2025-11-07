@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     console.log('[Recording API] User authenticated:', user.id)
     const body = await request.json()
     console.log('[Recording API] Request body:', body)
-    const { eventId, communityId, streamRecordingId, streamRecordingUrl, startedAt, endedAt, duration, streamRecordingData, thumbnailDataUrl } = body
+    const { eventId, communityId, streamRecordingId, streamRecordingUrl, startedAt, endedAt, duration } = body
 
     if (!eventId || !communityId || !streamRecordingId || !streamRecordingUrl) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -43,31 +43,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Community ID mismatch' }, { status: 400 })
     }
 
-    // Check for thumbnail URL from Stream.io recording data
-    // Stream.io recordings may have thumbnail_url or thumbnail properties
-    let thumbnailUrl: string | null = null
-    if (streamRecordingData) {
-      console.log('[Recording API] Full streamRecordingData keys:', Object.keys(streamRecordingData))
-      console.log('[Recording API] streamRecordingData sample:', JSON.stringify(streamRecordingData, null, 2).substring(0, 1000))
-      
-      // Try multiple possible thumbnail property paths
-      thumbnailUrl = streamRecordingData.thumbnail_url || 
-                     streamRecordingData.thumbnail || 
-                     streamRecordingData.thumbnail_urls?.[0] ||
-                     streamRecordingData.thumbnails?.[0]?.url ||
-                     streamRecordingData.thumbnails?.[0] ||
-                     streamRecordingData.screenshot_url ||
-                     streamRecordingData.preview_url ||
-                     streamRecordingData.image_url ||
-                     null
-      
-      console.log('[Recording API] Thumbnail URL from Stream.io:', thumbnailUrl)
-      
-      if (!thumbnailUrl) {
-        console.log('[Recording API] No thumbnail found in recording data. Available properties:', Object.keys(streamRecordingData))
-      }
-    } else {
-      console.log('[Recording API] No streamRecordingData provided')
+    // Check storage limit before proceeding
+    // Update storage usage first
+    const { error: updateStorageError } = await supabase.rpc('update_user_storage_usage', {
+      p_user_id: user.id
+    })
+
+    if (updateStorageError) {
+      console.error('[Recording API] Error updating storage:', updateStorageError)
+      // Continue anyway - might be first time
+    }
+
+    // Get current storage status
+    const { data: storage, error: storageError } = await supabase
+      .from('user_storage')
+      .select('total_storage_bytes, storage_limit_bytes')
+      .eq('user_id', user.id)
+      .single()
+
+    if (storageError && storageError.code !== 'PGRST116') {
+      console.error('[Recording API] Error fetching storage:', storageError)
+      // Continue anyway - might be first time
+    }
+
+    // If storage record exists and user is over limit, prevent saving
+    if (storage && storage.total_storage_bytes >= storage.storage_limit_bytes) {
+      return NextResponse.json({ 
+        error: 'Storage limit exceeded. Please increase your storage limit to save new recordings.',
+        storageLimitExceeded: true
+      }, { status: 403 })
     }
 
     // Download recording from Stream.io
@@ -84,117 +88,6 @@ export async function POST(request: NextRequest) {
     } catch (downloadError: any) {
       console.error('Error downloading recording:', downloadError)
       // Still save metadata even if download fails
-    }
-
-    // Generate thumbnail if not provided and we have the video
-    let thumbnailStoragePath: string | null = null
-    let thumbnailStorageUrl: string | null = null
-    
-    // Check if client provided a thumbnail data URL
-    if (!thumbnailUrl && thumbnailDataUrl) {
-      try {
-        console.log('[Recording API] Processing client-provided thumbnail data URL...')
-        // Convert data URL to buffer (Node.js compatible)
-        const base64Data = thumbnailDataUrl.split(',')[1]
-        if (!base64Data) {
-          throw new Error('Invalid thumbnail data URL format')
-        }
-        const binaryData = Buffer.from(base64Data, 'base64')
-        
-        const bucketName = 'event-recordings'
-        const thumbnailFileName = `${eventId}/${streamRecordingId}-thumbnail-${Date.now()}.jpg`
-        
-        // Supabase Storage accepts Buffer or Blob
-        const { data: thumbnailUploadData, error: thumbnailUploadError } = await supabase.storage
-          .from(bucketName)
-          .upload(thumbnailFileName, binaryData, {
-            contentType: 'image/jpeg',
-            upsert: false,
-          })
-        
-        if (!thumbnailUploadError && thumbnailUploadData) {
-          thumbnailStoragePath = `${bucketName}/${thumbnailFileName}`
-          const { data: thumbnailUrlData } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(thumbnailFileName)
-          thumbnailStorageUrl = thumbnailUrlData.publicUrl
-          console.log('[Recording API] Client-provided thumbnail uploaded successfully:', thumbnailStorageUrl)
-        } else {
-          console.error('[Recording API] Error uploading client thumbnail:', thumbnailUploadError)
-        }
-      } catch (thumbnailProcessError: any) {
-        console.error('[Recording API] Error processing client thumbnail:', thumbnailProcessError)
-      }
-    }
-    
-    if (!thumbnailUrl && !thumbnailStorageUrl && recordingBlob) {
-      try {
-        // Try to use Stream.io's thumbnail endpoint pattern
-        // Stream.io CDN URLs can sometimes have thumbnail variants
-        // Example: video.mp4 -> video-thumbnail.jpg or video.jpg
-        const streamBaseUrl = streamRecordingUrl.split('?')[0] // Remove query params
-        const possibleThumbnailUrls = [
-          streamBaseUrl.replace('.mp4', '-thumbnail.jpg'),
-          streamBaseUrl.replace('.mp4', '.jpg'),
-          streamBaseUrl.replace('.mp4', '-thumb.jpg'),
-          streamBaseUrl.replace('/video/', '/thumbnail/').replace('.mp4', '.jpg'),
-        ]
-        
-        // Try each possible thumbnail URL
-        for (const possibleUrl of possibleThumbnailUrls) {
-          try {
-            const testResponse = await fetch(possibleUrl, { method: 'HEAD' })
-            if (testResponse.ok && testResponse.headers.get('content-type')?.startsWith('image/')) {
-              thumbnailUrl = possibleUrl
-              console.log('[Recording API] Found Stream.io thumbnail at:', thumbnailUrl)
-              break
-            }
-          } catch (e) {
-            // Continue to next URL
-          }
-        }
-        
-        // If still no thumbnail found, we'll need to generate one
-        // For now, we'll skip and document it
-        if (!thumbnailUrl) {
-          console.log('[Recording API] No thumbnail found via Stream.io patterns. Video frame extraction requires FFmpeg.')
-          console.log('[Recording API] To enable thumbnail generation, install FFmpeg and fluent-ffmpeg package.')
-        }
-      } catch (thumbnailError: any) {
-        console.error('[Recording API] Error checking for thumbnails:', thumbnailError)
-        // Continue without thumbnail
-      }
-    }
-    
-    if (thumbnailUrl) {
-      // If Stream.io provided a thumbnail, download and upload it
-      try {
-        const thumbnailResponse = await fetch(thumbnailUrl)
-        if (thumbnailResponse.ok) {
-          const thumbnailBlob = await thumbnailResponse.blob()
-          const bucketName = 'event-recordings'
-          const thumbnailFileName = `${eventId}/${streamRecordingId}-thumbnail-${Date.now()}.jpg`
-          
-          const { data: thumbnailUploadData, error: thumbnailUploadError } = await supabase.storage
-            .from(bucketName)
-            .upload(thumbnailFileName, thumbnailBlob, {
-              contentType: 'image/jpeg',
-              upsert: false,
-            })
-          
-          if (!thumbnailUploadError && thumbnailUploadData) {
-            thumbnailStoragePath = `${bucketName}/${thumbnailFileName}`
-            const { data: thumbnailUrlData } = supabase.storage
-              .from(bucketName)
-              .getPublicUrl(thumbnailFileName)
-            thumbnailStorageUrl = thumbnailUrlData.publicUrl
-            console.log('[Recording API] Thumbnail uploaded successfully')
-          }
-        }
-      } catch (thumbnailDownloadError: any) {
-        console.error('[Recording API] Error downloading/uploading thumbnail:', thumbnailDownloadError)
-        // Continue without thumbnail
-      }
     }
 
     // Upload to Supabase Storage if download succeeded
@@ -301,7 +194,6 @@ export async function POST(request: NextRequest) {
       stream_recording_url: streamRecordingUrl,
       storage_path: storagePath,
       storage_url: storageUrl,
-      thumbnail_url: thumbnailStorageUrl || thumbnailUrl || null,
       duration_seconds: durationSeconds,
       file_size_bytes: fileSize || null,
       started_at: startedAt ? new Date(startedAt).toISOString() : null,
@@ -310,10 +202,7 @@ export async function POST(request: NextRequest) {
       title: `Recording - ${new Date(startedAt || Date.now()).toLocaleDateString()}`,
     }
 
-    console.log('[Recording API] Attempting to save to database:', {
-      ...recordingData,
-      thumbnail_url: recordingData.thumbnail_url || 'null',
-    })
+    console.log('[Recording API] Attempting to save to database:', recordingData)
     const { data: savedRecording, error: dbError } = await supabase
       .from('event_recordings')
       .insert([recordingData])
@@ -326,10 +215,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save recording metadata', details: dbError.message }, { status: 500 })
     }
 
-    console.log('[Recording API] Recording saved successfully:', {
-      id: savedRecording?.id,
-      thumbnail_url: savedRecording?.thumbnail_url || 'null',
+    console.log('[Recording API] Recording saved successfully:', savedRecording?.id)
+
+    // Update storage usage after saving recording
+    const { error: finalUpdateError } = await supabase.rpc('update_user_storage_usage', {
+      p_user_id: user.id
     })
+
+    if (finalUpdateError) {
+      console.error('[Recording API] Error updating storage after save:', finalUpdateError)
+      // Don't fail the request - storage will be updated on next calculation
+    }
 
     return NextResponse.json({
       success: true,
@@ -344,4 +240,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

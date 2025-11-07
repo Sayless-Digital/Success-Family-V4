@@ -34,11 +34,20 @@ export default function Home() {
 
           {/* Call to Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center pt-2">
-            <Button size="default" className="group gap-2 touch-feedback" onClick={() => (user ? setCreateOpen(true) : setAuthOpen(true))}>
+            <Button 
+              size="default" 
+              className="group gap-2 touch-feedback shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] transition-shadow duration-300" 
+              onClick={() => (user ? setCreateOpen(true) : setAuthOpen(true))}
+            >
               Create Community
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Button>
-            <Button size="default" variant="outline" asChild className="touch-feedback">
+            <Button 
+              size="default" 
+              variant="outline" 
+              asChild 
+              className="touch-feedback bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20 hover:border-white/30"
+            >
               <Link href="/communities">
                 Explore Communities
               </Link>

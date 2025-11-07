@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
+import { getCommunityBySlug } from "@/lib/community-cache"
 import CommunityView from "./community-view"
 
 interface CommunityPageProps {
@@ -22,7 +23,13 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
   
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community data - use maybeSingle() to avoid error when no rows found
+  // Fetch community data (cached) - but we need full data with members for home page
+  const communityBasic = await getCommunityBySlug(slug)
+  if (!communityBasic) {
+    notFound()
+  }
+
+  // Fetch full community data with members (only for home page)
   const { data: community, error } = await supabase
     .from('communities')
     .select(`
@@ -40,17 +47,10 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
 
   if (error) {
     console.error('Community fetch error:', JSON.stringify(error, null, 2))
-    console.error('Error details:', {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    })
     notFound()
   }
 
   if (!community) {
-    console.error('No community found for slug:', slug)
     notFound()
   }
 

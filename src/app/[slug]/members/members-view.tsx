@@ -1,10 +1,9 @@
 "use client"
 
 import React, { useState, useMemo } from "react"
-import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { Crown, Calendar, Search, Home, Users, MessageSquare, Shield, Video, VideoIcon } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Crown, Calendar, Search } from "lucide-react"
+import { CommunityNavigation } from "@/components/community-navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -42,19 +41,7 @@ export default function CommunityMembersView({
   isOwner,
   currentUserId
 }: CommunityMembersViewProps) {
-  const pathname = usePathname()
   const [searchQuery, setSearchQuery] = useState("")
-
-  // Determine active tab
-  const activeTab = React.useMemo(() => {
-    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
-    if (pathname === `/${community.slug}/feed`) return "feed"
-    if (pathname === `/${community.slug}/events`) return "events"
-    if (pathname === `/${community.slug}/recordings`) return "recordings"
-    if (pathname === `/${community.slug}/members`) return "members"
-    if (pathname === `/${community.slug}/settings`) return "settings"
-    return "home"
-  }, [pathname, community.slug])
 
   // Sort members: owner first, then by join date
   const sortedMembers = useMemo(() => {
@@ -79,50 +66,11 @@ export default function CommunityMembersView({
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Navigation Tabs */}
-        <Tabs value={activeTab} className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="home" asChild>
-              <Link href={`/${community.slug}`} className="flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Home
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="feed" asChild>
-              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Feed
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="events" asChild>
-              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
-                <Video className="h-4 w-4" />
-                Events
-              </Link>
-            </TabsTrigger>
-            {(isOwner || userMembership) && (
-              <TabsTrigger value="recordings" asChild>
-                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2">
-                  <VideoIcon className="h-4 w-4" />
-                  Recordings
-                </Link>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="members" asChild>
-              <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Members
-              </Link>
-            </TabsTrigger>
-            {(isOwner || userMembership) && (
-              <TabsTrigger value="settings" asChild>
-                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Settings
-                </Link>
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
+        <CommunityNavigation 
+          slug={community.slug} 
+          isOwner={isOwner} 
+          isMember={!!userMembership} 
+        />
 
         {/* Search Bar */}
         <div className="relative max-w-md">

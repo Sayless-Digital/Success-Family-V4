@@ -1,10 +1,11 @@
-import { MembersSkeleton } from "@/components/skeletons/members-skeleton"
+import { RecordingsSkeleton } from "@/components/skeletons/recordings-skeleton"
 import { LoadingWithNavServer } from "@/components/skeletons/loading-with-nav-server"
 
-export default function MembersLoading() {
+export default function RecordingsLoading() {
   return (
     <LoadingWithNavServer>
-      <MembersSkeleton />
+      <RecordingsSkeleton />
     </LoadingWithNavServer>
   )
 }
+

@@ -328,18 +328,40 @@ function CallContentInner({
   const { speaker } = useSpeakerState()
   const screenShareState = useScreenShareState()
   
-  // Check recording state from call
-  React.useEffect(() => {
-    const checkRecordingState = async () => {
-      try {
-        // Check if call has recording active via API
-        const callId = call.id || event.id
-        const response = await fetch(`/api/recordings/list?callId=${callId}`)
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch recordings')
-        }
-        
+  // Helper function to check if recording is actually active
+  // Prioritizes SDK call state (faster/more immediate) over API check
+  const checkRecordingActive = React.useCallback(async (prioritizeSDK: boolean = false): Promise<boolean> => {
+    try {
+      // Always check SDK call state first (faster and more immediate, especially right after startRecording)
+      const callRecordingState = (call as any).recordingState || (call as any).state?.recording
+      const callState = (call as any).state
+      const isCurrentlyRecording = 
+        callRecordingState?.status === 'recording' || 
+        callRecordingState?.status === 'active' ||
+        callRecordingState === 'recording' ||
+        callRecordingState === true ||
+        callState?.recording?.status === 'recording' ||
+        callState?.recording?.status === 'active' ||
+        callState?.recording === true ||
+        (call as any).isRecording?.() === true ||
+        (call as any).recording?.status === 'recording'
+      
+      // If prioritizeSDK is true, return immediately if SDK shows recording (don't check API)
+      if (prioritizeSDK && isCurrentlyRecording) {
+        return true
+      }
+      
+      // If SDK shows recording, return true (fastest path)
+      if (isCurrentlyRecording) {
+        return true
+      }
+      
+      // If prioritizeSDK is true but SDK doesn't show recording, still check API as fallback
+      // Otherwise, check API for additional confirmation
+      const callId = call.id || event.id
+      const response = await fetch(`/api/recordings/list?callId=${callId}`)
+      
+      if (response.ok) {
         const data = await response.json()
         const recordings = data.recordings || []
         
@@ -354,26 +376,45 @@ function CallContentInner({
                  (r.start_time && !r.end_time) // Has start time but no end time
         })
         
-        // Also check call state directly for recording status
+        if (activeRecording) {
+          return true
+        }
+      }
+      
+      return false
+    } catch (error) {
+      // If check fails, try to check call state directly as fallback
+      try {
         const callRecordingState = (call as any).recordingState || (call as any).state?.recording
         const isCurrentlyRecording = callRecordingState?.status === 'recording' || 
                                      callRecordingState?.status === 'active' ||
                                      callRecordingState === 'recording' ||
                                      callRecordingState === true
-        
-        setIsRecording(!!activeRecording || isCurrentlyRecording)
-      } catch (error) {
-        // If listRecordings fails, try to check call state directly
-        try {
-          const callRecordingState = (call as any).recordingState || (call as any).state?.recording
-          const isCurrentlyRecording = callRecordingState?.status === 'recording' || 
-                                       callRecordingState?.status === 'active' ||
-                                       callRecordingState === 'recording' ||
-                                       callRecordingState === true
-          setIsRecording(isCurrentlyRecording)
-        } catch (fallbackError) {
-          // If both checks fail, assume not recording
-          setIsRecording(false)
+        return isCurrentlyRecording
+      } catch (fallbackError) {
+        // If both checks fail, assume not recording
+        return false
+      }
+    }
+  }, [call, event.id])
+  
+  // Check recording state from call
+  React.useEffect(() => {
+    const checkRecordingState = async () => {
+      // Don't interfere if we're actively waiting for recording to start
+      if (waitingForRecordingStartRef.current) {
+        return
+      }
+      
+      const isActive = await checkRecordingActive()
+      
+      // Only update state if we're not actively waiting for recording to start
+      // This prevents race conditions where the useEffect clears the state while we're polling
+      if (!waitingForRecordingStartRef.current) {
+        setIsRecording(isActive)
+        // If we were loading and recording is now active, clear loading state
+        if (isActive && isRecordingLoading) {
+          setIsRecordingLoading(false)
         }
       }
     }
@@ -384,13 +425,19 @@ function CallContentInner({
     // Poll every 3 seconds to check recording state (more frequent for better UX)
     const interval = setInterval(checkRecordingState, 3000)
     return () => clearInterval(interval)
-  }, [call, setIsRecording])
+  }, [call, setIsRecording, checkRecordingActive, isRecordingLoading])
   
   // Use local state to track mic/camera/screen share status since Stream SDK's reactive state may not update immediately
   // Start with false since devices are disabled when joining the call
   const [localMicEnabled, setLocalMicEnabled] = React.useState<boolean>(false)
   const [localCameraEnabled, setLocalCameraEnabled] = React.useState<boolean>(false)
   const [localScreenShareEnabled, setLocalScreenShareEnabled] = React.useState<boolean>(false)
+  
+  // Track when screen share was manually enabled to prevent false negatives during recording
+  const screenShareManuallyEnabledRef = React.useRef<boolean>(false)
+  
+  // Track if we're actively waiting for recording to start (to prevent race conditions)
+  const waitingForRecordingStartRef = React.useRef<boolean>(false)
   
   // Check if screen sharing is supported in the browser
   const isScreenShareSupported = React.useMemo(() => {
@@ -424,54 +471,85 @@ function CallContentInner({
   const participants = useParticipants()
   const localParticipant = participants.find(p => p.isLocalParticipant)
   
-  React.useEffect(() => {
-    // Try to get enabled state from the screen share state object
-    const screenShareEnabled = (screenShareState as any)?.isSharing ?? (screenShareState as any)?.enabled ?? false
-    setLocalScreenShareEnabled(screenShareEnabled)
-  }, [screenShareState])
+  // Helper function to check if screen share is actually active via participant tracks
+  const checkScreenShareFromParticipant = React.useCallback((participant: any): boolean => {
+    if (!participant) return false
+    
+    // Use SDK's hasScreenShare utility (most reliable)
+    if (typeof hasScreenShare === 'function') {
+      try {
+        return hasScreenShare(participant)
+      } catch (e) {
+        // Fallback to manual check if SDK utility fails
+      }
+    }
+    
+    // Fallback: check published tracks manually
+    const publishedTracks = participant.publishedTracks as any
+    const tracksArray = publishedTracks instanceof Set 
+      ? Array.from(publishedTracks) 
+      : (Array.isArray(publishedTracks) ? publishedTracks : [])
+    const tracksAsStrings = tracksArray.map((t: any) => String(t).toLowerCase())
+    return tracksAsStrings.includes('screensharetrack') || 
+           tracksAsStrings.some((t: string) => t.includes('screenshare')) ||
+           !!(participant as any).screenShareStream || 
+           !!(participant as any).screenShareTrack
+  }, [])
   
-  // Also check participant's published tracks for screen share
+  // Combined effect: Check both participant tracks and screenShareState
+  // Participant tracks are the source of truth - they reflect actual published tracks
+  // This prevents false negatives when recording starts (which might cause screenShareState to temporarily update)
   React.useEffect(() => {
-    if (localParticipant) {
-      // Use SDK's hasScreenShare utility (most reliable)
-      let hasScreenShareValue = false
-      if (typeof hasScreenShare === 'function') {
-        try {
-          hasScreenShareValue = hasScreenShare(localParticipant)
-        } catch (e) {
-          // Fallback to manual check if SDK utility fails
-          const publishedTracks = localParticipant.publishedTracks as any
-          const tracksArray = publishedTracks instanceof Set 
-            ? Array.from(publishedTracks) 
-            : (Array.isArray(publishedTracks) ? publishedTracks : [])
-          const tracksAsStrings = tracksArray.map((t: any) => String(t).toLowerCase())
-          hasScreenShareValue = tracksAsStrings.includes('screensharetrack') || 
-                                tracksAsStrings.some((t: string) => t.includes('screenshare')) ||
-                                !!(localParticipant as any).screenShareStream || 
-                                !!(localParticipant as any).screenShareTrack
-        }
-      } else {
-        // Fallback if hasScreenShare is not available
-        const publishedTracks = localParticipant.publishedTracks as any
-        const tracksArray = publishedTracks instanceof Set 
-          ? Array.from(publishedTracks) 
-          : (Array.isArray(publishedTracks) ? publishedTracks : [])
-        const tracksAsStrings = tracksArray.map((t: any) => String(t).toLowerCase())
-        hasScreenShareValue = tracksAsStrings.includes('screensharetrack') || 
-                              tracksAsStrings.some((t: string) => t.includes('screenshare')) ||
-                              !!(localParticipant as any).screenShareStream || 
-                              !!(localParticipant as any).screenShareTrack
+    if (!localParticipant) return
+    
+    // Check participant tracks first (most reliable - reflects actual published tracks)
+    const hasScreenShareFromTracks = checkScreenShareFromParticipant(localParticipant)
+    
+    // Also check screenShareState
+    const screenShareStateEnabled = (screenShareState as any)?.isSharing ?? (screenShareState as any)?.enabled ?? false
+    
+    // Determine the actual state with conservative logic:
+    // - If tracks show screen share is active, it's definitely active (trust tracks - most reliable)
+    // - If tracks show inactive but screenShareState shows active, trust screenShareState (might be starting)
+    // - If both show inactive, only set to false if we're confident (prev was already false or both consistently say false)
+    const actualState = hasScreenShareFromTracks || screenShareStateEnabled
+    
+    // Only update if the state actually changed
+    // Be conservative: if current state is true and we're trying to set to false,
+    // require both sources to consistently say false (to prevent false negatives during recording)
+    setLocalScreenShareEnabled(prev => {
+      if (prev === actualState) {
+        return prev // No change needed
       }
       
-      // Only update if value actually changed to prevent infinite loops
-      setLocalScreenShareEnabled(prev => {
-        if (prev !== hasScreenShareValue) {
-          return hasScreenShareValue
+      // If trying to set to false, be extra conservative
+      // This prevents false negatives when recording starts (which might cause temporary state updates)
+      if (prev && !actualState) {
+        // If it was manually enabled, be extra cautious about setting to false
+        // Only set to false if tracks confirm it's not active (tracks are most reliable)
+        if (screenShareManuallyEnabledRef.current) {
+          // Was manually enabled - only set to false if tracks confirm it's inactive
+          // This prevents false negatives when recording starts (which might cause screenShareState to temporarily update)
+          if (!hasScreenShareFromTracks) {
+            // Tracks confirm it's inactive, so it's safe to set to false
+            screenShareManuallyEnabledRef.current = false
+            return false
+          }
+          // Tracks still show active, so keep it true (screenShareState might be temporarily stale)
+          return prev
         }
-        return prev
-      })
-    }
-  }, [localParticipant])
+        // Not manually enabled, so we can trust the state
+        screenShareManuallyEnabledRef.current = false
+        return false
+      }
+      
+      // Setting to true is always safe
+      if (actualState) {
+        screenShareManuallyEnabledRef.current = true
+      }
+      return actualState
+    })
+  }, [localParticipant, screenShareState, checkScreenShareFromParticipant])
   
   const isMicEnabled = localMicEnabled
   const isCameraEnabled = localCameraEnabled
@@ -574,18 +652,6 @@ function CallContentInner({
       const duration = latestRecording.duration || 
                       (startTime && endTime ? new Date(endTime).getTime() - new Date(startTime).getTime() : undefined)
 
-      // Try to extract thumbnail from video (client-side)
-      let thumbnailDataUrl: string | null = null
-      try {
-        console.log('[Recording Save] Attempting to extract thumbnail from video...')
-        const { extractVideoThumbnail } = await import('@/lib/video-thumbnail')
-        thumbnailDataUrl = await extractVideoThumbnail(recordingUrl, 1) // Extract frame at 1 second
-        console.log('[Recording Save] Thumbnail extracted successfully')
-      } catch (thumbnailError: any) {
-        console.warn('[Recording Save] Failed to extract thumbnail:', thumbnailError.message)
-        // Continue without thumbnail - server will handle it
-      }
-
       // Call API route to save recording
       console.log('[Recording Save] Calling API with data:', {
         eventId: event.id,
@@ -595,8 +661,6 @@ function CallContentInner({
         startedAt: startTime,
         endedAt: endTime,
         duration: duration,
-        hasThumbnail: !!thumbnailDataUrl,
-        streamRecordingData: latestRecording, // Pass full recording data for thumbnail extraction
       })
       
       const response = await fetch('/api/recordings/save', {
@@ -612,8 +676,6 @@ function CallContentInner({
           startedAt: startTime,
           endedAt: endTime,
           duration: duration,
-          thumbnailDataUrl: thumbnailDataUrl, // Send extracted thumbnail as data URL
-          streamRecordingData: latestRecording, // Pass full recording data for thumbnail extraction
         }),
       })
 
@@ -731,13 +793,6 @@ function CallContentInner({
         </div>
         {/* Header - Platform style matching bottom bar */}
         <div className="flex items-center justify-between px-1 h-12 z-10 flex-shrink-0 relative bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-b border-white/20 rounded-b-lg">
-          {/* Recording Indicator */}
-          {isRecording && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-red-600/90 backdrop-blur-sm px-3 py-1 rounded-full border border-red-500/50">
-              <Circle className="h-2 w-2 text-white animate-pulse fill-white" />
-              <span className="text-white text-xs font-medium">Recording</span>
-            </div>
-          )}
           {/* Left: Community Logo */}
           <div className="flex items-center gap-2 flex-1">
             <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
@@ -769,6 +824,12 @@ function CallContentInner({
 
           {/* Video Layout */}
         <div className="flex-1 relative min-h-0 z-10">
+          {/* Recording Indicator - Icon only, top-right corner */}
+          {isRecording && (
+            <div className="absolute top-3 right-3 z-30 backdrop-blur-md rounded-full p-1.5">
+              <Circle className="h-3 w-3 text-red-600 animate-pulse fill-red-600" />
+            </div>
+          )}
           <div className="absolute inset-0">
             {isMobile ? (
               // Mobile: Use swipeable layout (speaker mode includes swipe to grid)
@@ -1007,8 +1068,10 @@ function CallContentInner({
                   try {
                     if (isRecording) {
                       // Stop recording
+                      waitingForRecordingStartRef.current = false
                       await call.stopRecording()
                       setIsRecording(false)
+                      setIsRecordingLoading(false)
                       toast.success('Recording stopped')
                       
                       // Automatically save recording after a delay (recording needs time to process)
@@ -1039,7 +1102,9 @@ function CallContentInner({
                           
                           if (activeRecording) {
                             // Recording is already active, just update UI state
+                            waitingForRecordingStartRef.current = false
                             setIsRecording(true)
+                            setIsRecordingLoading(false)
                             toast.info('Recording is already active')
                             return
                           }
@@ -1049,16 +1114,95 @@ function CallContentInner({
                         console.error('Error checking recording state:', checkError)
                       }
                       
-                      // Start recording
-                      await call.startRecording()
-                      setIsRecording(true)
-                      toast.success('Recording started')
+                      // Configure recording settings before starting
+                      // Note: Stream.io composite recording layout (host video + screen share only)
+                      // may need to be configured in Stream.io dashboard for full control
+                      try {
+                        const callId = call.id || event.id
+                        await fetch('/api/recordings/configure', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            callId,
+                            eventId: event.id,
+                            ownerId: event.owner_id,
+                          }),
+                        })
+                      } catch (configError) {
+                        console.warn('[Recording] Configuration endpoint failed, using default settings:', configError)
+                      }
+                      
+                      // Start recording with 1920x1080 resolution
+                      // Layout configuration (host video + screen share only) should be set via
+                      // Stream.io dashboard or the configure endpoint above
+                      await call.startRecording({
+                        resolution: '1920x1080',
+                      })
+                      
+                      // Set flag to prevent useEffect from interfering while we're waiting
+                      waitingForRecordingStartRef.current = true
+                      
+                      // First, wait a brief moment for SDK state to update (more immediate than API)
+                      await new Promise(resolve => setTimeout(resolve, 200))
+                      
+                      // Check SDK state first (fastest way to confirm recording started)
+                      const sdkStateActive = await checkRecordingActive(true)
+                      if (sdkStateActive) {
+                        // SDK confirms recording is active - set state immediately
+                        waitingForRecordingStartRef.current = false
+                        setIsRecording(true)
+                        setIsRecordingLoading(false)
+                        toast.success('Recording started')
+                        return
+                      }
+                      
+                      // Keep loading state and poll until recording is confirmed active
+                      // This prevents the button from showing as active before recording actually starts
+                      let pollingAttempts = 0
+                      const maxPollingAttempts = 15 // 15 attempts * 300ms = 4.5 seconds max
+                      const pollInterval = 300 // Check every 300ms (more frequent)
+                      const initialDelay = 300 // Wait 300ms before first poll
+                      
+                      const pollUntilActive = async (): Promise<void> => {
+                        // Prioritize SDK state check (faster)
+                        const isActive = await checkRecordingActive(true)
+                        
+                        if (isActive) {
+                          // Recording is confirmed active
+                          waitingForRecordingStartRef.current = false
+                          setIsRecording(true)
+                          setIsRecordingLoading(false)
+                          toast.success('Recording started')
+                          return
+                        }
+                        
+                        pollingAttempts++
+                        if (pollingAttempts >= maxPollingAttempts) {
+                          // Timeout - if we've waited this long and SDK doesn't show it,
+                          // assume recording started but state check is delayed
+                          // Set to active optimistically
+                          console.warn('Recording start confirmation timed out, assuming active')
+                          waitingForRecordingStartRef.current = false
+                          setIsRecording(true)
+                          setIsRecordingLoading(false)
+                          toast.success('Recording started')
+                          return
+                        }
+                        
+                        // Continue polling
+                        setTimeout(pollUntilActive, pollInterval)
+                      }
+                      
+                      // Start polling after initial delay
+                      setTimeout(pollUntilActive, initialDelay)
+                      // Don't clear loading state here - it will be cleared when recording is confirmed active
+                      return // Exit early, loading state will be cleared by pollUntilActive
                     }
                   } catch (error: any) {
                     console.error('Error toggling recording:', error)
-                    toast.error(error.message || 'Failed to toggle recording')
-                  } finally {
+                    waitingForRecordingStartRef.current = false
                     setIsRecordingLoading(false)
+                    toast.error(error.message || 'Failed to toggle recording')
                   }
                 }}
                 disabled={isRecordingLoading}
@@ -1121,12 +1265,14 @@ function CallContentInner({
                               await call.camera.disable()
                             }
                             setLocalScreenShareEnabled(false)
+                            screenShareManuallyEnabledRef.current = false
                             toast.success('Screen sharing stopped')
                           } catch (stopError: any) {
                             // Try to disable camera as fallback
                             try {
                               await call.camera.disable()
                               setLocalScreenShareEnabled(false)
+                              screenShareManuallyEnabledRef.current = false
                             } catch {
                               throw stopError
                             }
@@ -1141,6 +1287,7 @@ function CallContentInner({
                               await (call as any).screenShare.enable()
                               
                               setLocalScreenShareEnabled(true)
+                              screenShareManuallyEnabledRef.current = true
                               toast.success('Screen sharing started')
                               
                               // Monitor screen share state changes (user stops sharing from browser UI)
@@ -1151,6 +1298,7 @@ function CallContentInner({
                                 screenShareState.subscribe((state: any) => {
                                   if (state?.status === 'disabled') {
                                     setLocalScreenShareEnabled(false)
+                                    screenShareManuallyEnabledRef.current = false
                                     toast.info('Screen sharing stopped')
                                   }
                                 })
@@ -1463,8 +1611,10 @@ function CallContentInner({
                       try {
                         if (isRecording) {
                           // Stop recording
+                          waitingForRecordingStartRef.current = false
                           await call.stopRecording()
                           setIsRecording(false)
+                          setIsRecordingLoading(false)
                           toast.success('Recording stopped')
                           
                           // Automatically save recording after a short delay
@@ -1477,16 +1627,95 @@ function CallContentInner({
                             }
                           }, 2000)
                         } else {
-                          // Start recording
-                          await call.startRecording()
-                          setIsRecording(true)
-                          toast.success('Recording started')
+                          // Configure recording settings before starting
+                          // Note: Stream.io composite recording layout (host video + screen share only)
+                          // may need to be configured in Stream.io dashboard for full control
+                          try {
+                            const callId = call.id || event.id
+                            await fetch('/api/recordings/configure', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                callId,
+                                eventId: event.id,
+                                ownerId: event.owner_id,
+                              }),
+                            })
+                          } catch (configError) {
+                            console.warn('[Recording] Configuration endpoint failed, using default settings:', configError)
+                          }
+                          
+                          // Start recording with 1920x1080 resolution
+                          // Layout configuration (host video + screen share only) should be set via
+                          // Stream.io dashboard or the configure endpoint above
+                          await call.startRecording({
+                            resolution: '1920x1080',
+                          })
+                          
+                          // Set flag to prevent useEffect from interfering while we're waiting
+                          waitingForRecordingStartRef.current = true
+                          
+                          // First, wait a brief moment for SDK state to update (more immediate than API)
+                          await new Promise(resolve => setTimeout(resolve, 200))
+                          
+                          // Check SDK state first (fastest way to confirm recording started)
+                          const sdkStateActive = await checkRecordingActive(true)
+                          if (sdkStateActive) {
+                            // SDK confirms recording is active - set state immediately
+                            waitingForRecordingStartRef.current = false
+                            setIsRecording(true)
+                            setIsRecordingLoading(false)
+                            toast.success('Recording started')
+                            return
+                          }
+                          
+                          // Keep loading state and poll until recording is confirmed active
+                          // This prevents the button from showing as active before recording actually starts
+                          let pollingAttempts = 0
+                          const maxPollingAttempts = 15 // 15 attempts * 300ms = 4.5 seconds max
+                          const pollInterval = 300 // Check every 300ms (more frequent)
+                          const initialDelay = 300 // Wait 300ms before first poll
+                          
+                          const pollUntilActive = async (): Promise<void> => {
+                            // Prioritize SDK state check (faster)
+                            const isActive = await checkRecordingActive(true)
+                            
+                            if (isActive) {
+                              // Recording is confirmed active
+                              waitingForRecordingStartRef.current = false
+                              setIsRecording(true)
+                              setIsRecordingLoading(false)
+                              toast.success('Recording started')
+                              return
+                            }
+                            
+                            pollingAttempts++
+                            if (pollingAttempts >= maxPollingAttempts) {
+                              // Timeout - if we've waited this long and SDK doesn't show it,
+                              // assume recording started but state check is delayed
+                              // Set to active optimistically
+                              console.warn('Recording start confirmation timed out, assuming active')
+                              waitingForRecordingStartRef.current = false
+                              setIsRecording(true)
+                              setIsRecordingLoading(false)
+                              toast.success('Recording started')
+                              return
+                            }
+                            
+                            // Continue polling
+                            setTimeout(pollUntilActive, pollInterval)
+                          }
+                          
+                          // Start polling after initial delay
+                          setTimeout(pollUntilActive, initialDelay)
+                          // Don't clear loading state here - it will be cleared when recording is confirmed active
+                          return // Exit early, loading state will be cleared by pollUntilActive
                         }
                       } catch (error: any) {
                         console.error('Error toggling recording:', error)
-                        toast.error(error.message || 'Failed to toggle recording')
-                      } finally {
+                        waitingForRecordingStartRef.current = false
                         setIsRecordingLoading(false)
+                        toast.error(error.message || 'Failed to toggle recording')
                       }
                     }}
                     disabled={isRecordingLoading}
@@ -1545,6 +1774,7 @@ function CallContentInner({
                             throw new Error('Screen share disable method not found in SDK')
                           }
                           setLocalScreenShareEnabled(false)
+                          screenShareManuallyEnabledRef.current = false
                           toast.success('Screen sharing stopped')
                         } else {
                           if (typeof (call as any).screenShare?.enable === 'function') {
@@ -1557,6 +1787,7 @@ function CallContentInner({
                             throw new Error('Screen share enable method not found in SDK')
                           }
                           setLocalScreenShareEnabled(true)
+                          screenShareManuallyEnabledRef.current = true
                           toast.success('Screen sharing started')
                         }
                       } catch (error: any) {

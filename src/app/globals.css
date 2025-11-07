@@ -463,30 +463,6 @@
     opacity: 0.6;
   }
 
-  /* Loading Spinner Glow Effect */
-  .loading-spinner-glow {
-    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)) 
-            drop-shadow(0 0 16px rgba(255, 255, 255, 0.2)) 
-            drop-shadow(0 0 24px rgba(255, 255, 255, 0.1));
-  }
-
-  .loading-spinner-glow.animate-spin {
-    animation: spin 1s linear infinite, spinner-pulse-glow 2s ease-in-out infinite;
-  }
-
-  @keyframes spinner-pulse-glow {
-    0%, 100% {
-      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)) 
-              drop-shadow(0 0 16px rgba(255, 255, 255, 0.2)) 
-              drop-shadow(0 0 24px rgba(255, 255, 255, 0.1));
-    }
-    50% {
-      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.6)) 
-              drop-shadow(0 0 20px rgba(255, 255, 255, 0.3)) 
-              drop-shadow(0 0 32px rgba(255, 255, 255, 0.15));
-    }
-  }
-
   /* Optimize slider performance for mobile */
   [data-radix-slider-root] {
     -webkit-tap-highlight-color: transparent;

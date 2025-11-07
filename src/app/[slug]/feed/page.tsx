@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
+import { getCommunityBySlug } from "@/lib/community-cache"
 import FeedView from "./feed-view"
 
 interface FeedPageProps {
@@ -12,82 +13,81 @@ export default async function FeedPage({ params }: FeedPageProps) {
   const { slug } = await params
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community data
-  const { data: community, error: communityError } = await supabase
-    .from('communities')
-    .select('id, name, slug, description, owner_id')
-    .eq('slug', slug)
-    .single()
-
-  if (communityError || !community) {
+  // Fetch community data (cached)
+  const community = await getCommunityBySlug(slug)
+  if (!community) {
     notFound()
   }
 
-  // Check if user is authenticated and get their membership status
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  let isMember = false
-  
-  if (user) {
-    const { data: membership } = await supabase
-      .from('community_members')
-      .select('id')
+  // Parallel data fetching for faster load
+  const [userResult, postsResult] = await Promise.all([
+    // Get user and membership status
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { user: null, isMember: false }
+      
+      const { data: membership } = await supabase
+        .from('community_members')
+        .select('id')
+        .eq('community_id', community.id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      
+      return { user, isMember: !!membership }
+    })(),
+    // Fetch posts
+    supabase
+      .from('posts')
+      .select(`
+        *,
+        author:users!posts_author_id_fkey(
+          id,
+          username,
+          first_name,
+          last_name,
+          profile_picture
+        ),
+        media:post_media(
+          id,
+          media_type,
+          storage_path,
+          file_name,
+          display_order
+        )
+      `)
       .eq('community_id', community.id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    
-    isMember = !!membership
-  }
+      .order('is_pinned', { ascending: false })
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(20)
+  ])
 
-  // Fetch initial 20 posts with author and media - all posts are public now
-  const { data: posts, error: postsError } = await supabase
-    .from('posts')
-    .select(`
-      *,
-      author:users!posts_author_id_fkey(
-        id,
-        username,
-        first_name,
-        last_name,
-        profile_picture
-      ),
-      media:post_media(
-        id,
-        media_type,
-        storage_path,
-        file_name,
-        display_order
-      )
-    `)
-    .eq('community_id', community.id)
-    .order('is_pinned', { ascending: false })
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .limit(20)
+  const { user, isMember } = userResult
+  const { data: posts, error: postsError } = postsResult
 
   if (postsError) {
     console.error('Error fetching posts:', postsError)
   }
 
-  // Enrich posts with boost counts and user's boost status using batch queries
+  // Enrich posts with boost counts and user's boost status using parallel batch queries
   const postIds = (posts || []).map(p => p.id)
   let enrichedPosts = posts || []
 
   if (postIds.length > 0) {
-    // Batch fetch boost counts for all posts
-    const { data: boostCountsData } = await supabase
-      .rpc('get_posts_boost_counts', { p_post_ids: postIds })
+    // Parallel fetch boost counts and user boost status
+    const [boostCountsResult, boostStatusResult] = await Promise.all([
+      supabase.rpc('get_posts_boost_counts', { p_post_ids: postIds }),
+      user 
+        ? supabase.rpc('get_user_boosted_posts', { 
+            p_post_ids: postIds,
+            p_user_id: user.id 
+          })
+        : Promise.resolve({ data: [] })
+    ])
 
-    // Batch fetch user boost status if authenticated
-    let userBoostStatus: Array<{ post_id: string; user_has_boosted: boolean; can_unboost: boolean }> = []
-    if (user) {
-      const { data: boostStatusData } = await supabase
-        .rpc('get_user_boosted_posts', { 
-          p_post_ids: postIds,
-          p_user_id: user.id 
-        })
-      userBoostStatus = boostStatusData || []
-    }
+    const { data: boostCountsData } = boostCountsResult
+    const { data: boostStatusData } = boostStatusResult
+    const userBoostStatus = boostStatusData || []
 
     // Create lookup maps for efficient enrichment
     const boostCountMap = new Map(
@@ -111,13 +111,8 @@ export default async function FeedPage({ params }: FeedPageProps) {
     })
   }
 
-  // Check if there are more posts to load
-  const { count: totalPostsCount } = await supabase
-    .from('posts')
-    .select('*', { count: 'exact', head: true })
-    .eq('community_id', community.id)
-
-  const hasMore = (totalPostsCount || 0) > 20
+  // Check if there are more posts (only if we got exactly 20)
+  const hasMore = (posts || []).length === 20
 
   return (
     <FeedView

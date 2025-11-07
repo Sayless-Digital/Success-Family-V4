@@ -1,15 +1,16 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search, DollarSign, Home, Users, MessageSquare, Shield, Video, VideoIcon } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Settings, Save, Building2, Plus, Edit, Trash2, MoreVertical, Loader2, Search, DollarSign } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { CommunityNavigation } from "@/components/community-navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -40,21 +41,9 @@ interface CommunitySettingsViewProps {
 export default function CommunitySettingsView({ community, isOwner }: CommunitySettingsViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const pathname = usePathname()
   
   // Get active tab from URL params, default to 'general'
   const activeTab = searchParams.get('tab') || 'general'
-  
-  // Determine active navigation tab
-  const activeNavTab = React.useMemo(() => {
-    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
-    if (pathname === `/${community.slug}/feed`) return "feed"
-    if (pathname === `/${community.slug}/events`) return "events"
-    if (pathname === `/${community.slug}/recordings`) return "recordings"
-    if (pathname === `/${community.slug}/members`) return "members"
-    if (pathname === `/${community.slug}/settings`) return "settings"
-    return "home"
-  }, [pathname, community.slug])
   
   const [isSaving, setIsSaving] = useState(false)
   
@@ -359,50 +348,11 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Navigation Tabs */}
-        <Tabs value={activeNavTab} className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="home" asChild>
-              <Link href={`/${community.slug}`} className="flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Home
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="feed" asChild>
-              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Feed
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="events" asChild>
-              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
-                <Video className="h-4 w-4" />
-                Events
-              </Link>
-            </TabsTrigger>
-            {isOwner && (
-              <TabsTrigger value="recordings" asChild>
-                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2">
-                  <VideoIcon className="h-4 w-4" />
-                  Recordings
-                </Link>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="members" asChild>
-              <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Members
-              </Link>
-            </TabsTrigger>
-            {isOwner && (
-              <TabsTrigger value="settings" asChild>
-                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Settings
-                </Link>
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
+        <CommunityNavigation 
+          slug={community.slug} 
+          isOwner={isOwner} 
+          isMember={false} 
+        />
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="w-full overflow-x-auto">

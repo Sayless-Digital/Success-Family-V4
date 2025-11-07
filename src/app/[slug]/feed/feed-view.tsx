@@ -1,11 +1,11 @@
 "use client"
 
 import React, { useMemo, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { FileText, Pin, Crown, Bookmark, Home, Users, MessageSquare, Shield, MoreVertical, Edit, Trash2, Video, VideoIcon } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FileText, Pin, Crown, Bookmark, MoreVertical, Edit, Trash2 } from "lucide-react"
+import { CommunityNavigation } from "@/components/community-navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,7 +63,6 @@ export default function FeedView({
   hasMore: initialHasMore
 }: FeedViewProps) {
   const router = useRouter()
-  const pathname = usePathname()
   const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
   
   // Optimistically determine membership immediately (before async check)
@@ -136,16 +135,6 @@ export default function FeedView({
     }
   }, [user, community?.id, community?.owner_id])
 
-  // Determine active tab
-  const activeTab = React.useMemo(() => {
-    if (pathname === `/${community.slug}` || pathname === `/${community.slug}/`) return "home"
-    if (pathname === `/${community.slug}/feed`) return "feed"
-    if (pathname === `/${community.slug}/events`) return "events"
-    if (pathname === `/${community.slug}/recordings`) return "recordings"
-    if (pathname === `/${community.slug}/members`) return "members"
-    if (pathname === `/${community.slug}/settings`) return "settings"
-    return "home"
-  }, [pathname, community.slug])
   const [posts, setPosts] = useState(initialPosts)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
   const [savingPosts, setSavingPosts] = useState<Set<string>>(new Set())
@@ -1335,50 +1324,11 @@ export default function FeedView({
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Navigation Tabs */}
-        <Tabs value={activeTab} className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="home" asChild>
-              <Link href={`/${community.slug}`} className="flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Home
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="feed" asChild>
-              <Link href={`/${community.slug}/feed`} className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Feed
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="events" asChild>
-              <Link href={`/${community.slug}/events`} className="flex items-center gap-2">
-                <Video className="h-4 w-4" />
-                Events
-              </Link>
-            </TabsTrigger>
-            {(isMember || currentUserId === community.owner_id) && (
-              <TabsTrigger value="recordings" asChild>
-                <Link href={`/${community.slug}/recordings`} className="flex items-center gap-2">
-                  <VideoIcon className="h-4 w-4" />
-                  Recordings
-                </Link>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="members" asChild>
-              <Link href={`/${community.slug}/members`} className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Members
-              </Link>
-            </TabsTrigger>
-            {(isMember || currentUserId === community.owner_id) && (
-              <TabsTrigger value="settings" asChild>
-                <Link href={`/${community.slug}/settings`} className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Settings
-                </Link>
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
+        <CommunityNavigation 
+          slug={community.slug} 
+          isOwner={currentUserId === community.owner_id} 
+          isMember={isMember} 
+        />
         {/* New Posts Notification - Sticky at top when visible */}
         {newPostsCount > 0 && (
           <div className="sticky top-14 z-[100] flex justify-center py-2 mb-2">

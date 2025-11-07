@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -29,6 +29,7 @@ const baseNavigationItems = [
 const userMenuItems = [
   { icon: User, label: "Profile", href: "#", isDynamic: true }, // Dynamic - will be set based on username
   { icon: Settings, label: "Account", href: "/account" },
+  { icon: HardDrive, label: "Storage", href: "/storage" },
 ]
 
 // Community navigation removed - now using tabs at top of community pages
