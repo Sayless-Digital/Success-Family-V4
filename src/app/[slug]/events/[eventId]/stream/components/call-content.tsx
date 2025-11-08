@@ -1132,12 +1132,8 @@ function CallContentInner({
                         console.warn('[Recording] Configuration endpoint failed, using default settings:', configError)
                       }
                       
-                      // Start recording with 1920x1080 resolution
-                      // Layout configuration (host video + screen share only) should be set via
-                      // Stream.io dashboard or the configure endpoint above
-                      await call.startRecording({
-                        resolution: '1920x1080',
-                      })
+                      // Start recording (resolution/layout handled via Stream dashboard or configure endpoint)
+                      await call.startRecording()
                       
                       // Set flag to prevent useEffect from interfering while we're waiting
                       waitingForRecordingStartRef.current = true
@@ -1645,12 +1641,8 @@ function CallContentInner({
                             console.warn('[Recording] Configuration endpoint failed, using default settings:', configError)
                           }
                           
-                          // Start recording with 1920x1080 resolution
-                          // Layout configuration (host video + screen share only) should be set via
-                          // Stream.io dashboard or the configure endpoint above
-                          await call.startRecording({
-                            resolution: '1920x1080',
-                          })
+                          // Start recording (resolution/layout handled via Stream dashboard or configure endpoint)
+                          await call.startRecording()
                           
                           // Set flag to prevent useEffect from interfering while we're waiting
                           waitingForRecordingStartRef.current = true
