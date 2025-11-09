@@ -7,7 +7,7 @@ export interface EmailOptions {
   from?: string
 }
 
-export async function sendEmail({ to, subject, html, from = 'Success Family <noreply@successfamily.com>' }: EmailOptions) {
+export async function sendEmail({ to, subject, html, from = 'Success Family <hello@successfamily.online>' }: EmailOptions) {
   if (!env.RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY is not configured')
   }
