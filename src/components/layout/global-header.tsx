@@ -329,7 +329,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                     <div className="flex items-center gap-2">
                     <CommunityLogo
                       name={activeCommunity?.name ?? "Success Family"}
-                      logoUrl={activeCommunity?.logo_url ?? "/icons/icon-192.png"}
+                      logoUrl={activeCommunity?.logo_url}
                       size="sm"
                       className="border-4 border-white/20"
                     />
@@ -416,12 +416,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             </DropdownMenu>
           ) : (
             <Link href="/" className="flex items-center gap-2">
-              <CommunityLogo
-                name="Success Family"
-                logoUrl="/icons/icon-192.png"
-                size="sm"
-                className="border-4 border-white/20"
-              />
+              <CommunityLogo name="Success Family" size="sm" className="border-4 border-white/20" />
               <span className="font-semibold text-white hidden sm:block">
                 Success Family
               </span>
