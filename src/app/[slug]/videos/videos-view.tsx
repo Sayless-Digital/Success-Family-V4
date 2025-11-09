@@ -78,6 +78,8 @@ interface CommunityVideosViewProps {
   uploadedVideos: UploadedVideo[]
 }
 
+const BUCKET_NAME = "community-uploads"
+
 export default function CommunityVideosView({ 
   community, 
   recordings,
@@ -168,24 +170,68 @@ export default function CommunityVideosView({
       return
     }
 
-    const formData = new FormData()
-    formData.append("communityId", community.id)
-    formData.append("title", uploadTitle.trim() || uploadFile.name)
-    if (uploadDescription.trim()) {
-      formData.append("description", uploadDescription.trim())
+    if (!currentUserId) {
+      toast.error("We couldn't verify your account. Please refresh and try again.")
+      return
     }
-    formData.append("file", uploadFile)
+
+    const extension = (() => {
+      const parts = uploadFile.name?.split(".") ?? []
+      return parts.length > 1 ? parts.pop()!.toLowerCase() : "mp4"
+    })()
+
+    const objectPath = `${community.id}/${currentUserId}/${Date.now()}-${crypto.randomUUID()}.${extension}`
+    const contentType = uploadFile.type || `video/${extension}` || "video/mp4"
+    const storagePath = `${BUCKET_NAME}/${objectPath}`
 
     setIsUploading(true)
     try {
-      const response = await fetch(`/api/videos/upload`, {
-        method: "POST",
-        body: formData,
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(objectPath, uploadFile, {
+          cacheControl: "3600",
+          contentType,
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error("[Community Videos] Storage upload failed:", uploadError)
+        throw new Error(uploadError.message || "Failed to upload video")
+      }
+
+      const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(objectPath)
+      const storageUrl = publicUrlData?.publicUrl ?? null
+      const title = uploadTitle.trim() || uploadFile.name
+      const description = uploadDescription.trim() || null
+
+      const { error: insertError } = await supabase
+        .from("uploaded_videos")
+        .insert({
+          community_id: community.id,
+          user_id: currentUserId,
+          title,
+          description,
+          storage_path: storagePath,
+          storage_url: storageUrl,
+          file_size_bytes: uploadFile.size,
+          duration_seconds: null,
+        })
+
+      if (insertError) {
+        console.error("[Community Videos] Metadata insert failed:", insertError)
+        await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([objectPath])
+          .catch((cleanupError) => console.warn("[Community Videos] Failed to cleanup storage object:", cleanupError))
+        throw new Error(insertError.message || "Failed to save uploaded video metadata")
+      }
+
+      const { error: storageUpdateError } = await supabase.rpc("update_user_storage_usage", {
+        p_user_id: currentUserId,
       })
 
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || "Failed to upload video")
+      if (storageUpdateError) {
+        console.warn("[Community Videos] Failed to update storage usage:", storageUpdateError)
       }
 
       toast.success("Video uploaded successfully")
@@ -194,7 +240,7 @@ export default function CommunityVideosView({
       router.refresh()
     } catch (error: any) {
       console.error("Error uploading video:", error)
-      toast.error(error.message || "Failed to upload video")
+      toast.error(error?.message || "Failed to upload video")
     } finally {
       setIsUploading(false)
     }
@@ -353,7 +399,7 @@ export default function CommunityVideosView({
                       key={recording.id}
                       className="group overflow-hidden border-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 hover:from-white/15 hover:shadow-lg hover:shadow-white/10"
                     >
-                      <div className="relative h-48 w-full overflow-hidden bg-gradient-to-br from-white/5 to-white/10">
+                      <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-white/5 to-white/10">
                         <SecureVideoCard
                           communityId={recording.community_id ?? community.id}
                           item={{
@@ -499,7 +545,7 @@ export default function CommunityVideosView({
                       key={video.id}
                       className="group overflow-hidden border-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 hover:from-white/15 hover:shadow-lg hover:shadow-white/10"
                     >
-                      <div className="relative h-48 w-full overflow-hidden bg-gradient-to-br from-white/5 to-white/10">
+                      <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-white/5 to-white/10">
                         <SecureVideoCard
                           communityId={video.community_id ?? community.id}
                           item={{

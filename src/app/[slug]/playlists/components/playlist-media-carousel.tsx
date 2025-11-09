@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/app/[slug]/playlists/utils"
+import styles from "./playlist-media-carousel.module.css"
 
 type CarouselSourceType = "recording" | "upload"
 
@@ -305,13 +306,17 @@ export function SecureVideoCard({ playlistId, communityId, item }: SecureVideoCa
   const playerStyles = useMemo(
     () => ({
       "--plyr-color-main": "hsl(var(--primary))",
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      maxHeight: "100%",
     }) as CSSProperties,
     [],
   )
 
   return (
     <div
-      className="relative aspect-video w-full overflow-hidden rounded-t-2xl bg-black"
+      className={cn("secure-video-card relative aspect-video w-full overflow-hidden rounded-t-2xl bg-black", styles.secureVideoCard)}
       onContextMenu={(evt) => evt.preventDefault()}
       style={playerStyles}
     >

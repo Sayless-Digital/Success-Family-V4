@@ -18,23 +18,28 @@ interface TopUpGuardProps {
  * Redirects to community home if user dismisses without topping up
  */
 export function TopUpGuard({ children, communitySlug }: TopUpGuardProps) {
-  const { needsTopup, topupMessage, hasUser } = useTopupCheck()
+  const { needsTopup, topupMessage, hasUser, isChecking } = useTopupCheck()
   const router = useRouter()
   const [showTopupDialog, setShowTopupDialog] = useState(false)
   const [userDismissed, setUserDismissed] = useState(false)
-  const [isCheckingTopup, setIsCheckingTopup] = useState(true)
 
   useEffect(() => {
-    // Wait a moment to ensure the top-up check has completed
-    const timer = setTimeout(() => {
-      setIsCheckingTopup(false)
-      if (needsTopup && hasUser) {
-        setShowTopupDialog(true)
-      }
-    }, 100)
+    if (isChecking) {
+      return
+    }
 
-    return () => clearTimeout(timer)
-  }, [needsTopup, hasUser])
+    if (needsTopup && hasUser) {
+      setShowTopupDialog(true)
+    } else {
+      setShowTopupDialog(false)
+    }
+  }, [needsTopup, hasUser, isChecking])
+
+  useEffect(() => {
+    if (!needsTopup) {
+      setUserDismissed(false)
+    }
+  }, [needsTopup])
 
   const handleDialogChange = (open: boolean) => {
     setShowTopupDialog(open)
@@ -70,7 +75,7 @@ export function TopUpGuard({ children, communitySlug }: TopUpGuardProps) {
   }
 
   // Show nothing while checking to prevent flash
-  if (isCheckingTopup) {
+  if (isChecking) {
     return null
   }
 

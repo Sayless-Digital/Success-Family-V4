@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { PageHeader } from "@/components/ui/page-header"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Community } from "@/types"
+import { CommunityNavigation } from "@/components/community-navigation"
 
 export default function CommunitySettingsPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -297,13 +297,15 @@ export default function CommunitySettingsPage() {
 
   if (!user || !community) return null
 
+  const isOwner = community.owner_id === user.id
+
   return (
     <TopUpGuard communitySlug={slug}>
     <div className="relative w-full overflow-x-hidden">
-      <div className="relative z-10">
-        <PageHeader
-          title="Community Settings"
-          subtitle={`Manage settings for ${community.name}`}
+      <div className="relative z-10 space-y-6">
+        <CommunityNavigation
+          slug={community.slug}
+          isOwner={isOwner}
         />
 
         {/* Banner Section */}

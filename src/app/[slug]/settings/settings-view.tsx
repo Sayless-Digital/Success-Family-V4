@@ -372,12 +372,6 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
 
           <TabsContent value="general">
             <div className="space-y-6">
-              {/* Header */}
-              <div>
-                <h3 className="text-xl font-semibold text-white">General Information</h3>
-                <p className="text-white/60 text-sm mt-1">Update your community's name and description</p>
-              </div>
-
               <form onSubmit={handleSubmit}>
                 <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
                   <CardContent className="pt-6 space-y-6">
@@ -449,13 +443,7 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white">Bank Accounts</h3>
-                    <p className="text-white/60 text-sm mt-1">Manage payment accounts for your community</p>
-                  </div>
-                  
                   <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                     <DialogTrigger asChild>
                       <Button 
@@ -778,12 +766,6 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Header */}
-                <div>
-                  <h3 className="text-xl font-semibold text-white">Billing & Pricing</h3>
-                  <p className="text-white/60 text-sm mt-1">Set up pricing for users to access your community</p>
-                </div>
-
                 <form onSubmit={handlePricingSubmit}>
                   <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
                     <CardContent className="pt-6 space-y-6">

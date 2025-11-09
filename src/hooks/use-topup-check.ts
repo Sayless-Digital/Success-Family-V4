@@ -12,8 +12,13 @@ import { useMemo } from "react"
 export function useTopupCheck() {
   const { user, nextTopupDueOn, walletBalance } = useAuth()
 
-  const needsTopup = useMemo(() => {
+  const isChecking = useMemo(() => {
     if (!user) return false
+    return walletBalance === null && nextTopupDueOn === null
+  }, [user, walletBalance, nextTopupDueOn])
+
+  const needsTopup = useMemo(() => {
+    if (!user || isChecking) return false
 
     // If no due date is set, user has never topped up
     if (!nextTopupDueOn) {
@@ -27,7 +32,7 @@ export function useTopupCheck() {
     dueDate.setHours(0, 0, 0, 0)
 
     return dueDate < today
-  }, [user, nextTopupDueOn])
+  }, [user, nextTopupDueOn, isChecking])
 
   const topupMessage = useMemo(() => {
     if (!needsTopup) return null
@@ -44,6 +49,7 @@ export function useTopupCheck() {
     topupMessage,
     hasUser: !!user,
     nextTopupDueOn,
-    walletBalance
+    walletBalance,
+    isChecking
   }
 }

@@ -1,0 +1,61 @@
+/* Plyr player fixes for portrait videos */
+.secureVideoCard {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 1rem 1rem 0 0;
+  background-color: #000;
+}
+
+/* Force Plyr to fill container and use absolute positioning */
+.secureVideoCard :global(.plyr) {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+/* Make video wrapper fill space but leave room for controls at bottom */
+.secureVideoCard :global(.plyr__video-wrapper) {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 48px !important; /* Reserve space for controls */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
+  background-color: #000 !important;
+}
+
+/* Constrain video to fit within available space */
+.secureVideoCard :global(.plyr__video-wrapper video) {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+}
+
+/* Position controls absolutely at bottom */
+.secureVideoCard :global(.plyr__controls) {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: 48px !important;
+  z-index: 10 !important;
+}
+
+.secureVideoCard :global(.plyr__poster) {
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+}
