@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const slug = searchParams.get('slug')
 
     if (!slug) {
-      return NextResponse.json({ isOwner: false, isMember: false }, { status: 200 })
+      return NextResponse.json({ isOwner: false, isMember: false, community: null }, { status: 200 })
     }
 
     const supabase = await createServerSupabaseClient()
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     // Fetch community data (cached)
     const community = await getCommunityBySlug(slug)
     if (!community) {
-      return NextResponse.json({ isOwner: false, isMember: false }, { status: 200 })
+      return NextResponse.json({ isOwner: false, isMember: false, community: null }, { status: 200 })
     }
 
     // Get user and check owner/member status
@@ -44,10 +44,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ isOwner, isMember }, { status: 200 })
+    const responseCommunity = {
+      id: community.id,
+      name: community.name,
+      slug: community.slug,
+      logo_url: community.logo_url,
+      is_active: community.is_active,
+    }
+
+    return NextResponse.json({ isOwner, isMember, community: responseCommunity }, { status: 200 })
   } catch (error) {
     console.error('Error in community-status API:', error)
-    return NextResponse.json({ isOwner: false, isMember: false }, { status: 200 })
+    return NextResponse.json({ isOwner: false, isMember: false, community: null }, { status: 200 })
   }
 }
 

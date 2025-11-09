@@ -2,6 +2,8 @@ import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getCommunityBySlug } from "@/lib/community-cache"
 import CommunityEventsView from "./events-view"
+import { TopUpGuard } from "@/components/topup-guard"
+import { TopUpGuard } from "@/components/topup-guard"
 
 interface CommunityEventsPageProps {
   params: Promise<{
@@ -96,15 +98,18 @@ export default async function CommunityEventsPage({ params }: CommunityEventsPag
   const isOwner = user ? community.owner_id === user.id : false
 
   return (
-    <CommunityEventsView 
-      community={community}
-      events={eventsWithCounts || []}
-      isOwner={isOwner}
-      currentUserId={user?.id}
-      userRegistrations={userRegistrations}
-      streamStartCost={settings?.stream_start_cost || 1}
-      streamJoinCost={settings?.stream_join_cost || 1}
-    />
+    <TopUpGuard communitySlug={slug}>
+    <TopUpGuard communitySlug={slug}>
+      <CommunityEventsView
+        community={community}
+        events={eventsWithCounts || []}
+        isOwner={isOwner}
+        currentUserId={user?.id}
+        userRegistrations={userRegistrations}
+        streamStartCost={settings?.stream_start_cost || 1}
+        streamJoinCost={settings?.stream_join_cost || 1}
+      />
+    </TopUpGuard>
   )
 }
 

@@ -39,6 +39,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import Silk from "@/components/Silk"
 import type { CommunityEvent } from "@/types"
+import { CommunityLogo } from "@/components/community-logo"
 import { StreamInfo } from "./stream-info"
 import { CustomSpeakerLayout, CustomGridLayout, MobileSwipeableLayout } from "./stream-layouts"
 import { DraggableSelfView } from "./draggable-self-view"
@@ -47,7 +48,7 @@ import { SettingsDialog } from "./settings-dialog"
 
 interface CallContentProps {
   event: CommunityEvent
-  community: { id: string; name: string; slug: string }
+  community: { id: string; name: string; slug: string; logo_url?: string | null }
   isOwner: boolean
   onEndCall: () => void
   call: Call
@@ -836,9 +837,12 @@ function CallContentInner({
         <div className="flex items-center justify-between px-1 h-12 z-10 flex-shrink-0 relative bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-b border-white/20 rounded-b-lg">
           {/* Left: Community Logo */}
           <div className="flex items-center gap-2 flex-1">
-            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
-              {community.name[0].toUpperCase()}
-            </div>
+            <CommunityLogo
+              name={community.name}
+              logoUrl={community.logo_url}
+              size="sm"
+              className="border-4 border-white/20"
+            />
             <span className="font-semibold text-white text-sm hidden sm:block truncate">
               {community.name}
             </span>

@@ -16,6 +16,8 @@ export const getCommunityBySlug = cache(async (slug: string) => {
       name,
       slug,
       description,
+      is_active,
+      logo_url,
       owner_id,
       owner:users!communities_owner_id_fkey(id, username, first_name, last_name, profile_picture)
     `)

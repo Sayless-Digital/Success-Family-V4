@@ -14,6 +14,8 @@ export default async function CommunitiesPage() {
       description,
       created_at,
       is_active,
+      logo_url,
+      banner_url,
       owner:users(id, username, first_name, last_name)
     `)
     .eq('is_active', true)

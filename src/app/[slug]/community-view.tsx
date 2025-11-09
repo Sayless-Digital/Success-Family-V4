@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import type { Community, CommunityMember } from "@/types"
+import { CommunityLogo } from "@/components/community-logo"
 
 interface CommunityViewProps {
   community: Community & {
@@ -166,9 +167,12 @@ export default function CommunityView({
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
               {/* Community Avatar */}
-              <div className="h-20 w-20 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-2xl border-4 border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
-                {community.name.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase()}
-              </div>
+              <CommunityLogo
+                name={community.name}
+                logoUrl={community.logo_url}
+                size="2xl"
+                className="border-4 border-white/20"
+              />
               
               {/* Community Info */}
               <div className="flex-1 min-w-0">

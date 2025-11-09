@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter, useParams } from "next/navigation"
 import { Save, Loader2, Upload, Image as ImageIcon } from "lucide-react"
+import { TopUpGuard } from "@/components/topup-guard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -297,6 +298,7 @@ export default function CommunitySettingsPage() {
   if (!user || !community) return null
 
   return (
+    <TopUpGuard communitySlug={slug}>
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10">
         <PageHeader
@@ -496,5 +498,6 @@ export default function CommunitySettingsPage() {
         </div>
       </div>
     </div>
+    </TopUpGuard>
   )
 }

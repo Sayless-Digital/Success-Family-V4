@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import Image from "next/image"
 import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import type { Community } from "@/types"
 import { CreateCommunityDialog } from "@/components/create-community-dialog"
+import { CommunityLogo } from "@/components/community-logo"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -31,6 +33,7 @@ interface GlobalHeaderProps {
 
 export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, fullscreenTargetRef }: GlobalHeaderProps) {
   const { user, userProfile, walletBalance, walletEarningsBalance, userValuePerPoint, signOut, isLoading, refreshProfile } = useAuth()
+  const pathname = usePathname()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -78,6 +81,62 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
     }
   }, [refreshProfile])
 
+  const currentCommunitySlug = React.useMemo(() => {
+    if (!pathname) return null
+    const segments = pathname.split("/").filter(Boolean)
+    if (segments.length === 0) return null
+    return segments[0] || null
+  }, [pathname])
+
+  type MinimalCommunity = Pick<Community, "id" | "name" | "slug" | "logo_url" | "is_active">
+
+  const [activeCommunity, setActiveCommunity] = React.useState<MinimalCommunity | null>(null)
+
+  React.useEffect(() => {
+    if (!currentCommunitySlug) {
+      setActiveCommunity(null)
+      return
+    }
+
+    const existing = userCommunities.find((community) => community.slug === currentCommunitySlug)
+    if (existing) {
+      setActiveCommunity(existing)
+      return
+    }
+
+    let isCancelled = false
+    setActiveCommunity(null)
+
+    const fetchCommunity = async () => {
+      try {
+        const response = await fetch(`/api/community-status?slug=${encodeURIComponent(currentCommunitySlug)}`)
+        if (!response.ok) {
+          if (!isCancelled) {
+            setActiveCommunity(null)
+          }
+          return
+        }
+        const data = await response.json()
+        if (!isCancelled && data?.community) {
+          setActiveCommunity(data.community)
+        } else if (!isCancelled) {
+          setActiveCommunity(null)
+        }
+      } catch (error) {
+        console.error("Error fetching current community info:", error)
+        if (!isCancelled) {
+          setActiveCommunity(null)
+        }
+      }
+    }
+
+    fetchCommunity()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [currentCommunitySlug, userCommunities])
+
   // Fetch user's communities
   React.useEffect(() => {
     if (user && userProfile) {
@@ -101,7 +160,8 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             name,
             slug,
             description,
-            is_active
+            is_active,
+            logo_url
           )
         `)
         .eq('user_id', user.id)
@@ -266,12 +326,15 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                   variant="ghost"
                   className="h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20 touch-feedback cursor-pointer"
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
-                      SF
-                    </div>
-                    <span className="font-semibold text-white text-sm">
-                      Success Family
+                    <div className="flex items-center gap-2">
+                    <CommunityLogo
+                      name={activeCommunity?.name ?? "Success Family"}
+                      logoUrl={activeCommunity?.logo_url}
+                      size="sm"
+                      className="border-4 border-white/20"
+                    />
+                    <span className="font-semibold text-white text-sm truncate max-w-[140px]">
+                      {activeCommunity?.name ?? "Success Family"}
                     </span>
                     <ChevronDown className="h-4 w-4 text-white" />
                   </div>
@@ -314,12 +377,18 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                       <DropdownMenuItem key={community.id} asChild>
                         <Link 
                           href={`/${community.slug}`} 
-                          className="cursor-pointer"
+                          className={cn(
+                            "cursor-pointer rounded-md",
+                            activeCommunity?.id === community.id && "bg-white/10 text-white"
+                          )}
                         >
                           <div className="flex items-center gap-2 w-full">
-                            <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
-                              {community.name[0]}
-                            </div>
+                            <CommunityLogo
+                              name={community.name}
+                              logoUrl={community.logo_url}
+                              size="sm"
+                              className="border-4 border-white/20 flex-shrink-0"
+                            />
                             <div className="flex-1 min-w-0">
                               <p className="font-medium truncate">{community.name}</p>
                               {!community.is_active && (
@@ -347,9 +416,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             </DropdownMenu>
           ) : (
             <Link href="/" className="flex items-center gap-2">
-              <div className="h-8 w-8 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border-4 border-white/20 shadow-lg backdrop-blur-md">
-                SF
-              </div>
+              <CommunityLogo name="Success Family" size="sm" className="border-4 border-white/20" />
               <span className="font-semibold text-white hidden sm:block">
                 Success Family
               </span>

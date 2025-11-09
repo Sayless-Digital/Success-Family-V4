@@ -24,6 +24,7 @@ interface StreamViewProps {
     id: string
     name: string
     slug: string
+    logo_url?: string | null
   }
   currentUserId: string
   currentUserName: string

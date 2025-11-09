@@ -267,6 +267,7 @@ export default async function ProfilePage(props: PageProps) {
         name,
         slug,
         description,
+        logo_url,
         is_active,
         created_at
       )

@@ -17,7 +17,7 @@ export default async function StreamPage({ params }: StreamPageProps) {
   // Fetch community - use maybeSingle() to avoid error when no rows found
   const { data: community, error: communityError } = await supabase
     .from('communities')
-    .select('id, name, slug, owner_id')
+    .select('id, name, slug, owner_id, logo_url')
     .eq('slug', slug)
     .maybeSingle()
 

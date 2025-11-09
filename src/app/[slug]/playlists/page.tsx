@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server"
 import type { UploadedVideo } from "@/types"
 import type { PlaylistWithItems } from "./types"
 import CommunityPlaylistsView from "./playlists-view"
+import { TopUpGuard } from "@/components/topup-guard"
 
 interface CommunityPlaylistsPageProps {
   params: Promise<{
@@ -232,15 +233,17 @@ export default async function CommunityPlaylistsPage({ params }: CommunityPlayli
   }
 
   return (
-    <CommunityPlaylistsView
-      community={community}
-      playlists={normalizedPlaylists}
-      recordings={recordings ?? []}
-      uploadedVideos={uploadedVideos}
-      isOwner={isOwner}
-      isMember={isMember}
-      currentUserId={user?.id}
-    />
+    <TopUpGuard communitySlug={slug}>
+      <CommunityPlaylistsView
+        community={community}
+        playlists={normalizedPlaylists}
+        recordings={recordings ?? []}
+        uploadedVideos={uploadedVideos}
+        isOwner={isOwner}
+        isMember={isMember}
+        currentUserId={user?.id}
+      />
+    </TopUpGuard>
   )
 }
 

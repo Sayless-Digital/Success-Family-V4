@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getCommunityBySlug } from "@/lib/community-cache"
 import FeedView from "./feed-view"
 import { formatRelativeTime } from "@/lib/utils"
+import { TopUpGuard } from "@/components/topup-guard"
 
 interface FeedPageProps {
   params: Promise<{
@@ -133,13 +134,15 @@ export default async function FeedPage({ params }: FeedPageProps) {
   ) as Record<string, string>
 
   return (
-    <FeedView
-      community={community}
-      posts={enrichedPosts}
-      isMember={isMember}
-      currentUserId={user?.id}
-      hasMore={hasMore}
-      initialRelativeTimes={initialRelativeTimes}
-    />
+    <TopUpGuard communitySlug={slug}>
+      <FeedView
+        community={community}
+        posts={enrichedPosts}
+        isMember={isMember}
+        currentUserId={user?.id}
+        hasMore={hasMore}
+        initialRelativeTimes={initialRelativeTimes}
+      />
+    </TopUpGuard>
   )
 }

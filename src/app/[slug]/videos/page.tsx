@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import CommunityVideosView from "./videos-view"
+import { TopUpGuard } from "@/components/topup-guard"
 
 interface CommunityRecordingsPageProps {
   params: Promise<{
@@ -20,6 +21,7 @@ export default async function CommunityRecordingsPage({ params }: CommunityRecor
       name,
       slug,
       description,
+      logo_url,
       owner_id,
       owner:users!communities_owner_id_fkey(id, username, first_name, last_name, profile_picture)
     `)
@@ -114,13 +116,15 @@ export default async function CommunityRecordingsPage({ params }: CommunityRecor
   }
 
   return (
-    <CommunityVideosView 
-      community={community}
-      recordings={recordings || []}
-      isOwner={isOwner}
-      isMember={isMember}
-      currentUserId={user?.id}
-      uploadedVideos={uploadedVideos}
-    />
+    <TopUpGuard communitySlug={slug}>
+      <CommunityVideosView
+        community={community}
+        recordings={recordings || []}
+        isOwner={isOwner}
+        isMember={isMember}
+        currentUserId={user?.id}
+        uploadedVideos={uploadedVideos}
+      />
+    </TopUpGuard>
   )
 }

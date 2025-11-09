@@ -6,6 +6,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { FileText, Pin, Crown, Bookmark, MoreVertical, Edit, Trash2 } from "lucide-react"
 import { CommunityNavigation } from "@/components/community-navigation"
+import { TopUpGuard } from "@/components/topup-guard"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1840,6 +1841,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
   }, [commentComposerOpen, commentComposerIndex, sortedPosts])
 
   return (
+    <TopUpGuard communitySlug={community.slug}>
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Navigation Tabs */}
@@ -2792,5 +2794,6 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
         </DialogContent>
       </Dialog>
     </div>
+    </TopUpGuard>
   )
 }

@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { Users, Calendar, Globe, Building2, Search, Crown } from "lucide-react"
+import Image from "next/image"
+import { Users, Calendar, Globe, Building2, Search, Crown, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { CreateCommunityDialog } from "@/components/create-community-dialog"
 import { useAuth } from "@/components/auth-provider"
 import { AuthDialog } from "@/components/auth-dialog"
+import { CommunityLogo } from "@/components/community-logo"
 
 interface Community {
   id: string
@@ -19,6 +21,8 @@ interface Community {
   description?: string
   created_at: string
   is_active: boolean
+  logo_url?: string | null
+  banner_url?: string | null
   owner: {
     id: string
     username: string
@@ -87,11 +91,30 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                 <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 hover:bg-white/15 transition-all cursor-pointer h-full">
                   <CardContent className="p-6">
                     <div className="space-y-4">
+                      <div className="relative w-full h-32 rounded-lg overflow-hidden border border-white/10 bg-white/5">
+                        {community.banner_url ? (
+                          <Image
+                            src={community.banner_url}
+                            alt={`${community.name} banner`}
+                            fill
+                            className="object-cover"
+                            sizes="(min-width: 1024px) 320px, 100vw"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <ImageIcon className="h-8 w-8 text-white/40" />
+                          </div>
+                        )}
+                      </div>
+
                       {/* Community Header */}
                       <div className="flex items-start gap-3">
-                        <div className="h-12 w-12 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-lg border border-white/20 shadow-lg backdrop-blur-md flex-shrink-0">
-                          {community.name[0]}
-                        </div>
+                        <CommunityLogo
+                          name={community.name}
+                          logoUrl={community.logo_url}
+                          size="lg"
+                          className="flex-shrink-0"
+                        />
                         <div className="flex-1 min-w-0 space-y-1">
                           <h3 className="font-semibold text-white text-lg truncate">
                             {community.name}
@@ -117,16 +140,16 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
                       )}
 
                       {/* Stats */}
-                      <div className="border-t border-white/10 pt-3 space-y-2">
+                      <div className="pt-3 space-y-2">
                         <div className="flex items-center gap-3 text-white/60 text-sm">
-                          <Badge variant="secondary" className="text-xs bg-white/10 text-white/80">
+                          <Badge variant="secondary" className="text-xs bg-white/10 text-white/80 flex items-center">
                             <Users className="h-3 w-3 mr-1" />
                             {community.memberCount}
                           </Badge>
-                          <div className="flex items-center gap-1 text-white/50 text-xs">
-                            <Calendar className="h-3 w-3" />
-                            <span>{new Date(community.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
-                          </div>
+                          <Badge variant="secondary" className="text-xs bg-white/10 text-white/80 flex items-center">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            {new Date(community.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                          </Badge>
                         </div>
                         
                       </div>

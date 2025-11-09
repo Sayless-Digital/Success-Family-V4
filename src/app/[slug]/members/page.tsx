@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getCommunityBySlug } from "@/lib/community-cache"
 import CommunityMembersView from "./members-view"
+import { TopUpGuard } from "@/components/topup-guard"
 
 interface CommunityMembersPageProps {
   params: Promise<{
@@ -59,13 +60,15 @@ export default async function CommunityMembersPage({ params }: CommunityMembersP
   }
 
   return (
-    <CommunityMembersView 
-      community={community}
-      members={members || []}
-      userMembership={userMembership}
-      isOwner={isOwner}
-      currentUserId={user?.id}
-    />
+    <TopUpGuard communitySlug={slug}>
+      <CommunityMembersView
+        community={community}
+        members={members || []}
+        userMembership={userMembership}
+        isOwner={isOwner}
+        currentUserId={user?.id}
+      />
+    </TopUpGuard>
   )
 }
 

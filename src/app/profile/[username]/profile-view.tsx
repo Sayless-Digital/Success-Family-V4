@@ -17,6 +17,7 @@ import { ScrollToTop } from "@/components/scroll-to-top"
 import { LoadingSpinner } from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
+import { CommunityLogo } from "@/components/community-logo"
 
 interface User {
   id: string
@@ -49,6 +50,7 @@ interface ProfileViewProps {
     description?: string
     is_active: boolean
     created_at: string
+    logo_url?: string | null
   }>
 }
 
@@ -1907,11 +1909,12 @@ export default function ProfileView({
                     <Card className="group bg-white/10 backdrop-blur-md border-0 hover:bg-white/15 transition-colors">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-4">
-                          <div className="flex-shrink-0">
-                            <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-                              <Building2 className="h-6 w-6 text-white" />
-                            </div>
-                          </div>
+                          <CommunityLogo
+                            name={community.name}
+                            logoUrl={community.logo_url}
+                            size="lg"
+                            className="border border-white/20 flex-shrink-0"
+                          />
                           <div className="flex-1 min-w-0">
                             <h3 className="text-white/90 font-semibold text-base mb-1">
                               {community.name}
