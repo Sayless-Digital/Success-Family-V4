@@ -8,6 +8,25 @@ The Success Family platform uses Resend API for sending transactional emails rel
 
 All email templates are defined in `src/lib/email.ts` using the `emailTemplates` object. Templates use a modern, responsive HTML design with consistent branding.
 
+### Supabase Auth (Confirm Signup) Template
+
+- Source file: `supabase/templates/confirm-signup.html`
+- Deployment script: `pnpm update:supabase-email`
+- Requires environment variables:
+  - `SUPABASE_ACCESS_TOKEN` – personal access token with **Auth** scope
+  - `SUPABASE_PROJECT_REF` – project reference visible in the Supabase dashboard URL
+
+#### Updating the template
+
+1. Make any required edits to `supabase/templates/confirm-signup.html`.
+2. Run the deployment script:
+   ```bash
+   SUPABASE_ACCESS_TOKEN=... SUPABASE_PROJECT_REF=... pnpm update:supabase-email
+   ```
+3. Confirm the new content appears in Supabase Dashboard → **Auth → Email Templates → Confirm signup**.
+
+The script updates both the email subject (`Confirm your Success Family account`) and HTML body using the Supabase Management API. If the request fails, the script prints the API response body to help diagnose the issue.
+
 ### Template Categories
 
 #### Platform Subscription Emails (Community Creation)

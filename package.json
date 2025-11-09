@@ -9,7 +9,8 @@
     "setup:https": "bash scripts/setup-https.sh || ./scripts/setup-https.sh",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "update:supabase-email": "node scripts/update-supabase-auth-email.js"
   },
   "packageManager": "pnpm@10.16.0",
   "dependencies": {
