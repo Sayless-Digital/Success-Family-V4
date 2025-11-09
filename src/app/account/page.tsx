@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { User, Mail, Save, Loader2, Lock, Upload, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react"
@@ -27,6 +27,7 @@ export default function AccountPage() {
     new: false,
     confirm: false
   })
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   
   // Form state
   const [formData, setFormData] = useState({
@@ -150,6 +151,11 @@ export default function AccountPage() {
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleProfilePictureButtonClick = () => {
+    if (uploading) return
+    fileInputRef.current?.click()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -279,32 +285,32 @@ export default function AccountPage() {
                   <div>
                     <input
                       id="profile-upload"
+                      ref={fileInputRef}
                       type="file"
                       accept="image/*"
                       onChange={handleProfilePictureUpload}
                       className="hidden"
                       disabled={uploading}
                     />
-                    <label htmlFor="profile-upload">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={uploading}
-                        className="w-full sm:w-auto bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer touch-feedback"
-                      >
-                        {uploading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="mr-2 h-4 w-4" />
-                            Change Photo
-                          </>
-                        )}
-                      </Button>
-                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleProfilePictureButtonClick}
+                      disabled={uploading}
+                      className="w-full sm:w-auto bg-white/10 border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer touch-feedback"
+                    >
+                      {uploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Change Photo
+                        </>
+                      )}
+                    </Button>
                   </div>
                   <p className="text-white/50 text-xs mt-2">
                     JPG, PNG, GIF or WebP. Max 5MB

@@ -163,7 +163,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   const shouldShowSidebar = isMobile ? isOpen : (isPinned || isOpen)
 
   const sidebarClasses = cn(
-    "fixed top-14 left-2 w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9999] rounded-lg",
+    "fixed top-14 left-2 w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg",
     {
       // Mobile: slide from right with full rounding, account for bottom nav (48px)
       "right-2 left-auto": isMobile,

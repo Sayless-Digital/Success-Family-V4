@@ -138,12 +138,16 @@ export default function MessagesView({
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, { url: string; expiresAt: number }>>({})
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<"list" | "conversation">("list")
+  const [isClient, setIsClient] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [acceptingRequest, setAcceptingRequest] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
   const [audioProgress, setAudioProgress] = useState<Record<string, { current: number; duration: number }>>({})
+  const [longPressMenuOpen, setLongPressMenuOpen] = useState<string | null>(null)
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -195,6 +199,7 @@ export default function MessagesView({
   const selectedMessages = selectedThreadId ? messagesByThread[selectedThreadId] ?? [] : []
 
   useEffect(() => {
+    setIsClient(true)
     const handleResize = () => {
       setIsMobile(window.innerWidth < 1024)
     }
@@ -1147,6 +1152,45 @@ export default function MessagesView({
     viewer.id,
   ])
 
+  const handleLongPressStart = useCallback((messageId: string, e: React.TouchEvent) => {
+    if (!isMobile) return
+    
+    touchStart.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY
+    }
+    
+    longPressTimer.current = setTimeout(() => {
+      setLongPressMenuOpen(messageId)
+      // Haptic feedback if available
+      if (navigator.vibrate) {
+        navigator.vibrate(50)
+      }
+    }, 500) // 500ms for long press
+  }, [isMobile])
+
+  const handleLongPressMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStart.current || !longPressTimer.current) return
+    
+    const deltaX = Math.abs(e.touches[0].clientX - touchStart.current.x)
+    const deltaY = Math.abs(e.touches[0].clientY - touchStart.current.y)
+    
+    // Cancel if moved more than 10px (user is scrolling)
+    if (deltaX > 10 || deltaY > 10) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+      touchStart.current = null
+    }
+  }, [])
+
+  const handleLongPressEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+    touchStart.current = null
+  }, [])
+
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!selectedThreadId) return
     if (deletingMessageId) return
@@ -1269,7 +1313,8 @@ export default function MessagesView({
       <div className="flex flex-col lg:flex-row gap-4 h-full overflow-hidden">
         <div className={cn(
           "w-full lg:w-[360px] xl:w-[400px] lg:flex-none flex flex-col h-full",
-          isMobile && mobileView === "conversation" && "hidden"
+          !isClient && "lg:flex hidden",
+          isClient && isMobile && mobileView === "conversation" && "hidden"
         )}>
           <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
             <div className="p-4 border-b border-white/15">
@@ -1368,8 +1413,9 @@ export default function MessagesView({
 
         <div className={cn(
           "flex flex-col h-full overflow-hidden lg:flex-1",
-          isMobile && mobileView === "list" && "hidden lg:flex",
-          isMobile && mobileView === "conversation" && "flex"
+          !isClient && "hidden lg:flex",
+          isClient && isMobile && mobileView === "list" && "hidden lg:flex",
+          isClient && isMobile && mobileView === "conversation" && "flex"
         )}>
           <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
             {selectedConversation ? (
@@ -1439,20 +1485,33 @@ export default function MessagesView({
                         const isDeleting = deletingMessageId === message.id
                         
                         return (
-                          <div key={message.id} className={cn("flex gap-1.5 sm:gap-2 group", isOwn ? "justify-end" : "justify-start", hasAudio && "w-full")}>
+                          <div key={message.id} className={cn("flex gap-1.5 sm:gap-2 group", isOwn ? "justify-end" : "justify-start")}>
                             <div
                               className={cn(
                                 "rounded-2xl border backdrop-blur-sm relative",
-                                hasAudio ? "w-full" : "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
+                                "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
                                 isImageOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
                                 isOwn
                                   ? "bg-gradient-to-br from-black/40 to-black/60 border-white/[0.08] text-white"
                                   : "bg-gradient-to-br from-white/15 to-white/8 border-white/[0.08] text-white",
-                                isDeleting && "opacity-50"
+                                isDeleting && "opacity-50",
+                                isMobile && isOwn && !isDeleting && "select-none"
                               )}
+                              onTouchStart={(e) => {
+                                if (isOwn && !isDeleting && isMobile) {
+                                  handleLongPressStart(message.id, e)
+                                }
+                              }}
+                              onTouchMove={handleLongPressMove}
+                              onTouchEnd={handleLongPressEnd}
+                              onTouchCancel={handleLongPressEnd}
                             >
                               {isOwn && !isDeleting && (
-                                <DropdownMenu>
+                                <DropdownMenu open={isMobile ? longPressMenuOpen === message.id : undefined} onOpenChange={(open) => {
+                                  if (isMobile && !open) {
+                                    setLongPressMenuOpen(null)
+                                  }
+                                }}>
                                   <DropdownMenuTrigger asChild>
                                     <button
                                       type="button"
@@ -1460,7 +1519,12 @@ export default function MessagesView({
                                       style={{
                                         background: 'radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.03) 70%, transparent 100%)'
                                       }}
-                                      onClick={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                      }}
+                                      onTouchStart={(e) => {
+                                        e.stopPropagation()
+                                      }}
                                     >
                                       <ChevronDown className="h-5 w-5" />
                                     </button>
@@ -1485,7 +1549,7 @@ export default function MessagesView({
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               )}
-                              <div className={cn(isImageOnly ? "" : "space-y-1.5 pr-12 sm:pr-14")}>
+                             <div className={cn(isImageOnly ? "" : "space-y-1.5 pr-12 sm:pr-14")}>
                                 {message.content && (
                                   <p className={cn(
                                     "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words",
@@ -1528,17 +1592,10 @@ export default function MessagesView({
                                       return (
                                         <div
                                           key={`${message.id}-${attachment.id}-${attachmentIndex}`}
-                                          className="rounded-lg overflow-hidden bg-white/10 border border-white/20"
+                                          className="w-full"
                                         >
-                                          <div className="p-3 relative overflow-hidden">
-                                            <div className="flex items-center gap-2">
-                                              <div className="font-mono text-sm text-white/80">
-                                                {audioProgress[attachment.id]?.duration
-                                                  ? `${formatAudioTime(audioProgress[attachment.id].current || 0)} / ${formatAudioTime(audioProgress[attachment.id].duration)}`
-                                                  : `0:00 / —`
-                                                }
-                                              </div>
-                                              <div className="flex-1" />
+                                          <div className="p-3 space-y-2">
+                                            <div className="flex items-center gap-3">
                                               <button
                                                 type="button"
                                                 onClick={(e) => {
@@ -1572,6 +1629,13 @@ export default function MessagesView({
                                                   </div>
                                                 </div>
                                               </button>
+                                              <div className="flex-1" />
+                                              <div className="font-mono text-sm text-white/80">
+                                                {audioProgress[attachment.id]?.duration
+                                                  ? `${formatAudioTime(audioProgress[attachment.id].current || 0)} / ${formatAudioTime(audioProgress[attachment.id].duration)}`
+                                                  : `0:00 / —`
+                                                }
+                                              </div>
                                             </div>
                                             <div
                                               className="w-full h-2 bg-white/10 rounded-full mt-2 cursor-pointer relative group backdrop-blur-sm overflow-visible"
