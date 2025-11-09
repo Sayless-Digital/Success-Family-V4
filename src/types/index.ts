@@ -61,6 +61,8 @@ export interface Community {
   slug: string
   description?: string
   owner_id: string
+  logo_url?: string
+  banner_url?: string
   is_active: boolean
   created_at: string
   updated_at: string

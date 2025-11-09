@@ -190,7 +190,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   return (
     <div
       ref={fullscreenTargetRef}
-      className="min-h-dvh bg-background overflow-x-hidden flex flex-col relative"
+      className="min-h-dvh bg-background flex flex-col relative"
       style={{
         paddingTop: "env(safe-area-inset-top, 0)",
         paddingBottom: isFullscreen && isMobile

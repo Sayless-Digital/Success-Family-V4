@@ -242,7 +242,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
 
   return (
     <>
-    <header className="fixed top-0 left-0 right-0 z-[11000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg border-b border-white/20">
+    <header className="fixed top-0 left-0 right-0 z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg border-b border-white/20">
       <div className="h-full px-1 flex items-center justify-between">
         {/* Left side - Menu Button (desktop only) and Logo */}
         <div className="flex items-center gap-2">
@@ -277,7 +277,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                   </div>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-64 z-[12000]" align="start" forceMount>
+              <DropdownMenuContent className="w-64 z-[170000]" align="start" forceMount>
                 <DropdownMenuLabel>
                   {communitiesLoading 
                     ? "Your Communities" 

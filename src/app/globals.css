@@ -448,6 +448,13 @@
     scale: 1 !important;
   }
 
+  [data-radix-dropdown-menu-trigger]:active,
+  button[data-radix-dropdown-menu-trigger]:active {
+    transform: none !important;
+    opacity: 1 !important;
+    scale: 1 !important;
+  }
+
   /* Tab trigger feedback */
   [role="tab"]:active,
   [data-radix-tabs-trigger]:active {

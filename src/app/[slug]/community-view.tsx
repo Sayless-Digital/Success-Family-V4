@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { CommunityNavigation } from "@/components/community-navigation"
+import { TopUpDialog } from "@/components/topup-dialog"
+import { useTopupCheck } from "@/hooks/use-topup-check"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -46,6 +48,7 @@ export default function CommunityView({
   currentUserId 
 }: CommunityViewProps) {
   const router = useRouter()
+  const { needsTopup, topupMessage } = useTopupCheck()
   
   const isOwner = currentUserId === community.owner_id
   const isMember = !!userMembership
@@ -54,10 +57,18 @@ export default function CommunityView({
   // Join dialog state
   const [joinDialogOpen, setJoinDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showTopupDialog, setShowTopupDialog] = useState(false)
 
   const handleJoinCommunity = async () => {
     if (!currentUserId) {
       toast.error("Please sign in to join this community")
+      return
+    }
+
+    // Check if user needs to top up
+    if (needsTopup) {
+      setShowTopupDialog(true)
+      setJoinDialogOpen(false)
       return
     }
 
@@ -135,6 +146,13 @@ export default function CommunityView({
 
   return (
     <div className="relative w-full overflow-x-hidden">
+      <TopUpDialog 
+        open={showTopupDialog} 
+        onOpenChange={setShowTopupDialog}
+        message={topupMessage || undefined}
+        actionText="Top Up to Join Community"
+      />
+      
       <div className="relative z-10 space-y-6">
         {/* Navigation Tabs */}
         <CommunityNavigation 

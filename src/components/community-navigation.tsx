@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Home, MessageSquare, Video, VideoIcon, Users, Shield, ListMusic } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTopupCheck } from "@/hooks/use-topup-check"
+import { TopUpDialog } from "@/components/topup-dialog"
 
 interface CommunityNavigationProps {
   slug: string
@@ -18,6 +20,8 @@ interface CommunityNavigationProps {
  */
 export function CommunityNavigation({ slug, isOwner = false, isMember = false }: CommunityNavigationProps) {
   const pathname = usePathname()
+  const { needsTopup, topupMessage } = useTopupCheck()
+  const [showTopupDialog, setShowTopupDialog] = React.useState(false)
   
   // Determine active tab based on pathname
   const getActiveTab = React.useMemo(() => {
@@ -31,64 +35,104 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
     return "home"
   }, [pathname, slug])
 
+  const handleRestrictedClick = (e: React.MouseEvent) => {
+    if (needsTopup) {
+      e.preventDefault()
+      setShowTopupDialog(true)
+    }
+  }
+
   return (
-    <Tabs value={getActiveTab} className="w-full">
-      <TabsList className="w-full">
-        <TabsTrigger value="home" asChild>
-          <Link href={`/${slug}`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-            <Home className="h-4 w-4" />
-            Home
-          </Link>
-        </TabsTrigger>
-        <TabsTrigger value="feed" asChild>
-          <Link href={`/${slug}/feed`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-            <MessageSquare className="h-4 w-4" />
-            Feed
-          </Link>
-        </TabsTrigger>
-        <TabsTrigger value="events" asChild>
-          <Link href={`/${slug}/events`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-            <Video className="h-4 w-4" />
-            Events
-          </Link>
-        </TabsTrigger>
-        {(isOwner || isMember) && (
-          <>
-            <TabsTrigger value="videos" asChild>
-              <Link href={`/${slug}/videos`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                <VideoIcon className="h-4 w-4" />
-                Videos
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="playlists" asChild>
-              <Link href={`/${slug}/playlists`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-                <ListMusic className="h-4 w-4" />
-                Playlists
-              </Link>
-            </TabsTrigger>
-          </>
-        )}
-        <TabsTrigger value="members" asChild>
-          <Link href={`/${slug}/members`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-            <Users className="h-4 w-4" />
-            Members
-          </Link>
-        </TabsTrigger>
-        {(isOwner || isMember) && (
-          <TabsTrigger value="settings" asChild>
-            <Link href={`/${slug}/settings`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-              <Shield className="h-4 w-4" />
-              Settings
+    <>
+      <TopUpDialog 
+        open={showTopupDialog} 
+        onOpenChange={setShowTopupDialog}
+        message={topupMessage || undefined}
+        actionText="Top Up to Access Community"
+      />
+      
+      <Tabs value={getActiveTab} className="w-full">
+        <TabsList className="w-full">
+          <TabsTrigger value="home" asChild>
+            <Link href={`/${slug}`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
+              <Home className="h-4 w-4" />
+              Home
             </Link>
           </TabsTrigger>
-        )}
-      </TabsList>
-    </Tabs>
+          <TabsTrigger value="feed" asChild disabled={needsTopup}>
+            <Link 
+              href={needsTopup ? '#' : `/${slug}/feed`} 
+              className="flex items-center gap-2 touch-feedback" 
+              prefetch={!needsTopup}
+              onClick={handleRestrictedClick}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Feed
+            </Link>
+          </TabsTrigger>
+          <TabsTrigger value="events" asChild disabled={needsTopup}>
+            <Link 
+              href={needsTopup ? '#' : `/${slug}/events`} 
+              className="flex items-center gap-2 touch-feedback" 
+              prefetch={!needsTopup}
+              onClick={handleRestrictedClick}
+            >
+              <Video className="h-4 w-4" />
+              Events
+            </Link>
+          </TabsTrigger>
+          {(isOwner || isMember) && (
+            <>
+              <TabsTrigger value="videos" asChild disabled={needsTopup}>
+                <Link 
+                  href={needsTopup ? '#' : `/${slug}/videos`} 
+                  className="flex items-center gap-2 touch-feedback" 
+                  prefetch={!needsTopup}
+                  onClick={handleRestrictedClick}
+                >
+                  <VideoIcon className="h-4 w-4" />
+                  Videos
+                </Link>
+              </TabsTrigger>
+              <TabsTrigger value="playlists" asChild disabled={needsTopup}>
+                <Link 
+                  href={needsTopup ? '#' : `/${slug}/playlists`} 
+                  className="flex items-center gap-2 touch-feedback" 
+                  prefetch={!needsTopup}
+                  onClick={handleRestrictedClick}
+                >
+                  <ListMusic className="h-4 w-4" />
+                  Playlists
+                </Link>
+              </TabsTrigger>
+            </>
+          )}
+          <TabsTrigger value="members" asChild disabled={needsTopup}>
+            <Link 
+              href={needsTopup ? '#' : `/${slug}/members`} 
+              className="flex items-center gap-2 touch-feedback" 
+              prefetch={!needsTopup}
+              onClick={handleRestrictedClick}
+            >
+              <Users className="h-4 w-4" />
+              Members
+            </Link>
+          </TabsTrigger>
+          {(isOwner || isMember) && (
+            <TabsTrigger value="settings" asChild disabled={needsTopup}>
+              <Link 
+                href={needsTopup ? '#' : `/${slug}/settings`} 
+                className="flex items-center gap-2 touch-feedback" 
+                prefetch={!needsTopup}
+                onClick={handleRestrictedClick}
+              >
+                <Shield className="h-4 w-4" />
+                Settings
+              </Link>
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </Tabs>
+    </>
   )
 }
-
-
-
-
-
-

@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
+import { useTopupCheck } from "@/hooks/use-topup-check"
+import { TopUpDialog } from "@/components/topup-dialog"
 
 interface CreateCommunityDialogProps {
   open: boolean
@@ -19,10 +21,12 @@ interface CreateCommunityDialogProps {
 export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDialogProps) {
   const router = useRouter()
   const { user } = useAuth()
+  const { needsTopup, topupMessage } = useTopupCheck()
   const [name, setName] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [showTopupDialog, setShowTopupDialog] = React.useState(false)
 
   const reset = () => {
     setName("")
@@ -35,6 +39,13 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
       setError("Please sign in to create a community.")
       return
     }
+    
+    // Check if user needs to top up
+    if (needsTopup) {
+      setShowTopupDialog(true)
+      return
+    }
+    
     if (!name.trim()) {
       setError("Community name is required.")
       return
@@ -93,57 +104,64 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset() }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
-            <Building2 className="h-4 w-4 text-white/80" />
-            Create Community
-          </DialogTitle>
-          <DialogDescription className="text-white/60">
-            Set the name and optional description for your new community space.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="cc-name" className="text-white">Community Name</Label>
-            <Input
-              id="cc-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Tech Innovators Network"
-              className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
-            />
+    <>
+      <TopUpDialog 
+        open={showTopupDialog} 
+        onOpenChange={setShowTopupDialog}
+        message={topupMessage || undefined}
+        actionText="Top Up to Create Community"
+      />
+      <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset() }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Building2 className="h-4 w-4 text-white/80" />
+              Create Community
+            </DialogTitle>
+            <DialogDescription className="text-white/60">
+              Set the name and optional description for your new community space.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cc-name" className="text-white">Community Name</Label>
+              <Input
+                id="cc-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Tech Innovators Network"
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cc-desc" className="text-white">Description (optional)</Label>
+              <Textarea
+                id="cc-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of your community..."
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+                rows={4}
+              />
+            </div>
+            {error && <p className="text-sm text-white/70">{error}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={submitting}
+                className="border-white/20 text-white hover:bg-white/10"
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={submitting}>
+                {submitting ? 'Creating…' : 'Create'}
+              </Button>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="cc-desc" className="text-white">Description (optional)</Label>
-            <Textarea
-              id="cc-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of your community..."
-              className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
-              rows={4}
-            />
-          </div>
-          {error && <p className="text-sm text-white/70">{error}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-              className="border-white/20 text-white hover:bg-white/10"
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={submitting}>
-              {submitting ? 'Creating…' : 'Create'}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
-
 
