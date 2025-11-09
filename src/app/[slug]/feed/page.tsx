@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getCommunityBySlug } from "@/lib/community-cache"
 import FeedView from "./feed-view"
+import { formatRelativeTime } from "@/lib/utils"
 
 interface FeedPageProps {
   params: Promise<{
@@ -56,6 +57,7 @@ export default async function FeedPage({ params }: FeedPageProps) {
         )
       `)
       .eq('community_id', community.id)
+      .eq('depth', 0)
       .order('is_pinned', { ascending: false })
       .order('published_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
@@ -122,6 +124,14 @@ export default async function FeedPage({ params }: FeedPageProps) {
   // Check if there are more posts (only if we got exactly 20)
   const hasMore = (posts || []).length === 20
 
+  const serverNow = new Date()
+  const initialRelativeTimes = Object.fromEntries(
+    enrichedPosts.map((post) => [
+      post.id,
+      formatRelativeTime(post.published_at || post.created_at, { now: serverNow }),
+    ]),
+  ) as Record<string, string>
+
   return (
     <FeedView
       community={community}
@@ -129,6 +139,7 @@ export default async function FeedPage({ params }: FeedPageProps) {
       isMember={isMember}
       currentUserId={user?.id}
       hasMore={hasMore}
+      initialRelativeTimes={initialRelativeTimes}
     />
   )
 }

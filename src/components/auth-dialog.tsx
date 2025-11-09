@@ -12,6 +12,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { CheckedState } from "@radix-ui/react-checkbox"
+import { Checkbox } from "@/components/ui/checkbox"
 import { signIn, signUp } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react"
@@ -22,6 +24,8 @@ interface AuthDialogProps {
   onOpenChange: (open: boolean) => void
   defaultTab?: "signin" | "signup"
 }
+
+const REMEMBER_ME_STORAGE_KEY = "sf-auth-remember-v1"
 
 export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDialogProps) {
   const [activeTab, setActiveTab] = React.useState(defaultTab)
@@ -34,6 +38,18 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
   const signUpPasswordRef = React.useRef<HTMLInputElement>(null)
   const signInPasswordCursorRef = React.useRef<number | null>(null)
   const signUpPasswordCursorRef = React.useRef<number | null>(null)
+  const [signInData, setSignInData] = React.useState({
+    email: "",
+    password: "",
+  })
+  const [rememberMe, setRememberMe] = React.useState(false)
+  const rememberLoadedRef = React.useRef(false)
+  const [signUpData, setSignUpData] = React.useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+  })
 
   // Restore cursor position after password visibility toggle
   React.useEffect(() => {
@@ -91,19 +107,49 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     }
   }, [open, defaultTab])
 
-  // Sign In form state
-  const [signInData, setSignInData] = React.useState({
-    email: "",
-    password: "",
-  })
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
 
-  // Sign Up form state
-  const [signUpData, setSignUpData] = React.useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-  })
+    try {
+      const saved = window.localStorage.getItem(REMEMBER_ME_STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as { email?: string; password?: string }
+        setRememberMe(true)
+        setSignInData((current) => ({
+          ...current,
+          email: parsed.email ?? "",
+          password: parsed.password ?? "",
+        }))
+      }
+    } catch (storageError) {
+      console.error("Failed to load remembered credentials:", storageError)
+    } finally {
+      rememberLoadedRef.current = true
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!rememberLoadedRef.current || typeof window === "undefined") {
+      return
+    }
+
+    if (!rememberMe) {
+      window.localStorage.removeItem(REMEMBER_ME_STORAGE_KEY)
+      return
+    }
+
+    try {
+      const payload = JSON.stringify({
+        email: signInData.email,
+        password: signInData.password,
+      })
+      window.localStorage.setItem(REMEMBER_ME_STORAGE_KEY, payload)
+    } catch (storageError) {
+      console.error("Failed to persist remembered credentials:", storageError)
+    }
+  }, [rememberMe, signInData.email, signInData.password])
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,10 +167,24 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       // Close dialog immediately without showing success message
       onOpenChange(false)
       // Reset form
-      setSignInData({ email: "", password: "" })
+      if (!rememberMe) {
+        setSignInData({ email: "", password: "" })
+      }
       toast.success("Welcome back! Signed in successfully!")
     } else {
       setError(result.error?.message || "Failed to sign in")
+    }
+  }
+
+  const handleRememberMeChange = (checked: CheckedState) => {
+    const isChecked = checked === true
+    setRememberMe(isChecked)
+
+    if (!isChecked) {
+      setSignInData((current) => ({
+        ...current,
+        password: "",
+      }))
     }
   }
 
@@ -293,6 +353,21 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                     )}
                   </button>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="signin-remember"
+                  checked={rememberMe}
+                  onCheckedChange={handleRememberMeChange}
+                  disabled={isLoading}
+                />
+                <Label
+                  htmlFor="signin-remember"
+                  className="text-sm text-white/80"
+                >
+                  Remember me on this device
+                </Label>
               </div>
 
               {error && (

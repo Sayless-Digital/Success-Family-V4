@@ -2,19 +2,15 @@
 
 import * as React from "react"
 import { X, Image as ImageIcon, Mic, Play, Pause, Trash2 } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
-import { MediaType, Post, User } from "@/types"
+import { MediaType, PostWithAuthor } from "@/types"
 import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
 import { PostMediaSlider } from "@/components/post-media-slider"
-
-interface PostWithAuthor extends Post {
-  author: User
-}
 
 interface EditPostDialogProps {
   open: boolean
@@ -361,6 +357,7 @@ export function EditPostDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Post</DialogTitle>
+          <DialogDescription>Update the content or media attached to this post.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

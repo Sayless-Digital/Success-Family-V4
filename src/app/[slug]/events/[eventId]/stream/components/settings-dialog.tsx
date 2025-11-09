@@ -4,7 +4,7 @@ import React from "react"
 import { Mic, Video, Loader2, Volume2, VolumeX } from "lucide-react"
 import { type Call, useCallStateHooks } from "@stream-io/video-react-sdk"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
@@ -359,6 +359,9 @@ export function SettingsDialog({
       <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white text-xl font-semibold">Settings</DialogTitle>
+          <DialogDescription className="text-white/70">
+            Configure your microphone, camera, and playback devices for this stream.
+          </DialogDescription>
         </DialogHeader>
         
         <Tabs defaultValue="microphone" className="w-full mt-6">

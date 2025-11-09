@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "A community platform for success-driven individuals.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0a0318",
-    theme_color: "#0a0318",
+    background_color: "#000000",
+    theme_color: "#000000",
     icons: [
       {
         src: "/icons/icon-192.png",

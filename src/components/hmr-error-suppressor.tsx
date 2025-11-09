@@ -20,70 +20,6 @@ export function HMRErrorSuppressor() {
     // Only run in development
     if (process.env.NODE_ENV !== 'development') return
 
-    // Store original WebSocket constructor
-    const OriginalWebSocket = window.WebSocket
-    
-    // Intercept WebSocket creation to prevent HMR WebSocket failures from causing page refreshes
-    // Create a mock WebSocket for HMR connections that never actually connects
-    window.WebSocket = function(this: WebSocket, url: string | URL, protocols?: string | string[]) {
-      const urlStr = typeof url === 'string' ? url : url.toString()
-      
-      // Check if this is an HMR WebSocket connection
-      const isHMRConnection = urlStr.includes('/_next/webpack-hmr') || 
-                             urlStr.includes('/_next/static/hmr') ||
-                             urlStr.includes('webpack-hmr')
-      
-      if (isHMRConnection) {
-        // For HMR connections, create a WebSocket but immediately suppress errors
-        // This prevents Next.js from trying to use WebSocket and forces it to use polling
-        const ws = new OriginalWebSocket(url, protocols)
-        
-        // Suppress all errors and events from this WebSocket
-        const suppressEvent = (e: Event) => {
-          e.stopPropagation()
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-        
-        ws.addEventListener('error', suppressEvent, { capture: true })
-        ws.addEventListener('open', suppressEvent, { capture: true })
-        ws.addEventListener('close', suppressEvent, { capture: true })
-        ws.addEventListener('message', suppressEvent, { capture: true })
-        
-        // Try to close immediately
-        try {
-          if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-            ws.close(1000, 'HMR WebSocket disabled - using polling instead')
-          }
-        } catch (e) {
-          // Ignore errors during close
-        }
-        
-        // Override methods to prevent HMR WebSocket from doing anything
-        const originalSend = ws.send.bind(ws)
-        const originalClose = ws.close.bind(ws)
-        
-        ws.send = function() {
-          // Silently ignore send attempts on HMR WebSocket
-          return
-        }
-        
-        ws.close = function() {
-          // Already closed, do nothing
-          return
-        }
-        
-        return ws
-      }
-      
-      // For non-HMR connections, use the original WebSocket
-      return new OriginalWebSocket(url, protocols)
-    } as any
-    
-    // Copy static properties from original WebSocket
-    Object.setPrototypeOf(window.WebSocket, OriginalWebSocket)
-    Object.setPrototypeOf(window.WebSocket.prototype, OriginalWebSocket.prototype)
-
     // Store original console methods
     const originalError = console.error
     const originalWarn = console.warn
@@ -192,7 +128,6 @@ export function HMRErrorSuppressor() {
       console.log = originalLog
       window.onerror = originalWindowError
       window.onunhandledrejection = originalUnhandledRejection
-      window.WebSocket = OriginalWebSocket
     }
   }, [])
 

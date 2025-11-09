@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { Building2 } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -100,6 +100,9 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
             <Building2 className="h-4 w-4 text-white/80" />
             Create Community
           </DialogTitle>
+          <DialogDescription className="text-white/60">
+            Set the name and optional description for your new community space.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">

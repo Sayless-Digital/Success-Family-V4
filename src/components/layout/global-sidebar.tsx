@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -42,11 +42,20 @@ const adminNavigationItems = [
   { icon: Database, label: "Database", href: "/admin/database" },
   { icon: FileText, label: "Reports", href: "/admin/reports" },
   { icon: CreditCard, label: "Transactions", href: "/admin/transactions" },
+  { icon: Coins, label: "Payouts", href: "/admin/payouts" },
   { icon: Settings, label: "Platform Settings", href: "/admin/settings" },
 ]
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>
+}
+
 export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverChange, isMobile }: GlobalSidebarProps) {
   const [isHoverTriggerActive, setIsHoverTriggerActive] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isAppInstalled, setIsAppInstalled] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
   const { userProfile, isLoading, user, signOut } = useAuth()
   const pathname = usePathname()
   
@@ -61,6 +70,77 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   
   // Show admin menu only if user is admin AND on admin route
   const showAdminMenu = isAdmin && isOnAdminRoute
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const checkInstalled = () => {
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+      const isIOSStandalone = (window.navigator as unknown as { standalone?: boolean })?.standalone
+      if (isStandalone || isIOSStandalone) {
+        setIsAppInstalled(true)
+        setInstallPrompt(null)
+      }
+    }
+
+    const detectIOS = () => {
+      const userAgent = window.navigator.userAgent.toLowerCase()
+      const isiOSDevice = /iphone|ipad|ipod/.test(userAgent)
+      const isInStandaloneMode =
+        (window.navigator as unknown as { standalone?: boolean })?.standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches
+
+      if (isiOSDevice && !isInStandaloneMode) {
+        setIsIOS(true)
+      }
+    }
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      const promptEvent = event as BeforeInstallPromptEvent
+      setInstallPrompt(promptEvent)
+    }
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true)
+      setInstallPrompt(null)
+      toast.success("App installed successfully!")
+    }
+
+    checkInstalled()
+    detectIOS()
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
+    window.addEventListener("appinstalled", handleAppInstalled)
+    window.addEventListener("visibilitychange", checkInstalled)
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
+      window.removeEventListener("appinstalled", handleAppInstalled)
+      window.removeEventListener("visibilitychange", checkInstalled)
+    }
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (installPrompt) {
+      installPrompt.prompt()
+      try {
+        const choice = await installPrompt.userChoice
+        if (choice?.outcome === "accepted") {
+          setInstallPrompt(null)
+        }
+      } catch (error) {
+        console.error("[PWA] Install prompt error", error)
+      }
+    } else if (isIOS) {
+      toast.info("Install Success Family", {
+        description: "Tap the share icon, then choose “Add to Home Screen”.",
+      })
+    }
+
+    if (isMobile) onClose()
+  }
+
+  const showInstallButton = !isAppInstalled && (Boolean(installPrompt) || isIOS)
 
   const handleSignOut = async () => {
     await signOut()
@@ -140,6 +220,19 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                       </Link>
                     </Button>
                   </li>
+
+                  {showInstallButton && (
+                    <li>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
+                        onClick={handleInstallClick}
+                      >
+                        <Download className="h-4 w-4 text-white/80" />
+                        <span>Install App</span>
+                      </Button>
+                    </li>
+                  )}
                   
                   {/* Admin navigation items */}
                   {adminNavigationItems.map((item) => {
@@ -180,6 +273,19 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                       </li>
                     )
                   })}
+
+                  {showInstallButton && (
+                    <li>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start gap-3 h-10 text-white hover:bg-white/20 hover:backdrop-blur-md touch-feedback"
+                        onClick={handleInstallClick}
+                      >
+                        <Download className="h-4 w-4 text-white/80" />
+                        <span>Install App</span>
+                      </Button>
+                    </li>
+                  )}
                   
                   {/* User menu items - shown when authenticated */}
                   {userProfile && user && (

@@ -17,9 +17,9 @@ export function CommunityPageSkeleton() {
               
               {/* Community Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-center sm:gap-3">
                   <div className="h-9 w-64 bg-white/10 rounded animate-pulse" />
-                  <div className="h-6 w-16 bg-white/10 rounded animate-pulse" />
+                  <div className="h-6 w-20 bg-white/10 rounded animate-pulse sm:w-16" />
                 </div>
                 <div className="h-5 w-2/3 bg-white/10 rounded animate-pulse mb-4" />
                 <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export function CommunityPageSkeleton() {
                 <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
                   <div className="h-10 w-10 bg-white/10 rounded-full border border-white/20 animate-pulse flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
                       <div className="h-5 w-32 bg-white/10 rounded animate-pulse" />
                       <div className="h-5 w-16 bg-white/10 rounded animate-pulse" />
                     </div>

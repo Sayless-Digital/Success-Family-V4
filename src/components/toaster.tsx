@@ -54,10 +54,11 @@ export function Toaster({ ...props }: ToasterProps) {
           ...props.toastOptions,
           classNames: {
             ...props.toastOptions?.classNames,
-            toast: "relative pr-12",
+            toast: "pr-12",
             closeButton: "absolute right-1.5 top-2 bg-white/10 border border-white/20",
           },
           style: {
+            paddingRight: "3rem",
             ...props.toastOptions?.style,
           },
         }}

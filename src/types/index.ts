@@ -75,6 +75,18 @@ export interface CommunityMember {
   joined_at: string
 }
 
+export interface UserFollow {
+  follower_id: string
+  followed_id: string
+  created_at: string
+}
+
+export interface UserFollowStats {
+  user_id: string
+  followers_count: number
+  following_count: number
+}
+
 // Removed legacy payment receipt types
 
 // New balance system types
@@ -86,17 +98,32 @@ export interface PlatformSettings {
   stream_join_cost: number // Points charged to join a stream (goes to event owner)
   storage_purchase_price_per_gb?: number // One-time purchase price per GB in points
   storage_monthly_cost_per_gb?: number // Monthly cost per GB in points (for storage over 1 GB free)
+  payout_minimum_ttd: number
+  mandatory_topup_ttd: number
   updated_at: string
 }
 
 export interface Wallet {
   user_id: string
   points_balance: number
+  earnings_points: number
+  locked_earnings_points: number
+  next_topup_due_on?: string
+  last_mandatory_topup_at?: string
   last_topup_at?: string
+  last_topup_reminder_at?: string
   updated_at: string
 }
 
-export type TransactionType = 'top_up' | 'payout' | 'point_spend' | 'point_refund'
+export type TransactionType =
+  | 'top_up'
+  | 'payout'
+  | 'payout_lock'
+  | 'payout_release'
+  | 'point_spend'
+  | 'point_refund'
+  | 'earning_credit'
+  | 'earning_reversal'
 export type TransactionStatus = 'pending' | 'verified' | 'rejected'
 
 export interface Transaction {
@@ -105,6 +132,7 @@ export interface Transaction {
   type: TransactionType
   amount_ttd?: number
   points_delta: number
+  earnings_points_delta: number
   status: TransactionStatus
   bank_account_id?: string
   receipt_url?: string
@@ -112,7 +140,43 @@ export interface Transaction {
   verified_at?: string
   rejection_reason?: string
   recipient_user_id?: string // User who received points (NULL for platform fees)
+  context?: Record<string, unknown>
   created_at: string
+}
+
+export type WalletEarningStatus = 'pending' | 'confirmed' | 'locked' | 'reversed'
+
+export interface WalletEarningsLedgerEntry {
+  id: string
+  user_id: string
+  source_type: 'boost' | 'live_registration' | 'manual_adjustment' | 'storage_credit'
+  source_id?: string
+  community_id?: string
+  points: number
+  amount_ttd?: number
+  status: WalletEarningStatus
+  available_at?: string
+  created_at: string
+  confirmed_at?: string
+  reversed_at?: string
+  metadata?: Record<string, unknown>
+}
+
+export type PayoutStatus = 'pending' | 'processing' | 'paid' | 'cancelled'
+
+export interface Payout {
+  id: string
+  user_id: string
+  points: number
+  amount_ttd: number
+  status: PayoutStatus
+  scheduled_for: string
+  created_at: string
+  processed_at?: string
+  processed_by?: string
+  transaction_id?: string
+  notes?: string
+  locked_points: number
 }
 
 // Post system types
@@ -124,6 +188,8 @@ export interface Post {
   author_id: string
   content: string
   is_pinned: boolean
+  parent_post_id?: string | null
+  depth: number
   created_at: string
   updated_at: string
   published_at?: string
@@ -138,6 +204,7 @@ export interface PostBoost {
   id: string
   post_id: string
   user_id: string
+  earnings_ledger_id?: string | null
   created_at: string
 }
 
@@ -153,15 +220,93 @@ export interface PostMedia {
   created_at?: string
 }
 
-// Comment types
-export interface Comment {
+export type PostAuthorSummary = Pick<User, 'id' | 'username' | 'first_name' | 'last_name' | 'profile_picture'>
+
+export interface PostWithAuthor extends Post {
+  author: PostAuthorSummary
+}
+
+export interface HierarchicalPost extends PostWithAuthor {
+  replies?: PostWithAuthor[]
+}
+
+export type DMParticipantStatus = 'pending' | 'active' | 'blocked' | 'archived'
+export type DMMessageType = 'text' | 'system'
+export type DMAttachmentType = 'image' | 'audio' | 'file'
+
+export interface DirectMessageThread {
   id: string
-  content: string
-  author_id: string
-  post_id: string
-  parent_id?: string
+  user_a_id: string
+  user_b_id: string
+  initiated_by: string
   created_at: string
   updated_at: string
+  last_message_at?: string | null
+  last_message_preview?: string | null
+  last_message_sender_id?: string | null
+  request_required: boolean
+  request_resolved_at?: string | null
+}
+
+export interface DirectMessageParticipant {
+  id: string
+  thread_id: string
+  user_id: string
+  status: DMParticipantStatus
+  last_seen_at?: string | null
+  last_read_at?: string | null
+  muted_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DirectMessage {
+  id: string
+  thread_id: string
+  sender_id: string
+  message_type: DMMessageType
+  content?: string | null
+  metadata?: Record<string, unknown> | null
+  has_attachments: boolean
+  reply_to_message_id?: string | null
+  created_at: string
+  updated_at: string
+  is_deleted: boolean
+  attachments?: DirectMessageAttachment[]
+}
+
+export interface DirectMessageAttachment {
+  id: string
+  message_id: string
+  media_type: DMAttachmentType
+  storage_path: string
+  mime_type?: string | null
+  file_size?: number | null
+  duration_seconds?: number | null
+  created_at: string
+}
+
+export interface DirectMessageConversationSummary {
+  thread_id: string
+  user_a_id: string
+  user_b_id: string
+  initiated_by: string
+  request_required: boolean
+  request_resolved_at?: string | null
+  last_message_at?: string | null
+  last_message_preview?: string | null
+  last_message_sender_id?: string | null
+  updated_at: string
+  user_id: string
+  participant_status: DMParticipantStatus
+  last_read_at?: string | null
+  last_seen_at?: string | null
+  muted_at?: string | null
+  other_user_id: string
+  other_participant_status?: DMParticipantStatus | null
+  other_last_read_at?: string | null
+  other_last_seen_at?: string | null
+  other_muted_at?: string | null
 }
 
 // Event system types
@@ -224,6 +369,57 @@ export interface EventRecording {
   community?: Community
 }
 
+export interface UploadedVideo {
+  id: string
+  community_id: string
+  user_id: string
+  title?: string | null
+  description?: string | null
+  storage_path?: string | null
+  storage_url?: string | null
+  file_size_bytes?: number | null
+  duration_seconds?: number | null
+  created_at: string
+  updated_at?: string
+  community?: {
+    id: string
+    name: string
+    slug: string
+  } | null
+  uploader?: {
+    id: string
+    username: string
+    first_name: string
+    last_name: string
+  } | null
+}
+
+export type PlaylistStatus = 'draft' | 'published'
+
+export interface CommunityPlaylist {
+  id: string
+  community_id: string
+  owner_id: string
+  title: string
+  description?: string | null
+  status: PlaylistStatus
+  published_at?: string | null
+  created_at: string
+  updated_at: string
+  items?: CommunityPlaylistItem[]
+}
+
+export interface CommunityPlaylistItem {
+  id: string
+  playlist_id: string
+  event_recording_id?: string | null
+  uploaded_video_id?: string | null
+  position: number
+  created_at: string
+  event_recording?: EventRecording | null
+  uploaded_video?: UploadedVideo | null
+}
+
 export interface UserStorage {
   user_id: string
   total_storage_bytes: number
@@ -274,6 +470,16 @@ export interface Database {
         Insert: Omit<Transaction, 'id' | 'created_at'>
         Update: Partial<Transaction>
       }
+      wallet_earnings_ledger: {
+        Row: WalletEarningsLedgerEntry
+        Insert: never
+        Update: never
+      }
+      payouts: {
+        Row: Payout
+        Insert: never
+        Update: never
+      }
       posts: {
         Row: Post
         Insert: Omit<Post, 'id' | 'created_at' | 'updated_at' | 'published_at'>
@@ -284,10 +490,85 @@ export interface Database {
         Insert: Omit<PostMedia, 'id' | 'created_at'>
         Update: Partial<Omit<PostMedia, 'id' | 'created_at'>>
       }
-      comments: {
-        Row: Comment
-        Insert: Omit<Comment, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Comment, 'id' | 'created_at' | 'updated_at'>>
+      community_playlists: {
+        Row: CommunityPlaylist
+        Insert: Omit<CommunityPlaylist, 'id' | 'created_at' | 'updated_at' | 'items'> & {
+          id?: string
+        }
+        Update: Partial<Omit<CommunityPlaylist, 'id' | 'created_at' | 'updated_at' | 'items'>>
+      }
+      community_playlist_items: {
+        Row: CommunityPlaylistItem
+        Insert: Omit<CommunityPlaylistItem, 'id' | 'created_at' | 'event_recording' | 'uploaded_video'> & {
+          id?: string
+        }
+        Update: Partial<Omit<CommunityPlaylistItem, 'id' | 'created_at' | 'event_recording' | 'uploaded_video'>>
+      }
+      user_follows: {
+        Row: UserFollow
+        Insert: {
+          follower_id: string
+          followed_id: string
+          created_at?: string
+        }
+        Update: Partial<UserFollow>
+      }
+      dm_threads: {
+        Row: DirectMessageThread
+        Insert: {
+          user_a_id: string
+          user_b_id: string
+          initiated_by: string
+          request_required?: boolean
+          request_resolved_at?: string | null
+        }
+        Update: Partial<DirectMessageThread>
+      }
+      dm_participants: {
+        Row: DirectMessageParticipant
+        Insert: {
+          thread_id: string
+          user_id: string
+          status?: DMParticipantStatus
+          last_seen_at?: string | null
+          last_read_at?: string | null
+          muted_at?: string | null
+        }
+        Update: Partial<DirectMessageParticipant>
+      }
+      dm_messages: {
+        Row: DirectMessage
+        Insert: {
+          thread_id: string
+          sender_id: string
+          message_type?: DMMessageType
+          content?: string | null
+          metadata?: Record<string, unknown> | null
+          has_attachments?: boolean
+          reply_to_message_id?: string | null
+          is_deleted?: boolean
+        }
+        Update: Partial<Omit<DirectMessage, 'attachments'>>
+      }
+      dm_message_media: {
+        Row: DirectMessageAttachment
+        Insert: {
+          message_id: string
+          media_type: DMAttachmentType
+          storage_path: string
+          mime_type?: string | null
+          file_size?: number | null
+          duration_seconds?: number | null
+        }
+        Update: Partial<DirectMessageAttachment>
+      }
+    }
+    Views: {
+      dm_conversation_summaries: {
+        Row: DirectMessageConversationSummary
+      }
+      user_follow_stats: {
+        Row: UserFollowStats
       }
     }
   }

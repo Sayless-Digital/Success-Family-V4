@@ -7,7 +7,7 @@ import { Plus, Edit, Trash2, Users, MoreVertical, Loader2, Search } from "lucide
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -199,6 +199,9 @@ export default function UsersPage() {
                 <DialogTitle>
                   {editingUser ? 'Edit User' : 'Invite New User'}
                 </DialogTitle>
+                <DialogDescription>
+                  Send an invitation email or update an existing user&apos;s role and profile details.
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

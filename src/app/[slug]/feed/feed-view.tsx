@@ -22,8 +22,9 @@ import { InlinePostComposer } from "@/components/inline-post-composer"
 import { PostMediaSlider } from "@/components/post-media-slider"
 import { useAuth } from "@/components/auth-provider"
 import { supabase } from "@/lib/supabase"
-import { cn } from "@/lib/utils"
-import type { Post, User as UserType, MediaType } from "@/types"
+import { fetchCommentsForPosts } from "@/lib/api/posts"
+import { cn, formatRelativeTime } from "@/lib/utils"
+import type { PostWithAuthor, MediaType, HierarchicalPost } from "@/types"
 import {
   Dialog,
   DialogContent,
@@ -33,13 +34,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { ImageIcon, Mic, Play, Pause, X, Save } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { ImageIcon, Mic, Play, Pause, X, Save, Feather, ArrowLeft, ArrowRight, ChevronDown, ChevronRight } from "lucide-react"
+import { ScrollToTop } from "@/components/scroll-to-top"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { LoadingSpinner } from "@/components/loading-spinner"
 
-interface PostWithAuthor extends Post {
-  author: UserType
-}
+const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
 interface FeedViewProps {
   community: {
@@ -53,6 +54,7 @@ interface FeedViewProps {
   isMember: boolean
   currentUserId?: string
   hasMore: boolean
+  initialRelativeTimes?: Record<string, string>
 }
 
 export default function FeedView({
@@ -60,7 +62,8 @@ export default function FeedView({
   posts: initialPosts,
   isMember: initialIsMember,
   currentUserId,
-  hasMore: initialHasMore
+  hasMore: initialHasMore,
+  initialRelativeTimes = {}
 }: FeedViewProps) {
   const router = useRouter()
   const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
@@ -137,13 +140,309 @@ export default function FeedView({
 
   const [posts, setPosts] = useState(initialPosts)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
+  const [boostedPostIds, setBoostedPostIds] = useState<Set<string>>(
+    () => new Set(initialPosts.filter((post) => post.user_has_boosted).map((post) => post.id))
+  )
   const [savingPosts, setSavingPosts] = useState<Set<string>>(new Set())
+  React.useEffect(() => {
+    setBoostedPostIds(new Set(posts.filter((post) => post.user_has_boosted).map((post) => post.id)))
+  }, [posts])
   const [topVisiblePostId, setTopVisiblePostId] = useState<string | null>(null)
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
   const [newPostsCount, setNewPostsCount] = useState(0)
   const [hasMore, setHasMore] = useState(initialHasMore)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loadMoreRef = React.useRef<HTMLDivElement>(null)
+  const [commentComposerOpen, setCommentComposerOpen] = useState<string | null>(null)
+  const [commentComposerIndex, setCommentComposerIndex] = useState<number | null>(null)
+  const [commentsByPostId, setCommentsByPostId] = useState<Record<string, HierarchicalPost[]>>({})
+  const [commentsLoading, setCommentsLoading] = useState<Record<string, boolean>>({})
+  const fetchedCommentsRef = React.useRef<Set<string>>(new Set())
+  const [activeReplyTarget, setActiveReplyTarget] = useState<{ postId: string; commentId: string } | null>(null)
+  const [replyContent, setReplyContent] = useState("")
+  const [replySubmitting, setReplySubmitting] = useState(false)
+  const [replyError, setReplyError] = useState<string | null>(null)
+const [expandedReplies, setExpandedReplies] = React.useState<Record<string, boolean>>({})
+
+  // Use server-provided times initially, then update client-side only
+  const [relativeTimes, setRelativeTimes] = React.useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    initialPosts.forEach((post) => {
+      // Always prefer server-provided times for SSR consistency
+      map[post.id] = initialRelativeTimes?.[post.id] ?? formatRelativeTime(post.published_at || post.created_at)
+    })
+    return map
+  })
+
+  // Update relative times only for new posts (not in initialRelativeTimes)
+  React.useEffect(() => {
+    setRelativeTimes((prev) => {
+      const next = { ...prev }
+      let changed = false
+
+      posts.forEach((post) => {
+        // Only update if not already set from server
+        if (!initialRelativeTimes?.[post.id] && !prev[post.id]) {
+          next[post.id] = formatRelativeTime(post.published_at || post.created_at)
+          changed = true
+        }
+      })
+
+      return changed ? next : prev
+    })
+  }, [posts, initialRelativeTimes])
+
+  // Update all relative times periodically after initial hydration
+  React.useEffect(() => {
+    const updateRelativeTimes = () => {
+      setRelativeTimes((prev) => {
+        let changed = false
+        const next: Record<string, string> = { ...prev }
+
+        for (const post of posts) {
+          const value = formatRelativeTime(post.published_at || post.created_at)
+          
+          // Only update if value actually changed
+          if (prev[post.id] !== value) {
+            next[post.id] = value
+            changed = true
+          }
+        }
+
+        return changed ? next : prev
+      })
+    }
+
+    // Start periodic updates after a short delay to allow hydration to complete
+    const timeoutId = setTimeout(() => {
+      updateRelativeTimes()
+    }, 1000)
+
+    const intervalId = window.setInterval(updateRelativeTimes, RELATIVE_TIME_REFRESH_INTERVAL)
+
+    return () => {
+      clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
+  }, [posts])
+
+  React.useEffect(() => {
+    if (!activeReplyTarget) {
+      setReplyContent("")
+      setReplyError(null)
+    }
+  }, [activeReplyTarget])
+
+  React.useEffect(() => {
+    if (!commentComposerOpen) {
+      setActiveReplyTarget(null)
+      setReplyContent("")
+      setReplyError(null)
+      setCommentComposerIndex(null)
+    }
+  }, [commentComposerOpen])
+
+  const loadCommentsForPostIds = React.useCallback(
+    async (postIds: string[]) => {
+      const ids = postIds.filter(Boolean)
+      if (ids.length === 0) return
+
+      setCommentsLoading((prev) => {
+        const next = { ...prev }
+        ids.forEach((id) => {
+          next[id] = true
+        })
+        return next
+      })
+
+      try {
+        const commentMap = await fetchCommentsForPosts(ids, user?.id || undefined)
+
+        setCommentsByPostId((prev) => {
+          const next = { ...prev }
+          ids.forEach((id) => {
+            next[id] = commentMap[id] ?? []
+            fetchedCommentsRef.current.add(id)
+          })
+          return next
+        })
+
+        if (user) {
+          setBoostedPostIds((prev) => {
+            const next = new Set(prev)
+            Object.values(commentMap).forEach((list) => {
+              list.forEach((comment) => {
+                if (comment.user_has_boosted) {
+                  next.add(comment.id)
+                }
+                comment.replies?.forEach((reply) => {
+                  if (reply.user_has_boosted) {
+                    next.add(reply.id)
+                  }
+                })
+              })
+            })
+            return next
+          })
+        }
+      } catch (error) {
+        console.error("Error loading comments:", error)
+        toast.error("Failed to load comments")
+      } finally {
+        setCommentsLoading((prev) => {
+          const next = { ...prev }
+          ids.forEach((id) => {
+            next[id] = false
+          })
+          return next
+        })
+      }
+    },
+    [user],
+  )
+
+  React.useEffect(() => {
+    const newIds = posts
+      .map((post) => post.id)
+      .filter((id) => !fetchedCommentsRef.current.has(id))
+
+    if (newIds.length === 0) return
+
+    newIds.forEach((id) => fetchedCommentsRef.current.add(id))
+    loadCommentsForPostIds(newIds)
+  }, [posts, loadCommentsForPostIds])
+
+  const handleCommentCreated = React.useCallback((postId: string, comment: PostWithAuthor) => {
+    setCommentsByPostId((prev) => {
+      const existing = prev[postId] ?? []
+      const hydrated: HierarchicalPost = {
+        ...comment,
+        boost_count: comment.boost_count ?? 0,
+        user_has_boosted: comment.user_has_boosted ?? false,
+        can_unboost: comment.can_unboost ?? false,
+        replies: [],
+      }
+      const next = [...existing, hydrated].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+      return {
+        ...prev,
+        [postId]: next,
+      }
+    })
+  }, [])
+
+  const toggleRepliesVisibility = React.useCallback((commentId: string) => {
+    setExpandedReplies((prev) => ({
+      ...prev,
+      [commentId]: !prev[commentId],
+    }))
+  }, [])
+
+  const submitReply = async (postId: string, commentId: string) => {
+    if (!user) {
+      toast.error("Please sign in to reply.")
+      return
+    }
+
+    const trimmed = replyContent.trim()
+    if (!trimmed) {
+      setReplyError("Reply cannot be empty.")
+      return
+    }
+
+    setReplySubmitting(true)
+    setReplyError(null)
+
+    try {
+      const { data: insertedReply, error } = await supabase
+        .from("posts")
+        .insert({
+          community_id: community.id,
+          author_id: user.id,
+          content: trimmed,
+          parent_post_id: commentId,
+          published_at: new Date().toISOString(),
+        })
+        .select(
+          `
+            *,
+            author:users!posts_author_id_fkey(
+              id,
+              username,
+              first_name,
+              last_name,
+              profile_picture
+            ),
+            media:post_media(
+              id,
+              media_type,
+              storage_path,
+              file_name,
+              display_order
+            )
+          `,
+        )
+        .single()
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      const replyWithMeta = {
+        ...insertedReply,
+        boost_count: insertedReply?.boost_count ?? 0,
+        user_has_boosted: insertedReply?.user_has_boosted ?? false,
+        can_unboost: insertedReply?.can_unboost ?? false,
+      } as PostWithAuthor
+
+      setCommentsByPostId((prev) => {
+        const existing = prev[postId] ?? []
+        return {
+          ...prev,
+          [postId]: existing.map((comment) => {
+            if (comment.id !== commentId) return comment
+            const replies = [...(comment.replies ?? []), replyWithMeta].sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+            )
+            return {
+              ...comment,
+              replies,
+            }
+          }),
+        }
+      })
+
+      setActiveReplyTarget(null)
+      setReplyContent("")
+      toast.success("Reply posted!")
+    } catch (error: any) {
+      console.error("Error posting reply:", error)
+      setReplyError(error?.message || "Failed to post reply.")
+      toast.error(error?.message || "Failed to post reply.")
+    } finally {
+      setReplySubmitting(false)
+    }
+  }
+
+  const previousUserIdRef = React.useRef<string | undefined>(user?.id)
+
+  React.useEffect(() => {
+    if (previousUserIdRef.current === user?.id) {
+      return
+    }
+
+    previousUserIdRef.current = user?.id
+    fetchedCommentsRef.current.clear()
+    setCommentsByPostId({})
+    setCommentsLoading({})
+
+    const ids = posts.map((post) => post.id)
+    if (ids.length === 0) return
+
+    loadCommentsForPostIds(ids)
+    ids.forEach((id) => fetchedCommentsRef.current.add(id))
+  }, [user?.id, posts, loadCommentsForPostIds])
 
   // Sort posts: pinned first, then by published date
   const sortedPosts = useMemo(() => {
@@ -229,24 +528,103 @@ export default function FeedView({
       const updates = Array.from(updateQueue.entries())
       updateQueue.clear()
       
-      setPosts(prevPosts => {
-        return prevPosts.map(p => {
-          const update = updates.find(([id]) => id === p.id)
-          if (!update) return p
-          
-          const [postId, { count, isCurrentUser, eventType }] = update
-          
-          if (isCurrentUser) {
-            return {
-              ...p,
-              boost_count: count,
-              user_has_boosted: eventType === 'INSERT',
-              can_unboost: eventType === 'INSERT'
+      const updateMap = new Map(updates)
+
+      const applyBoostState = <T extends PostWithAuthor>(
+        entity: T,
+        payload: { count: number; isCurrentUser: boolean; eventType: string },
+      ): T => {
+        if (!payload.isCurrentUser) {
+          return { ...entity, boost_count: payload.count } as T
+        }
+
+        let userHasBoosted = entity.user_has_boosted
+        let canUnboost = entity.can_unboost
+
+        if (payload.eventType === "INSERT") {
+              userHasBoosted = true
+              canUnboost = true
+        } else if (payload.eventType === "DELETE") {
+              userHasBoosted = false
+              canUnboost = false
             }
+
+            return {
+          ...entity,
+          boost_count: payload.count,
+              user_has_boosted: userHasBoosted,
+          can_unboost: canUnboost,
+        } as T
+      }
+
+      setPosts((prevPosts) =>
+        prevPosts.map((p) => {
+          const payload = updateMap.get(p.id)
+          if (!payload) return p
+          return applyBoostState(p, payload)
+        }),
+      )
+
+      setCommentsByPostId((prev) => {
+        let mutated = false
+        const next = { ...prev }
+
+        Object.entries(prev).forEach(([parentId, comments]) => {
+          let commentMutated = false
+          const updatedComments = comments.map((comment) => {
+            let updatedComment = comment
+            const commentPayload = updateMap.get(comment.id)
+            if (commentPayload) {
+              updatedComment = applyBoostState(comment, commentPayload) as HierarchicalPost
+              commentMutated = true
+              mutated = true
+            }
+
+            if (comment.replies && comment.replies.length > 0) {
+              let repliesMutated = false
+              const updatedReplies = comment.replies.map((reply) => {
+                const replyPayload = updateMap.get(reply.id)
+                if (!replyPayload) return reply
+                repliesMutated = true
+                mutated = true
+                return applyBoostState(reply, replyPayload)
+              })
+
+              if (repliesMutated) {
+                updatedComment = {
+                  ...updatedComment,
+                  replies: updatedReplies,
+                }
+                commentMutated = true
+              }
+            }
+
+            return updatedComment
+          })
+
+          if (commentMutated) {
+            next[parentId] = updatedComments
           }
-          return { ...p, boost_count: count }
         })
+
+        return mutated ? next : prev
       })
+
+      const hasCurrentUserUpdate = updates.some(([, payload]) => payload.isCurrentUser)
+      if (hasCurrentUserUpdate) {
+        setBoostedPostIds(prev => {
+          const next = new Set(prev)
+          updates.forEach(([postId, payload]) => {
+            if (!payload.isCurrentUser) return
+            if (payload.eventType === 'INSERT') {
+              next.add(postId)
+            } else if (payload.eventType === 'DELETE') {
+              next.delete(postId)
+            }
+          })
+          return next
+        })
+      }
     }
     
     // Schedule batch update
@@ -336,7 +714,12 @@ export default function FeedView({
           filter: `community_id=eq.${community.id}`
         },
         (payload) => {
-          // Increment new posts counter
+          const newPost = payload.new as { depth?: number } | null
+          if (!newPost || newPost.depth !== 0) {
+            return
+          }
+
+          // Increment new posts counter for root-level posts only
           setNewPostsCount(prev => prev + 1)
         }
       )
@@ -383,6 +766,7 @@ export default function FeedView({
           )
         `)
         .eq('community_id', community.id)
+        .eq('depth', 0)
         .order('is_pinned', { ascending: false })
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -522,6 +906,7 @@ export default function FeedView({
           )
         `)
         .eq('community_id', community.id)
+        .eq('depth', 0)
         .order('is_pinned', { ascending: false })
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -692,45 +1077,87 @@ export default function FeedView({
     }
   }
 
-  const handleBoostToggle = async (postId: string, postAuthorId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleBoostToggle = async (
+    postId: string,
+    postAuthorId: string,
+    event: React.MouseEvent<HTMLButtonElement>,
+    context?: { parentPostId?: string; parentCommentId?: string },
+  ) => {
     if (!user || !userProfile) return
     
-    // Prevent boosting own posts
     if (postAuthorId === user.id) {
       toast.error("You cannot boost your own post")
       return
     }
 
-    // Prevent multiple simultaneous boosts
     if (boostingPosts.has(postId)) return
 
-    const post = posts.find(p => p.id === postId)
-    if (!post) return
+    const post = posts.find((p) => p.id === postId)
+    const isRootPost = !!post
 
-    const wasBoosted = post.user_has_boosted
-    const previousBoostCount = post.boost_count || 0
-    const canUnboost = post.can_unboost
+    let parentPostId = context?.parentPostId
+    let parentCommentId = context?.parentCommentId
+    let targetComment: HierarchicalPost | undefined
+    let targetReply: PostWithAuthor | undefined
 
-    // If trying to unboost, check if allowed
+    if (!isRootPost) {
+      if (!parentPostId) {
+        parentPostId = Object.keys(commentsByPostId).find((key) =>
+          (commentsByPostId[key] ?? []).some((comment) => {
+            if (comment.id === postId) return true
+            return comment.replies?.some((reply) => reply.id === postId)
+          }),
+        )
+      }
+
+      if (!parentPostId) {
+        toast.error("Unable to find comment context.")
+        return
+      }
+
+      const commentList = commentsByPostId[parentPostId] ?? []
+
+      if (parentCommentId) {
+        targetComment = commentList.find((comment) => comment.id === parentCommentId)
+        targetReply = targetComment?.replies?.find((reply) => reply.id === postId)
+        if (!targetReply) {
+          toast.error("Unable to find reply.")
+          return
+        }
+      } else {
+        targetComment = commentList.find((comment) => comment.id === postId)
+        if (!targetComment) {
+          toast.error("Unable to find comment.")
+          return
+        }
+      }
+    }
+
+    const boostSubject: PostWithAuthor | HierarchicalPost | undefined = isRootPost
+      ? post
+      : targetReply ?? targetComment
+
+    if (!boostSubject) return
+
+    const wasBoosted = boostedPostIds.has(postId)
+    const previousBoostCount = boostSubject.boost_count ?? 0
+    const canUnboost = boostSubject.can_unboost ?? false
+
     if (wasBoosted && !canUnboost) {
       toast.error("You can only unboost within 1 minute of boosting")
       return
     }
 
-    // Check wallet balance before boosting
     if (!wasBoosted && (walletBalance === null || walletBalance < 1)) {
       toast.error("You need at least 1 point to boost a post")
       return
     }
 
-    // Fire confetti immediately for boost (not unboost)
-    if (!wasBoosted) {
+    if (!wasBoosted && isRootPost) {
       fireGoldConfetti(event.currentTarget as HTMLElement)
-      
-      // Add boost animation
-      setAnimatingBoosts(prev => new Set(prev).add(postId))
+      setAnimatingBoosts((prev) => new Set(prev).add(postId))
       setTimeout(() => {
-        setAnimatingBoosts(prev => {
+        setAnimatingBoosts((prev) => {
           const next = new Set(prev)
           next.delete(postId)
           return next
@@ -738,76 +1165,164 @@ export default function FeedView({
       }, 600)
     }
 
-    // Optimistic update
-    setPosts(prevPosts =>
-      prevPosts.map(p =>
+    const nextBoostCount = wasBoosted ? Math.max(previousBoostCount - 1, 0) : previousBoostCount + 1
+    const nextCanUnboost = wasBoosted ? false : true
+
+    if (isRootPost) {
+      setPosts((prevPosts) =>
+        prevPosts.map((p) =>
         p.id === postId
           ? {
               ...p,
               user_has_boosted: !wasBoosted,
-              boost_count: wasBoosted ? previousBoostCount - 1 : previousBoostCount + 1,
-              can_unboost: !wasBoosted ? true : false
-            }
-          : p
+                boost_count: nextBoostCount,
+                can_unboost: nextCanUnboost,
+              }
+            : p,
+        ),
       )
-    )
+    } else if (parentPostId) {
+      setCommentsByPostId((prev) => {
+        const existing = prev[parentPostId!] ?? []
+        const updated = existing.map((comment) => {
+          if (parentCommentId) {
+            if (comment.id !== parentCommentId) return comment
+            return {
+              ...comment,
+              replies: (comment.replies ?? []).map((reply) =>
+                reply.id === postId
+                  ? {
+                      ...reply,
+                      boost_count: nextBoostCount,
+                      user_has_boosted: !wasBoosted,
+                      can_unboost: nextCanUnboost,
+                    }
+                  : reply,
+              ),
+            }
+          }
 
-    setBoostingPosts(prev => new Set(prev).add(postId))
+          if (comment.id !== postId) return comment
+          return {
+            ...comment,
+            boost_count: nextBoostCount,
+            user_has_boosted: !wasBoosted,
+            can_unboost: nextCanUnboost,
+          }
+        })
+
+        return {
+          ...prev,
+          [parentPostId!]: updated,
+        }
+      })
+    }
+
+    setBoostedPostIds((prev) => {
+      const next = new Set(prev)
+      if (wasBoosted) {
+        next.delete(postId)
+      } else {
+        next.add(postId)
+      }
+      return next
+    })
+
+    setBoostingPosts((prev) => new Set(prev).add(postId))
 
     try {
-      // Use separate functions for boost/unboost
-      const rpcFunction = wasBoosted ? 'unboost_post' : 'boost_post'
-      const { data, error } = await supabase.rpc(rpcFunction, {
+      const rpcFunction = wasBoosted ? "unboost_post" : "boost_post"
+      const { error } = await supabase.rpc(rpcFunction, {
         p_post_id: postId,
-        p_user_id: user.id
+        p_user_id: user.id,
       })
 
       if (error) throw error
 
-      // Wallet balance and boost counts update automatically via Realtime
-      
-      // Show success message
       if (wasBoosted) {
         toast.error("💔 Boost removed... They'll miss your support")
       } else {
         toast.success("🚀 Creator boosted! You made their day!")
       }
-
-      // No router.refresh() needed - everything updates via Realtime!
     } catch (error: any) {
-      console.error('Error toggling boost:', error)
-      
-      // Revert optimistic update on error
-      setPosts(prevPosts =>
-        prevPosts.map(p =>
+      console.error("Error toggling boost:", error)
+
+      if (isRootPost) {
+        setPosts((prevPosts) =>
+          prevPosts.map((p) =>
           p.id === postId
             ? {
                 ...p,
                 user_has_boosted: wasBoosted,
                 boost_count: previousBoostCount,
-                can_unboost: canUnboost
-              }
-            : p
+                  can_unboost: canUnboost,
+                }
+              : p,
+          ),
         )
-      )
+      } else if (parentPostId) {
+        setCommentsByPostId((prev) => {
+          const existing = prev[parentPostId!] ?? []
+          const updated = existing.map((comment) => {
+            if (parentCommentId) {
+              if (comment.id !== parentCommentId) return comment
+              return {
+                ...comment,
+                replies: (comment.replies ?? []).map((reply) =>
+                  reply.id === postId
+                    ? {
+                        ...reply,
+                        boost_count: previousBoostCount,
+                        user_has_boosted: wasBoosted,
+                        can_unboost: canUnboost,
+                      }
+                    : reply,
+                ),
+              }
+            }
+
+            if (comment.id !== postId) return comment
+            return {
+              ...comment,
+              boost_count: previousBoostCount,
+              user_has_boosted: wasBoosted,
+              can_unboost: canUnboost,
+            }
+          })
+
+          return {
+            ...prev,
+            [parentPostId!]: updated,
+          }
+        })
+      }
+
+      setBoostedPostIds((prev) => {
+        const next = new Set(prev)
+        if (wasBoosted) {
+          next.add(postId)
+        } else {
+          next.delete(postId)
+        }
+        return next
+      })
       
-      // Show user-friendly error message
-      const errorMessage = error?.message || error?.error_description || error?.error || ''
-      if (errorMessage.includes('Insufficient balance') || errorMessage.includes('insufficient')) {
-        toast.error('You need at least 1 point to boost a post')
-      } else if (errorMessage.includes('own post')) {
-        toast.error('You cannot boost your own post')
-      } else if (errorMessage.includes('already boosted')) {
-        toast.error('You have already boosted this post')
-      } else if (errorMessage.includes('Cannot unboost after')) {
-        toast.error('You can only unboost within 1 minute of boosting')
+      const errorMessage = error?.message || error?.error_description || error?.error || ""
+      if (errorMessage.includes("Insufficient balance") || errorMessage.includes("insufficient")) {
+        toast.error("You need at least 1 point to boost a post")
+      } else if (errorMessage.includes("own post")) {
+        toast.error("You cannot boost your own post")
+      } else if (errorMessage.includes("already boosted")) {
+        toast.error("You have already boosted this post")
+      } else if (errorMessage.includes("Cannot unboost after")) {
+        toast.error("You can only unboost within 1 minute of boosting")
       } else if (errorMessage) {
         toast.error(`Error: ${errorMessage}`)
       } else {
-        toast.error('Failed to boost post. Please try again.')
+        toast.error("Failed to boost post. Please try again.")
       }
     } finally {
-      setBoostingPosts(prev => {
+      setBoostingPosts((prev) => {
         const next = new Set(prev)
         next.delete(postId)
         return next
@@ -1305,20 +1820,24 @@ export default function FeedView({
     )
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
+  const openPostComments = React.useCallback(
+    (index: number) => {
+      if (index < 0 || index >= sortedPosts.length) return
+      const targetPost = sortedPosts[index]
+      setCommentComposerIndex(index)
+      setCommentComposerOpen(targetPost.id)
+      loadCommentsForPostIds([targetPost.id])
+    },
+    [sortedPosts, loadCommentsForPostIds]
+  )
 
-    if (diffMins < 1) return "just now"
-    if (diffMins < 60) return `${diffMins}m`
-    if (diffHours < 24) return `${diffHours}h`
-    if (diffDays < 7) return `${diffDays}d`
-    return date.toLocaleDateString()
-  }
+  React.useEffect(() => {
+    if (!commentComposerOpen) return
+    const index = sortedPosts.findIndex((post) => post.id === commentComposerOpen)
+    if (index !== -1 && index !== commentComposerIndex) {
+      setCommentComposerIndex(index)
+    }
+  }, [commentComposerOpen, commentComposerIndex, sortedPosts])
 
   return (
     <div className="relative w-full overflow-x-hidden">
@@ -1351,7 +1870,34 @@ export default function FeedView({
 
         {/* Posts List */}
         <div className="space-y-4">
-          {sortedPosts.map((post) => (
+          {sortedPosts.map((post, index) => {
+            const isDialogOpen = commentComposerOpen === post.id
+            const hasPrev = commentComposerIndex !== null && commentComposerIndex > 0
+            const hasNext =
+              commentComposerIndex !== null && commentComposerIndex < sortedPosts.length - 1
+
+            const handlePrev = () => {
+              if (commentComposerIndex !== null && commentComposerIndex > 0) {
+                openPostComments(commentComposerIndex - 1)
+              }
+            }
+
+            const handleNext = () => {
+              if (commentComposerIndex !== null && commentComposerIndex < sortedPosts.length - 1) {
+                openPostComments(commentComposerIndex + 1)
+              }
+            }
+
+            const commentsForPost = commentsByPostId[post.id] ?? []
+            const commentsAreLoading = commentsLoading[post.id]
+            const replyCount = commentsForPost.reduce(
+              (sum, comment) => sum + (comment.replies?.length ?? 0),
+              0,
+            )
+            const totalContributions = commentsForPost.length + replyCount
+
+            return (
+              <React.Fragment key={post.id}>
             <Card
               key={post.id}
               data-post-id={post.id}
@@ -1380,8 +1926,8 @@ export default function FeedView({
                       <span className="text-white/80 text-sm font-medium">
                         {post.author.first_name} {post.author.last_name}
                       </span>
-                      <span className="text-white/40 text-xs">
-                        {formatDate(post.published_at || post.created_at)}
+                      <span className="text-white/40 text-xs" suppressHydrationWarning>
+                        {relativeTimes[post.id] ?? formatRelativeTime(post.published_at || post.created_at)}
                       </span>
                     </div>
                     {post.is_pinned && (
@@ -1696,72 +2242,500 @@ export default function FeedView({
                   </>
                 )}
 
-                {/* Boost and Save Buttons - Hide when editing */}
+                {/* Boost, Contribute, and Save Buttons - Hide when editing */}
                 {editingPostId !== post.id && (
                   <div className="flex items-center justify-between gap-4 mt-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleBoostToggle(post.id, post.author_id, e)
-                    }}
-                    disabled={!user || boostingPosts.has(post.id)}
-                    className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                      post.user_has_boosted
-                        ? 'bg-yellow-400/10 border-yellow-400/40'
-                        : `bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 ${
-                            topVisiblePostId === post.id ? 'animate-shimmer' : ''
-                          }`
-                    } ${animatingBoosts.has(post.id) ? 'animate-boost-pulse' : ''}`}
-                  >
-                    <Crown
-                      className={`h-4 w-4 transition-all ${
-                        post.user_has_boosted
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-white/70 group-hover:text-yellow-400'
-                      } ${animatingBoosts.has(post.id) ? 'animate-boost-icon' : ''}`}
-                      style={{
-                        filter: post.user_has_boosted ? 'drop-shadow(0 0 8px rgba(250, 204, 21, 0.6))' : 'none'
-                      }}
-                    />
-                    <span className={`text-xs font-medium transition-colors ${
-                      post.user_has_boosted ? 'text-yellow-400' : 'text-white/70 group-hover:text-white'
-                    }`}>
-                      {post.user_has_boosted ? 'Boosted' : 'Boost Creator'}
-                    </span>
-                    <span className={`text-xs font-semibold transition-colors ${
-                      post.user_has_boosted ? 'text-yellow-400' : 'text-white/70 group-hover:text-white'
-                    } ${animatingBoosts.has(post.id) ? 'animate-boost-count' : ''}`}>
-                      {post.boost_count || 0}
-                    </span>
-                  </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleBoostToggle(post.id, post.author_id, e)
+                        }}
+                        disabled={!user || boostingPosts.has(post.id)}
+                        className={`group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                          post.user_has_boosted
+                            ? "bg-yellow-400/10 border-yellow-400/40"
+                            : `bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 ${
+                                topVisiblePostId === post.id ? "animate-shimmer" : ""
+                              }`
+                        } ${animatingBoosts.has(post.id) ? "animate-boost-pulse" : ""}`}
+                      >
+                        <Crown
+                          className={`h-4 w-4 transition-all ${
+                            post.user_has_boosted
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-white/70 group-hover:text-yellow-400"
+                          } ${animatingBoosts.has(post.id) ? "animate-boost-icon" : ""}`}
+                          style={{
+                            filter: post.user_has_boosted
+                              ? "drop-shadow(0 0 8px rgba(250, 204, 21, 0.6))"
+                              : "none",
+                          }}
+                        />
+                        <span
+                          className={`text-xs font-medium transition-colors ${
+                            post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
+                          }`}
+                        >
+                          {post.user_has_boosted ? "Boosted" : "Boost"}
+                        </span>
+                        <span
+                          className={`text-xs font-semibold transition-colors ${
+                            post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
+                          } ${animatingBoosts.has(post.id) ? "animate-boost-count" : ""}`}
+                        >
+                          {post.boost_count || 0}
+                        </span>
+                      </button>
 
-                  {user && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleSaveToggle(post.id)
-                      }}
-                      disabled={savingPosts.has(post.id)}
-                      className={`group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                        post.user_has_saved
-                          ? 'bg-white/10 border-white/30'
-                          : 'bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30'
-                      }`}
-                    >
-                      <Bookmark
-                        className={`h-4 w-4 transition-all ${
+                      {isMember && user && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openPostComments(index)
+                          }}
+                          className="group flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                        >
+                          <Feather className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
+                          <span className="text-xs font-medium text-white/70 group-hover:text-white">
+                            Contribute
+                          </span>
+                          <span className="text-xs font-semibold text-white/60 group-hover:text-white/80">
+                            {totalContributions}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {user && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleSaveToggle(post.id)
+                        }}
+                        disabled={savingPosts.has(post.id)}
+                        className={`group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                           post.user_has_saved
-                            ? 'fill-white/80 text-white/80'
-                            : 'text-white/70 group-hover:text-white/80'
+                            ? "bg-white/10 border-white/30"
+                            : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                         }`}
-                      />
-                    </button>
-                  )}
+                      >
+                        <Bookmark
+                          className={`h-4 w-4 transition-all ${
+                            post.user_has_saved
+                              ? "fill-white/80 text-white/80"
+                              : "text-white/70 group-hover:text-white/80"
+                          }`}
+                        />
+                      </button>
+                    )}
                   </div>
                 )}
+
               </CardContent>
             </Card>
-          ))}
+            <Dialog
+              open={isDialogOpen}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setCommentComposerOpen(null)
+                  setCommentComposerIndex(null)
+                }
+              }}
+            >
+              <DialogContent
+                hideCloseButton
+                className="max-w-2xl border border-white/20 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-0 h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] min-h-[calc(100dvh-1rem)] sm:h-[calc(100vh-4rem)] sm:max-h-[calc(100vh-4rem)] sm:min-h-[calc(100vh-4rem)] sm:max-w-3xl [&>div]:p-0"
+              >
+                <DialogHeader className="sr-only">
+                  <DialogTitle>Post conversation</DialogTitle>
+                  <DialogDescription>View the full conversation for this post and add your contribution.</DialogDescription>
+                </DialogHeader>
+                <div
+                  className="flex h-full flex-col overflow-hidden"
+                  style={{
+                    paddingBottom: "env(safe-area-inset-bottom, 0)",
+                    paddingTop: "env(safe-area-inset-top, 0)"
+                  }}
+                >
+                  <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-3 rounded-t-lg">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-white/70 hover:text-white"
+                      onClick={() => {
+                        setCommentComposerOpen(null)
+                        setCommentComposerIndex(null)
+                      }}
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white/70 hover:text-white"
+                        onClick={handlePrev}
+                        disabled={!isDialogOpen || !hasPrev}
+                        aria-label="Previous post"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white/70 hover:text-white"
+                        onClick={handleNext}
+                        disabled={!isDialogOpen || !hasNext}
+                        aria-label="Next post"
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                <div
+                  className="relative flex-1 overflow-y-auto px-2 pb-16 space-y-6"
+                  style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0) + 4rem)" }}
+                >
+                    <div className="relative mt-2 border border-white/10 bg-white/5 p-4 space-y-3 rounded-lg shadow-[0_0_30px_rgba(255,255,255,0.25)] ring-1 ring-white/20">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0">
+                          <AvatarImage
+                            src={post.author?.profile_picture || ""}
+                            alt={`${post.author?.first_name} ${post.author?.last_name}`}
+                          />
+                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                            {post.author?.first_name?.[0]}
+                            {post.author?.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <Link
+                            href={`/profile/${post.author.username}`}
+                            className="text-white/80 text-sm font-medium hover:text-white"
+                          >
+                            {post.author.first_name} {post.author.last_name}
+                          </Link>
+                          <span className="text-white/50 text-xs">
+                            {formatRelativeTime(post.created_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {post.content && (
+                        <p className="text-white/80 text-sm whitespace-pre-wrap">
+                          {post.content}
+                        </p>
+                      )}
+
+                      {post.media && post.media.length > 0 && (
+                        <PostMediaSlider media={post.media} author={post.author} />
+                      )}
+
+                      <div className="flex items-center justify-between gap-2.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleBoostToggle(post.id, post.author_id, e)
+                          }}
+                          disabled={!user || boostingPosts.has(post.id)}
+                          className={`group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                            post.user_has_boosted
+                              ? "bg-yellow-400/10 border-yellow-400/40"
+                              : `bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 ${
+                                  animatingBoosts.has(post.id) ? "animate-boost-pulse" : ""
+                                }`
+                          }`}
+                        >
+                          <Crown
+                            className={`h-4 w-4 transition-all ${
+                              post.user_has_boosted
+                                ? "fill-yellow-400 text-yellow-400"
+                                : "text-white/70 group-hover:text-yellow-400"
+                            } ${animatingBoosts.has(post.id) ? "animate-boost-icon" : ""}`}
+                            style={{
+                              filter: post.user_has_boosted
+                                ? "drop-shadow(0 0 8px rgba(250, 204, 21, 0.6))"
+                                : "none",
+                            }}
+                          />
+                          <span
+                            className={`text-xs font-medium transition-colors ${
+                              post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
+                            }`}
+                          >
+                            {post.user_has_boosted ? "Boosted" : "Boost"}
+                          </span>
+                          <span
+                            className={`text-xs font-semibold transition-colors ${
+                              post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
+                            } ${animatingBoosts.has(post.id) ? "animate-boost-count" : ""}`}
+                          >
+                            {post.boost_count || 0}
+                          </span>
+                        </button>
+
+                        <div className="flex items-center gap-1 text-white/60">
+                          <Feather className="h-3.5 w-3.5 text-white/70" />
+                          <span className="text-xs font-semibold text-white/70">
+                            {totalContributions}
+                          </span>
+                          <span className="text-xs font-medium text-white/60">
+                            contributions
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="h-1" />
+                    </div>
+
+                    <div className="mt-0">
+                      {isMember ? (
+                        <InlinePostComposer
+                          communityId={community.id}
+                          communitySlug={community.slug}
+                          parentPostId={post.id}
+                          mode="comment"
+                          disableRouterRefresh
+                          collapsedLabel="Share something valuable..."
+                          onPostCreated={(newComment) => {
+                            handleCommentCreated(post.id, newComment)
+                            toast.success("Contribution posted!")
+                          }}
+                        />
+                      ) : (
+                        <p className="text-white/70 text-sm">
+                          You need to be a community member to contribute.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      {commentsAreLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <LoadingSpinner />
+                        </div>
+                      ) : commentsForPost.length === 0 ? (
+                        <p className="text-white/60 text-sm text-center">
+                          Be the first to spark this conversation; your brain’s fresh insight sets the tone.
+                        </p>
+                      ) : (
+                        commentsForPost.map((comment) => {
+                        const isReplying =
+                          activeReplyTarget?.postId === post.id &&
+                          activeReplyTarget?.commentId === comment.id
+                        const replyCount = comment.replies?.length ?? 0
+                        const repliesExpanded = expandedReplies[comment.id] ?? false
+
+                          return (
+                            <div
+                              key={comment.id}
+                              className="rounded-lg bg-white/5 p-4"
+                            >
+                              <div className="space-y-3">
+                                <div className="flex items-start gap-3">
+                                  <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0">
+                                    <AvatarImage
+                                      src={comment.author?.profile_picture || ""}
+                                      alt={`${comment.author?.first_name} ${comment.author?.last_name}`}
+                                    />
+                                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                                      {comment.author?.first_name?.[0]}
+                                      {comment.author?.last_name?.[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex flex-col">
+                                    <Link
+                                      href={`/profile/${comment.author?.username}`}
+                                      className="text-white/80 text-sm font-medium hover:text-white"
+                                    >
+                                      {comment.author?.first_name} {comment.author?.last_name}
+                                    </Link>
+                                    <span className="text-white/50 text-xs">
+                                      {formatRelativeTime(comment.created_at)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {comment.content && (
+                                  <p className="text-white/80 text-sm whitespace-pre-wrap">
+                                    {comment.content}
+                                  </p>
+                                )}
+
+                                {comment.media && comment.media.length > 0 && (
+                                  <PostMediaSlider media={comment.media} author={comment.author} />
+                                )}
+
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleBoostToggle(comment.id, comment.author_id, e, {
+                                        parentPostId: post.id,
+                                      })
+                                    }}
+                                    disabled={!user || boostingPosts.has(comment.id)}
+                                    className={`group flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                                      comment.user_has_boosted
+                                        ? "bg-yellow-400/10 border-yellow-400/40"
+                                        : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                                    }`}
+                                  >
+                                    <Crown
+                                      className={`h-4 w-4 transition-all ${
+                                        comment.user_has_boosted
+                                          ? "fill-yellow-400 text-yellow-400"
+                                          : "text-white/70 group-hover:text-yellow-300"
+                                      }`}
+                                    />
+                                    <span
+                                      className={`text-xs font-medium transition-colors ${
+                                        comment.user_has_boosted
+                                          ? "text-yellow-400"
+                                          : "text-white/70 group-hover:text-white"
+                                      }`}
+                                    >
+                                      {comment.user_has_boosted ? "Boosted" : "Boost"}
+                                    </span>
+                                    <span className="text-xs font-semibold text-white/70 group-hover:text-white">
+                                      {comment.boost_count || 0}
+                                    </span>
+                                  </button>
+
+                                  {isMember && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setActiveReplyTarget({ postId: post.id, commentId: comment.id })
+                                      }}
+                                      className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/20 bg-white/5 text-white/70 hover:text-white hover:border-white/30 transition-all"
+                                    >
+                                      <Feather className="h-4 w-4" />
+                                      <span className="text-xs font-medium">Reply</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {isReplying && (
+                                  <div className="rounded-lg bg-white/5 p-3">
+                                    <form
+                                      onSubmit={(e) => {
+                                        e.preventDefault()
+                                        submitReply(post.id, comment.id)
+                                      }}
+                                      className="space-y-3"
+                                    >
+                                      <Textarea
+                                        value={replyContent}
+                                        onChange={(e) => setReplyContent(e.target.value)}
+                                        placeholder="Share your reply..."
+                                        className="min-h-[120px] resize-none border border-white/20 bg-white/5 text-white focus-visible:ring-white/20"
+                                        disabled={replySubmitting}
+                                      />
+                                      {replyError && (
+                                        <p className="text-destructive text-xs">{replyError}</p>
+                                      )}
+                                      <div className="flex justify-end gap-2">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          className="text-white/70 hover:text-white"
+                                          onClick={() => setActiveReplyTarget(null)}
+                                          disabled={replySubmitting}
+                                        >
+                                          Cancel
+                                        </Button>
+                                        <Button
+                                          type="submit"
+                                          disabled={replySubmitting}
+                                          className="bg-primary text-primary-foreground hover:bg-primary/90"
+                                        >
+                                          {replySubmitting ? "Posting..." : "Post Reply"}
+                                        </Button>
+                                      </div>
+                                    </form>
+                                  </div>
+                                )}
+
+                                {replyCount > 0 && (
+                                  <div className="space-y-2">
+                                    <div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          toggleRepliesVisibility(comment.id)
+                                        }}
+                                        className="flex w-full items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs font-medium text-white/60 transition-colors hover:border-white/30 hover:text-white"
+                                      >
+                                        {repliesExpanded ? (
+                                          <ChevronDown className="h-3.5 w-3.5 text-white/70" />
+                                        ) : (
+                                          <ChevronRight className="h-3.5 w-3.5 text-white/70" />
+                                        )}
+                                      <span>
+                                        {repliesExpanded
+                                          ? `Hide replies ${replyCount}`
+                                          : `View replies ${replyCount}`}
+                                      </span>
+                                      </button>
+                                    </div>
+
+                                    {repliesExpanded && (
+                                      <div className="space-y-3 rounded-lg bg-white/5 p-3">
+                                        {(comment.replies ?? []).map((reply) => (
+                                          <div key={reply.id} className="space-y-2">
+                                            <div className="flex items-start gap-3">
+                                              <Avatar className="h-8 w-8 border border-white/20 flex-shrink-0">
+                                                <AvatarImage
+                                                  src={reply.author?.profile_picture || ""}
+                                                  alt={`${reply.author?.first_name} ${reply.author?.last_name}`}
+                                                />
+                                                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs">
+                                                  {reply.author?.first_name?.[0]}
+                                                  {reply.author?.last_name?.[0]}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                              <div className="flex flex-col">
+                                                <Link
+                                                  href={`/profile/${reply.author?.username}`}
+                                                  className="text-white/80 text-xs font-medium hover:text-white"
+                                                >
+                                                  {reply.author?.first_name} {reply.author?.last_name}
+                                                </Link>
+                                                <span className="text-white/50 text-[10px]">
+                                                  {formatRelativeTime(reply.created_at)}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {reply.content && (
+                                              <p className="text-white/70 text-sm whitespace-pre-wrap">
+                                                {reply.content}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <ScrollToTop />
+              </DialogContent>
+            </Dialog>
+            </React.Fragment>
+            )
+          })}
           
           {/* Infinite Scroll Trigger & Loading Indicator */}
           {sortedPosts.length > 0 && (

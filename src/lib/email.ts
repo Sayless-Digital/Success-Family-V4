@@ -157,6 +157,48 @@ export const emailTemplates = {
     `),
   }),
 
+  walletTopupReminder: (userName: string, amount: number, dueDate: string, overdueDays = 0) => {
+    const dueDateString = new Date(dueDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+    const isOverdue = overdueDays > 0
+    const subject = isOverdue
+      ? `Wallet Top-Up Overdue (${overdueDays} day${overdueDays !== 1 ? 's' : ''})`
+      : `Wallet Top-Up Due ${dueDateString}`
+
+    return {
+      subject,
+      html: baseEmailTemplate(`
+        <h2 style="color: ${isOverdue ? '#ef4444' : '#7c3aed'}; margin-bottom: 20px;">
+          ${isOverdue ? 'Action Required: Overdue Wallet Top-Up' : 'Wallet Top-Up Reminder'}
+        </h2>
+        <p style="color: #374151; line-height: 1.6;">Hi ${userName || 'there'},</p>
+        <p style="color: #374151; line-height: 1.6;">
+          ${isOverdue
+            ? `Your mandatory wallet top-up was due on <strong>${dueDateString}</strong>. Please make a top-up of at least <strong>TTD $${amount.toFixed(
+                2
+              )}</strong> to keep your account in good standing.`
+            : `This is a friendly reminder that your mandatory wallet top-up of <strong>TTD $${amount.toFixed(
+                2
+              )}</strong> is due on <strong>${dueDateString}</strong>.`
+          }
+        </p>
+        <div style="background: #f9fafb; padding: 20px; border-radius: 6px; margin: 20px 0;">
+          <p style="margin: 5px 0; color: #374151;"><strong>Due Date:</strong> ${dueDateString}</p>
+          <p style="margin: 5px 0; color: #374151;"><strong>Amount:</strong> TTD $${amount.toFixed(2)}</p>
+          ${isOverdue ? `<p style="margin: 5px 0; color: #991b1b;"><strong>Overdue:</strong> ${overdueDays} day${overdueDays !== 1 ? 's' : ''}</p>` : ''}
+        </div>
+        <p style="color: #374151; line-height: 1.6;">
+          Head to your wallet to upload a bank transfer receipt. Once verified, your balance will be updated automatically.
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/wallet" style="background: #7c3aed; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Top Up Wallet</a>
+        </div>
+        <p style="color: #6b7280; font-size: 14px;">
+          If you have already completed your top-up, you can ignore this reminder. Thank you!
+        </p>
+      `),
+    }
+  },
+
   // Community subscription emails
   communitySubscriptionRequest: (userName: string, communityName: string, ownerName: string, amount: number, billingCycle: string) => ({
     subject: `Subscription Request - ${communityName}`,

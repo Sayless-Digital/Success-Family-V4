@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
-import { MediaType } from "@/types"
+import type { MediaType, PostWithAuthor } from "@/types"
 import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
@@ -16,6 +16,16 @@ import { toast } from "sonner"
 interface InlinePostComposerProps {
   communityId: string
   communitySlug: string
+  parentPostId?: string | null
+  mode?: "post" | "comment" | "reply"
+  collapsedLabel?: string
+  placeholder?: string
+  allowImages?: boolean
+  allowVoiceNote?: boolean
+  initialExpanded?: boolean
+  disableRouterRefresh?: boolean
+  hideCollapsedTrigger?: boolean
+  onPostCreated?: (post: PostWithAuthor) => void
 }
 
 interface MediaFile {
@@ -26,11 +36,39 @@ interface MediaFile {
 
 export function InlinePostComposer({
   communityId,
-  communitySlug
+  communitySlug,
+  parentPostId = null,
+  mode = "post",
+  collapsedLabel,
+  placeholder,
+  allowImages,
+  allowVoiceNote,
+  initialExpanded,
+  disableRouterRefresh,
+  hideCollapsedTrigger,
+  onPostCreated,
 }: InlinePostComposerProps) {
   const router = useRouter()
   const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
-  const [isExpanded, setIsExpanded] = React.useState(false)
+  const resolvedMode = mode ?? "post"
+  const resolvedAllowImages = allowImages ?? resolvedMode === "post"
+  const resolvedAllowVoiceNote = allowVoiceNote ?? resolvedMode !== "reply"
+  const collapsedLabelText = collapsedLabel ?? (
+    resolvedMode === "post"
+      ? "Share something valuable..."
+      : resolvedMode === "comment"
+        ? "What's on your mind?"
+        : "Reply to this comment..."
+  )
+  const placeholderText = placeholder ?? (
+    resolvedMode === "post"
+      ? "What's on your mind?"
+      : resolvedMode === "comment"
+        ? "What's on your mind?"
+        : "Share your reply..."
+  )
+  const initialExpandedState = hideCollapsedTrigger ? true : initialExpanded ?? false
+  const [isExpanded, setIsExpanded] = React.useState(initialExpandedState)
   const [content, setContent] = React.useState("")
   const [voiceNote, setVoiceNote] = React.useState<MediaFile | null>(null)
   const [imageFiles, setImageFiles] = React.useState<MediaFile[]>([])
@@ -46,14 +84,23 @@ export function InlinePostComposer({
   const audioRefs = React.useRef<Record<string, HTMLAudioElement>>({})
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
-
+  const trimmedContent = content.trim()
+  const hasVoiceNote = !!voiceNote
+  const hasImages = imageFiles.length > 0
+  const canSubmitContent =
+    trimmedContent.length > 0 ||
+    (resolvedAllowVoiceNote && hasVoiceNote) ||
+    (resolvedAllowImages && hasImages)
+  const isSubmitDisabled = submitting || showVoiceRecorder || !canSubmitContent
+  const submitLabel =
+    resolvedMode === "post" ? "Post" : resolvedMode === "comment" ? "Contribute" : "Reply"
   const reset = () => {
     setContent("")
     setVoiceNote(null)
     setImageFiles([])
     setUploadProgress(null)
     setError(null)
-    setIsExpanded(false)
+    setIsExpanded(initialExpandedState)
     setShowVoiceRecorder(false)
     setPlayingAudio(null)
     setAudioProgress({})
@@ -147,6 +194,7 @@ export function InlinePostComposer({
   }
 
   const handleVoiceNoteComplete = async (audioBlob: Blob) => {
+    if (!resolvedAllowVoiceNote) return
     if (!user) return
 
     // Check wallet balance
@@ -213,10 +261,12 @@ export function InlinePostComposer({
   }
 
   const handleVoiceNoteCancel = () => {
+    if (!resolvedAllowVoiceNote) return
     setShowVoiceRecorder(false)
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!resolvedAllowImages) return
     const files = Array.from(e.target.files || [])
     
     files.forEach(file => {
@@ -256,6 +306,12 @@ export function InlinePostComposer({
       scrollContainerRef.current.scrollBy({ left: 300, behavior: 'smooth' })
     }
   }
+
+  React.useEffect(() => {
+    if (error && canSubmitContent) {
+      setError(null)
+    }
+  }, [canSubmitContent, error])
 
   const removeVoiceNote = () => {
     if (!voiceNote) return
@@ -426,9 +482,20 @@ export function InlinePostComposer({
       return
     }
     
-    const trimmedContent = content.trim()
-    if (!trimmedContent) {
-      setError("Post content is required.")
+    const currentTrimmedContent = content.trim()
+    const currentHasVoiceNote = !!voiceNote
+    const currentHasImages = imageFiles.length > 0
+    const isValidContent =
+      currentTrimmedContent.length > 0 ||
+      (resolvedAllowVoiceNote && currentHasVoiceNote) ||
+      (resolvedAllowImages && currentHasImages)
+
+    if (!isValidContent) {
+      setError(
+        resolvedAllowVoiceNote || resolvedAllowImages
+          ? "Please add some text or media before sharing."
+          : "Please add some text before sharing."
+      )
       return
     }
 
@@ -436,36 +503,83 @@ export function InlinePostComposer({
     setError(null)
     
     try {
-      console.log('Creating post...')
+      const contentToSave = currentTrimmedContent.length > 0 ? currentTrimmedContent : ""
       
-      // Create post
-      const { data: post, error: postError } = await supabase
+      const { data: insertedPost, error: postError } = await supabase
         .from('posts')
         .insert({
           community_id: communityId,
           author_id: user.id,
-          content: trimmedContent,
+          content: contentToSave,
+          parent_post_id: parentPostId,
           published_at: new Date().toISOString()
         })
-        .select('id')
+        .select(`
+          *,
+          author:users!posts_author_id_fkey(
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_picture
+          ),
+          media:post_media(
+            id,
+            media_type,
+            storage_path,
+            file_name,
+            display_order
+          )
+        `)
         .single()
 
       if (postError) {
-        console.error('Post creation error:', postError)
         throw new Error(`Failed to create post: ${postError.message}`)
       }
 
-      console.log('Post created:', post)
-
       // Upload media if any
-      if (voiceNote || imageFiles.length > 0) {
-        await uploadMedia(post.id)
+      if ((resolvedAllowVoiceNote && voiceNote) || (resolvedAllowImages && imageFiles.length > 0)) {
+        await uploadMedia(insertedPost.id)
       }
 
-      console.log('Post creation complete')
+      let createdPost = insertedPost
+
+      if ((resolvedAllowVoiceNote && voiceNote) || (resolvedAllowImages && imageFiles.length > 0)) {
+        const { data: refreshedPost, error: refreshError } = await supabase
+          .from('posts')
+          .select(`
+            *,
+            author:users!posts_author_id_fkey(
+              id,
+              username,
+              first_name,
+              last_name,
+              profile_picture
+            ),
+            media:post_media(
+              id,
+              media_type,
+              storage_path,
+              file_name,
+              display_order
+            )
+          `)
+          .eq('id', insertedPost.id)
+          .single()
+
+        if (!refreshError && refreshedPost) {
+          createdPost = refreshedPost
+        }
+      }
+
+      if (onPostCreated && createdPost) {
+        onPostCreated(createdPost as PostWithAuthor)
+      }
 
       reset()
+      if (!disableRouterRefresh) {
       router.refresh()
+      }
     } catch (e: any) {
       console.error('Error creating post:', e)
       setError(e?.message || 'Failed to create post')
@@ -489,7 +603,7 @@ export function InlinePostComposer({
       isExpanded ? "" : "hover:bg-white/15 cursor-pointer"
     )}>
       <CardContent className="p-3">
-        {!isExpanded ? (
+        {!hideCollapsedTrigger && !isExpanded ? (
           // Collapsed State - Click to Expand
           <div 
             className="flex items-center gap-3"
@@ -501,7 +615,7 @@ export function InlinePostComposer({
                 {userProfile.first_name[0]}{userProfile.last_name[0]}
               </AvatarFallback>
             </Avatar>
-            <p className="text-white/50 text-base flex-1">Write something...</p>
+            <p className="text-white/50 text-base flex-1">{collapsedLabelText}</p>
           </div>
         ) : (
           // Expanded State - Full Composer
@@ -525,7 +639,7 @@ export function InlinePostComposer({
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="What's on your mind?"
+                placeholder={placeholderText}
                 className="w-full bg-transparent border-0 text-white placeholder:text-white/40 text-base resize-none focus:outline-none focus:ring-0 min-h-[100px]"
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement
@@ -536,7 +650,7 @@ export function InlinePostComposer({
             </div>
 
             {/* Voice Note Recorder */}
-            {showVoiceRecorder && (
+            {resolvedAllowVoiceNote && showVoiceRecorder && (
               <VoiceNoteRecorder
                 onRecordingComplete={handleVoiceNoteComplete}
                 onCancel={handleVoiceNoteCancel}
@@ -546,7 +660,7 @@ export function InlinePostComposer({
             )}
 
             {/* Voice Note Preview - Separate Container */}
-            {voiceNote && (
+            {resolvedAllowVoiceNote && voiceNote && (
               <div className="rounded-lg overflow-hidden bg-white/10 border border-white/20">
                 <div className="p-3 relative overflow-hidden">
                   <div className="flex items-center gap-2">
@@ -633,7 +747,7 @@ export function InlinePostComposer({
             )}
 
             {/* Images Preview Slider */}
-            {imageFiles.length > 0 && (
+            {resolvedAllowImages && imageFiles.length > 0 && (
               <div className="relative">
                 {/* Left Navigation Button */}
                 {canScrollLeft && (
@@ -691,6 +805,7 @@ export function InlinePostComposer({
               </div>
             )}
 
+            {resolvedAllowImages && (
             <input
               ref={fileInputRef}
               type="file"
@@ -699,12 +814,13 @@ export function InlinePostComposer({
               onChange={handleFileSelect}
               className="hidden"
             />
+            )}
 
             {error && <p className="text-sm text-red-400">{error}</p>}
             
             {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pt-2">
+              {resolvedAllowImages && (
                 <button
                   type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -716,6 +832,9 @@ export function InlinePostComposer({
                     Add Images {imageFiles.length > 0 && `(${imageFiles.length}/8)`}
                   </span>
                 </button>
+              )}
+
+              {resolvedAllowVoiceNote && (
                 <button
                   type="button"
                   onClick={() => {
@@ -731,19 +850,35 @@ export function InlinePostComposer({
                   <Mic className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
                   <span className="sr-only">Voice Note</span>
                 </button>
-              </div>
+              )}
+
+              <div className="flex-1" />
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.preventDefault()
+                  reset()
+                }}
+                disabled={submitting}
+                className="text-white/70 hover:text-white"
+              >
+                Cancel
+              </Button>
 
               <Button
                 size="sm"
                 onClick={handleCreate}
-                disabled={submitting || !content.trim() || showVoiceRecorder}
+                disabled={isSubmitDisabled}
                 className="cursor-pointer"
               >
                 {submitting ? (
                   uploadProgress
                     ? `Uploading ${uploadProgress.current} of ${uploadProgress.total}`
                     : 'Posting…'
-                ) : 'Post'}
+                ) : submitLabel}
               </Button>
             </div>
           </div>

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight, Mic, Play, Pause } from "lucide-react"
 import { supabase } from "@/lib/supabase"
-import type { PostMedia, User } from "@/types"
+import type { PostMedia, PostAuthorSummary } from "@/types"
 import { PostMediaLightbox } from "@/components/post-media-lightbox"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 
 interface PostMediaSliderProps {
   media: PostMedia[]
-  author?: User
+  author?: PostAuthorSummary
 }
 
 export function PostMediaSlider({ media, author }: PostMediaSliderProps) {

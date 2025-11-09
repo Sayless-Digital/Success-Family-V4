@@ -154,10 +154,10 @@ export default function CommunityView({
               
               {/* Community Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-center sm:gap-3">
                   <h1 className="text-3xl font-bold text-white truncate">{community.name}</h1>
                   {isMember && !isOwner && (
-                    <Badge className="bg-white/10 text-white/80 border-white/20">
+                    <Badge className="w-fit bg-white/10 text-white/80 border-white/20">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Member
                     </Badge>
@@ -264,7 +264,7 @@ export default function CommunityView({
                       {member.user.first_name[0]}{member.user.last_name[0]}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
                         <Link 
                           href={`/profile/${member.user.username}`}
                           className="font-medium text-white hover:text-white/80 truncate"

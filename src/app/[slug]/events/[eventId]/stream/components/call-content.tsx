@@ -767,13 +767,54 @@ function CallContentInner({
     }
   }
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
-      setIsFullscreen(true)
-    } else {
-      document.exitFullscreen()
-      setIsFullscreen(false)
+  const toggleFullscreen = async () => {
+    if (typeof document === "undefined") return
+
+    const doc = document as any
+    const element = document.documentElement as any
+    const fullscreenElement =
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
+
+    try {
+      if (!fullscreenElement) {
+        if (element.requestFullscreen) {
+          try {
+            await element.requestFullscreen({ navigationUI: "show" })
+          } catch (error) {
+            await element.requestFullscreen()
+          }
+        } else if (element.webkitRequestFullscreen) {
+          element.webkitRequestFullscreen()
+        } else if (element.mozRequestFullScreen) {
+          element.mozRequestFullScreen()
+        } else if (element.msRequestFullscreen) {
+          element.msRequestFullscreen()
+        } else {
+          throw new Error("Fullscreen API not supported")
+        }
+
+        setIsFullscreen(true)
+      } else {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen()
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen()
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen()
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen()
+        } else {
+          throw new Error("Fullscreen exit not supported")
+        }
+
+        setIsFullscreen(false)
+      }
+    } catch (error) {
+      console.error("Error toggling fullscreen:", error)
+      toast.error("Unable to toggle fullscreen")
     }
   }
 

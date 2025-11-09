@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import CommunityRecordingsView from "./recordings-view"
+import CommunityVideosView from "./videos-view"
 
 interface CommunityRecordingsPageProps {
   params: Promise<{
@@ -51,6 +51,43 @@ export default async function CommunityRecordingsPage({ params }: CommunityRecor
     console.error('Error fetching recordings:', recordingsError)
   }
 
+  // Fetch uploaded videos for this community (may not exist until migration runs)
+  let uploadedVideos: any[] = []
+  const { data: uploads, error: uploadsError } = await supabase
+    .from('uploaded_videos')
+    .select(`
+      id,
+      community_id,
+      user_id,
+      title,
+      description,
+      storage_path,
+      storage_url,
+      duration_seconds,
+      file_size_bytes,
+      created_at,
+      updated_at,
+      uploader:users!uploaded_videos_user_id_fkey(
+        id,
+        username,
+        first_name,
+        last_name
+      )
+    `)
+    .eq('community_id', community.id)
+    .order('created_at', { ascending: false })
+
+  if (uploadsError) {
+    if (uploadsError.code === '42P01') {
+      // Table does not exist yet (migration pending) - log for debugging but continue
+      console.warn('uploaded_videos table not found. Have you run the migration?', uploadsError.message)
+    } else {
+      console.error('Error fetching uploaded videos:', uploadsError)
+    }
+  } else if (uploads) {
+    uploadedVideos = uploads
+  }
+
   // Check if user is authenticated and get their membership status
   const { data: { user } } = await supabase.auth.getUser()
   
@@ -77,12 +114,13 @@ export default async function CommunityRecordingsPage({ params }: CommunityRecor
   }
 
   return (
-    <CommunityRecordingsView 
+    <CommunityVideosView 
       community={community}
       recordings={recordings || []}
       isOwner={isOwner}
+      isMember={isMember}
       currentUserId={user?.id}
+      uploadedVideos={uploadedVideos}
     />
   )
 }
-

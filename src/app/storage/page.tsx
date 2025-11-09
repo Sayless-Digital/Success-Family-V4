@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
-import { Database, HardDrive, FileVideo, Loader2, AlertCircle, CheckCircle2, Plus, ShoppingCart, Minus, Calendar, ChevronRight, ChevronLeft } from "lucide-react"
+import { Database, HardDrive, FileVideo, Loader2, AlertCircle, CheckCircle2, Plus, ShoppingCart, Minus, Calendar, ChevronRight, ChevronLeft, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
@@ -12,13 +12,15 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { UserStorage, EventRecording } from "@/types"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { UserStorage, EventRecording, UploadedVideo } from "@/types"
 import { toast } from "sonner"
 import Link from "next/link"
 
 interface StorageData {
   storage: UserStorage
   recordings: EventRecording[]
+  uploads: UploadedVideo[]
   pricing?: {
     purchasePricePerGb: number
     monthlyCostPerGb: number
@@ -261,7 +263,7 @@ export default function StoragePage() {
     )
   }
 
-  const { storage, recordings } = storageData
+  const { storage, recordings, uploads } = storageData
   const usagePercent = storage.storage_limit_bytes > 0 
     ? Math.min((storage.total_storage_bytes / storage.storage_limit_bytes) * 100, 100)
     : 0
@@ -269,6 +271,9 @@ export default function StoragePage() {
   const freeBytes = Math.max(0, storage.storage_limit_bytes - storage.total_storage_bytes)
   const usedGB = storage.total_storage_bytes / 1073741824
   const limitGB = storage.storage_limit_bytes / 1073741824
+  const hasRecordings = recordings.length > 0
+  const hasUploads = uploads.length > 0
+  const totalVideos = recordings.length + uploads.length
 
   return (
     <div className="relative w-full">
@@ -507,58 +512,122 @@ export default function StoragePage() {
           </CardContent>
         </Card>
 
-        {/* Recordings List */}
+        {/* Videos List */}
         <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
           <CardHeader>
             <CardTitle className="text-white flex items-center gap-2">
               <FileVideo className="h-5 w-5" />
-              Your Recordings
+              Your Videos
             </CardTitle>
             <CardDescription className="text-white/70">
-              {recordings.length} {recordings.length === 1 ? 'recording' : 'recordings'} totaling {formatBytes(storage.total_storage_bytes)}
+              {totalVideos} {totalVideos === 1 ? 'video' : 'videos'} totaling {formatBytes(storage.total_storage_bytes)}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {recordings.length === 0 ? (
-              <div className="text-center py-8">
-                <FileVideo className="h-12 w-12 text-white/40 mx-auto mb-3" />
-                <p className="text-white/60">No recordings yet</p>
-                <p className="text-white/40 text-sm mt-1">Your video recordings will appear here</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {recordings.map((recording) => (
-                  <div
-                    key={recording.id}
-                    className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <FileVideo className="h-4 w-4 text-white/70 flex-shrink-0" />
-                        <p className="text-white font-medium truncate">
-                          {recording.title || recording.event?.description || 'Untitled Recording'}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-white/60">
-                        {recording.event?.community && (
-                          <Link
-                            href={`/${recording.event.community.slug}/recordings`}
-                            className="hover:text-white transition-colors truncate max-w-[150px] sm:max-w-none"
-                            prefetch={true}
-                          >
-                            {recording.event.community.name}
-                          </Link>
-                        )}
-                        <span className="whitespace-nowrap">{formatDate(recording.created_at)}</span>
-                        <span className="font-medium text-white/80 whitespace-nowrap">
-                          {formatBytes(recording.file_size_bytes || 0)}
-                        </span>
+            <Tabs defaultValue={hasRecordings ? "recordings" : "uploads"} className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2 border border-white/20 bg-white/5 text-white/70">
+                <TabsTrigger
+                  value="recordings"
+                  className="flex items-center justify-center gap-2 px-4 py-2 text-sm data-[state=active]:bg-white/10 data-[state=active]:text-white"
+                >
+                  Recordings
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] leading-none text-white/70">
+                    {recordings.length}
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="uploads"
+                  className="flex items-center justify-center gap-2 px-4 py-2 text-sm data-[state=active]:bg-white/10 data-[state=active]:text-white"
+                >
+                  Uploads
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] leading-none text-white/70">
+                    {uploads.length}
+                  </span>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="recordings" className="space-y-3 focus-visible:outline-none focus-visible:ring-0">
+                {hasRecordings ? (
+                  recordings.map((recording) => (
+                    <div
+                      key={recording.id}
+                      className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-1 flex items-center gap-2">
+                          <FileVideo className="h-4 w-4 flex-shrink-0 text-white/70" />
+                          <p className="truncate text-white font-medium">
+                            {recording.title || recording.event?.description || 'Untitled Recording'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/60">
+                          {recording.event?.community && (
+                            <Link
+                              href={`/${recording.event.community.slug}/videos`}
+                              className="max-w-[150px] truncate transition-colors hover:text-white sm:max-w-none"
+                              prefetch={true}
+                            >
+                              {recording.event.community.name}
+                            </Link>
+                          )}
+                          <span className="whitespace-nowrap">{formatDate(recording.created_at)}</span>
+                          <span className="whitespace-nowrap font-medium text-white/80">
+                            {formatBytes(recording.file_size_bytes || 0)}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-8 text-center">
+                    <FileVideo className="mx-auto mb-3 h-12 w-12 text-white/40" />
+                    <p className="text-white/60">No recordings yet</p>
+                    <p className="mt-1 text-sm text-white/40">Stream recordings you save will appear here.</p>
                   </div>
-                ))}
-              </div>
-            )}
+                )}
+              </TabsContent>
+
+              <TabsContent value="uploads" className="space-y-3 focus-visible:outline-none focus-visible:ring-0">
+                {hasUploads ? (
+                  uploads.map((video) => (
+                    <div
+                      key={video.id}
+                      className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-1 flex items-center gap-2">
+                          <Upload className="h-4 w-4 flex-shrink-0 text-white/70" />
+                          <p className="truncate text-white font-medium">
+                            {video.title || 'Untitled Upload'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/60">
+                          {video.community?.slug && (
+                            <Link
+                              href={`/${video.community.slug}/videos`}
+                              className="max-w-[150px] truncate transition-colors hover:text-white sm:max-w-none"
+                              prefetch={true}
+                            >
+                              {video.community.name}
+                            </Link>
+                          )}
+                          <span className="whitespace-nowrap">{formatDate(video.created_at)}</span>
+                          <span className="whitespace-nowrap font-medium text-white/80">
+                            {formatBytes(video.file_size_bytes || 0)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-8 text-center">
+                    <Upload className="mx-auto mb-3 h-12 w-12 text-white/40" />
+                    <p className="text-white/60">No uploaded videos yet</p>
+                    <p className="mt-1 text-sm text-white/40">Videos you upload manually will appear here.</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 

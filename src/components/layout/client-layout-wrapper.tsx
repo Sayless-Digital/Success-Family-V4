@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { GlobalHeader } from "./global-header"
 import { GlobalSidebar } from "./global-sidebar"
@@ -25,6 +25,8 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isSidebarPinned, setIsSidebarPinned] = useState(false)
   const [isMobile, setIsMobile] = useState(true)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const fullscreenTargetRef = useRef<HTMLDivElement | null>(null)
   
   const isStreamPage = pathname?.includes('/stream')
   const isHomePage = pathname === '/'
@@ -54,6 +56,106 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
+
+  useEffect(() => {
+    if (typeof document === "undefined") return
+
+    const updateFullscreenState = () => {
+      const doc = document as any
+      const fullscreenElement =
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+
+      setIsFullscreen(Boolean(fullscreenElement))
+    }
+
+    const vendorEvents = ["webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"] as const
+
+    document.addEventListener("fullscreenchange", updateFullscreenState)
+    vendorEvents.forEach((event) => document.addEventListener(event as any, updateFullscreenState))
+
+    updateFullscreenState()
+
+    return () => {
+      document.removeEventListener("fullscreenchange", updateFullscreenState)
+      vendorEvents.forEach((event) => document.removeEventListener(event as any, updateFullscreenState))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!("serviceWorker" in navigator)) return
+
+    const isSecureOrigin =
+      window.location.protocol === "https:" || window.location.hostname === "localhost"
+
+    if (!isSecureOrigin) return
+
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .catch((error) => {
+        console.error("[PWA] Service worker registration failed", error)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!isMobile) return
+
+    const prefersReducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+    if (prefersReducedMotionQuery.matches) return
+
+    const coarsePointerQuery = window.matchMedia("(pointer: coarse)")
+    if (!coarsePointerQuery.matches) return
+
+    const scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement | null
+    if (!scrollableElement) return
+
+    const multiplier = 1.3
+    let lastTouchY: number | null = null
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        lastTouchY = null
+        return
+      }
+
+      lastTouchY = event.touches[0].clientY
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (lastTouchY === null || event.touches.length !== 1) {
+        return
+      }
+
+      const currentY = event.touches[0].clientY
+      const deltaY = lastTouchY - currentY
+
+      if (Math.abs(deltaY) > 0.5) {
+        scrollableElement.scrollTop += deltaY * (multiplier - 1)
+      }
+
+      lastTouchY = currentY
+    }
+
+    const resetTouch = () => {
+      lastTouchY = null
+    }
+
+    scrollableElement.addEventListener("touchstart", handleTouchStart, { passive: true })
+    scrollableElement.addEventListener("touchmove", handleTouchMove, { passive: true })
+    scrollableElement.addEventListener("touchend", resetTouch)
+    scrollableElement.addEventListener("touchcancel", resetTouch)
+
+    return () => {
+      scrollableElement.removeEventListener("touchstart", handleTouchStart)
+      scrollableElement.removeEventListener("touchmove", handleTouchMove)
+      scrollableElement.removeEventListener("touchend", resetTouch)
+      scrollableElement.removeEventListener("touchcancel", resetTouch)
+    }
+  }, [isMobile, pathname])
 
   const handleMenuClick = () => {
     if (isMobile) {
@@ -86,7 +188,18 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   )
 
   return (
-    <div className="h-dvh bg-background overflow-x-hidden flex flex-col relative">
+    <div
+      ref={fullscreenTargetRef}
+      className="min-h-dvh bg-background overflow-x-hidden flex flex-col relative"
+      style={{
+        paddingTop: "env(safe-area-inset-top, 0)",
+        paddingBottom: isFullscreen && isMobile
+          ? "calc(env(safe-area-inset-bottom, 0) + 64px)"
+          : "env(safe-area-inset-bottom, 0)",
+        paddingLeft: "env(safe-area-inset-left, 0)",
+        paddingRight: "env(safe-area-inset-right, 0)",
+      }}
+    >
       {/* Silk Background - On all pages */}
       {!isStreamPage && (
         <div className="fixed inset-0 z-0 overflow-hidden w-full h-full opacity-100">
@@ -109,6 +222,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
             onMenuClick={handleMenuClick}
             isSidebarOpen={isSidebarOpen}
             isMobile={isMobile}
+            fullscreenTargetRef={fullscreenTargetRef}
           />
           
           <GlobalSidebar

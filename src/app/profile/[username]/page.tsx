@@ -111,6 +111,7 @@ export default async function ProfilePage(props: PageProps) {
       communities!posts_community_id_fkey (slug, name)
     `)
     .eq('author_id', user.id)
+    .eq('depth', 0)
     .order('created_at', { ascending: false })
     .limit(20)
 
@@ -122,6 +123,7 @@ export default async function ProfilePage(props: PageProps) {
     .from('posts')
     .select('*', { count: 'exact', head: true })
     .eq('author_id', user.id)
+    .eq('depth', 0)
 
   const postsHasMore = (totalPostsCount || 0) > 20
 
@@ -138,6 +140,7 @@ export default async function ProfilePage(props: PageProps) {
       )
     `)
     .eq('user_id', user.id)
+    .eq('posts.depth', 0)
     .order('created_at', { ascending: false })
     .limit(20)
 
@@ -185,6 +188,7 @@ export default async function ProfilePage(props: PageProps) {
       post_boosts!inner(post_id)
     `)
     .eq('author_id', user.id)
+    .eq('depth', 0)
     .order('created_at', { ascending: false })
     .limit(100) // Fetch more to account for filtering
 

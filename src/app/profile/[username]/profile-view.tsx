@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { Zap, Pin, Crown, Building2, Bookmark, LayoutGrid, TrendingUp } from "lucide-react"
+import { Zap, Pin, Crown, Building2, Bookmark, LayoutGrid, TrendingUp, Loader2, MessageCircle, UserPlus, UserCheck } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
 import confetti from "canvas-confetti"
@@ -15,6 +15,8 @@ import type { Post, PostMedia, User as UserType } from "@/types"
 import Link from "next/link"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { LoadingSpinner } from "@/components/loading-spinner"
+import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 
 interface User {
   id: string
@@ -67,6 +69,7 @@ export default function ProfileView({
 }: ProfileViewProps) {
   const { user: currentUser, userProfile, walletBalance } = useAuth()
   const isOwnProfile = currentUser?.id === user.id
+  const router = useRouter()
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({})
   const [posts, setPosts] = useState(initialPosts || [])
   const [postsHasMore, setPostsHasMore] = useState(initialPostsHasMore)
@@ -93,6 +96,10 @@ export default function ProfileView({
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
   
   const [activeTab, setActiveTab] = useState("posts")
+  const [followStatus, setFollowStatus] = React.useState<{ isFollowing: boolean; isFollowedBy: boolean; isMutual: boolean } | null>(null)
+  const [isFollowLoading, setIsFollowLoading] = React.useState(false)
+  const [isFollowActionLoading, setIsFollowActionLoading] = React.useState(false)
+  const [isMessageLoading, setIsMessageLoading] = React.useState(false)
 
   // Fetch image URLs for all posts
   React.useEffect(() => {
@@ -196,6 +203,117 @@ export default function ProfileView({
 
     fetchSavedStatus()
   }, [currentUser, posts.length, boostedPosts.length, gotBoostedPosts.length, savedPosts.length])
+
+  React.useEffect(() => {
+    if (!currentUser || isOwnProfile) return
+
+    let isMounted = true
+    const fetchFollowStatus = async () => {
+      setIsFollowLoading(true)
+      try {
+        const response = await fetch(`/api/follows?userId=${user.id}`, { cache: "no-store" })
+        if (!response.ok) {
+          throw new Error("Failed to fetch follow status")
+        }
+        const data = await response.json()
+        if (isMounted) {
+          setFollowStatus(data.status ?? null)
+        }
+      } catch (error) {
+        console.error(error)
+        if (isMounted) {
+          toast.error("Unable to load follow status right now.")
+        }
+      } finally {
+        if (isMounted) {
+          setIsFollowLoading(false)
+        }
+      }
+    }
+
+    fetchFollowStatus()
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentUser, isOwnProfile, user.id])
+
+  const requireAuth = React.useCallback(() => {
+    if (!currentUser) {
+      router.push("/?signin=1")
+      return false
+    }
+    return true
+  }, [currentUser, router])
+
+  const handleFollowToggle = async () => {
+    if (!requireAuth() || isOwnProfile) return
+    if (isFollowActionLoading) return
+    setIsFollowActionLoading(true)
+    try {
+      const method = followStatus?.isFollowing ? "DELETE" : "POST"
+      const response = await fetch("/api/follows", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: user.id }),
+      })
+      if (!response.ok) {
+        throw new Error("Follow action failed")
+      }
+      const data = await response.json()
+      setFollowStatus(data.status ?? followStatus)
+    } catch (error) {
+      console.error(error)
+      toast.error("Unable to update follow right now.")
+    } finally {
+      setIsFollowActionLoading(false)
+    }
+  }
+
+  const handleMessage = async () => {
+    if (!requireAuth() || isOwnProfile) return
+    if (isMessageLoading) return
+    setIsMessageLoading(true)
+    try {
+      const response = await fetch("/api/dm/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ peerUserId: user.id }),
+      })
+      if (!response.ok) {
+        throw new Error("Failed to start conversation")
+      }
+      const data = await response.json()
+      const threadId = data?.thread?.id ?? data?.threadId
+      router.push(threadId ? `/messages?thread=${threadId}` : "/messages")
+    } catch (error) {
+      console.error(error)
+      toast.error("Unable to start a conversation right now.")
+    } finally {
+      setIsMessageLoading(false)
+    }
+  }
+
+  const followLabel = React.useMemo(() => {
+    if (!followStatus) {
+      return "Follow"
+    }
+    if (followStatus.isFollowing) {
+      return "Following"
+    }
+    if (followStatus.isFollowedBy) {
+      return "Follow Back"
+    }
+    return "Follow"
+  }, [followStatus])
+
+  const followButtonClasses = React.useMemo(() => {
+    const base = "h-10 px-6 rounded-full border border-white/30 transition-all text-sm font-medium"
+    const active = followStatus?.isFollowing
+      ? " bg-white text-black hover:bg-white/90"
+      : " bg-white/10 text-white/80 hover:bg-white/20"
+    return `${base}${active}`
+  }, [followStatus])
 
   const handleSaveToggle = async (postId: string) => {
     if (!currentUser) return
@@ -615,15 +733,27 @@ export default function ProfileView({
             // Update boost status in posts, gotBoostedPosts, and savedPosts (NOT boostedPosts - that's handled by user-specific subscription)
             if (isCurrentUserAction) {
               const updateBoostStatus = (p: any) => {
-                if (p.id === postId) {
-                  return {
-                    ...p,
-                    boost_count: count,
-                    user_has_boosted: payload.eventType === 'INSERT',
-                    can_unboost: payload.eventType === 'INSERT' ? true : false
-                  }
+                if (p.id !== postId) {
+                  return p
                 }
-                return p
+
+                let userHasBoosted = p.user_has_boosted
+                let canUnboost = p.can_unboost
+
+                if (payload.eventType === 'INSERT') {
+                  userHasBoosted = true
+                  canUnboost = true
+                } else if (payload.eventType === 'DELETE') {
+                  userHasBoosted = false
+                  canUnboost = false
+                }
+
+                return {
+                  ...p,
+                  boost_count: count,
+                  user_has_boosted: userHasBoosted,
+                  can_unboost: canUnboost
+                }
               }
 
               setPosts((prevPosts) => prevPosts.map(updateBoostStatus))
@@ -659,6 +789,7 @@ export default function ProfileView({
               const { data: postData } = await supabase
                 .from('posts')
                 .select('id, author_id, content, created_at, published_at, is_pinned, community_id')
+          .eq('depth', 0)
                 .eq('id', postId)
                 .single()
 
@@ -680,6 +811,7 @@ export default function ProfileView({
                         post_media (*),
                         communities!posts_community_id_fkey (slug, name)
                       `)
+                      .eq('depth', 0)
                       .eq('id', postId)
                       .single()
                       .then(({ data }) => {
@@ -1044,6 +1176,9 @@ export default function ProfileView({
               .single()
 
             if (boostData && boostData.posts) {
+              if ((boostData.posts as any)?.depth && (boostData.posts as any).depth > 0) {
+                return
+              }
               const post = boostData.posts as any
               
               // Get boost count
@@ -1173,6 +1308,7 @@ export default function ProfileView({
           communities!posts_community_id_fkey (slug, name)
         `)
         .eq('author_id', user.id)
+        .eq('depth', 0)
         .order('created_at', { ascending: false })
         .lt('created_at', lastPostDate || new Date().toISOString())
         .limit(20)
@@ -1214,6 +1350,7 @@ export default function ProfileView({
           )
         `)
         .eq('user_id', user.id)
+        .eq('posts.depth', 0)
         .order('created_at', { ascending: false })
         .lt('created_at', lastBoostDate || new Date().toISOString())
         .limit(20)
@@ -1267,6 +1404,7 @@ export default function ProfileView({
           post_boosts!inner(post_id)
         `)
         .eq('author_id', user.id)
+        .eq('depth', 0)
         .order('created_at', { ascending: false })
         .lt('created_at', lastPostDate || new Date().toISOString())
         .limit(100)
@@ -1639,6 +1777,46 @@ export default function ProfileView({
                     {user.bio}
                   </p>
                 )}
+            {!isOwnProfile && (
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+                <Button
+                  onClick={handleFollowToggle}
+                  disabled={isFollowLoading || isFollowActionLoading}
+                  className={followButtonClasses}
+                >
+                  {isFollowActionLoading || isFollowLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : followStatus?.isFollowing ? (
+                    <span className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4" />
+                      Following
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <UserPlus className="h-4 w-4" />
+                      {followLabel}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleMessage}
+                  disabled={isMessageLoading}
+                  className="h-10 px-6 rounded-full bg-white text-black hover:bg-white/90 text-sm font-medium"
+                >
+                  {isMessageLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <MessageCircle className="h-4 w-4" />
+                      Message
+                    </span>
+                  )}
+                </Button>
+                {followStatus?.isMutual && (
+                  <Badge className="bg-white/15 text-white/80 border-white/30">Mutual Follow</Badge>
+                )}
+              </div>
+            )}
               </div>
 
         </div>

@@ -7,7 +7,7 @@ import { Plus, Edit, Trash2, Building2, MoreVertical, Loader2, Search } from "lu
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
@@ -211,6 +211,9 @@ export default function BankAccountsPage() {
                 <DialogTitle>
                   {editingAccount ? 'Edit Bank Account' : 'Add New Bank Account'}
                 </DialogTitle>
+                <DialogDescription>
+                  Save the bank account information that will be used for payouts and refunds.
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

@@ -10,6 +10,10 @@ interface AuthContextType {
   user: SupabaseUser | null
   userProfile: User | null
   walletBalance: number | null
+  walletEarningsBalance: number | null
+  walletLockedEarningsBalance: number | null
+  nextTopupDueOn: string | null
+  userValuePerPoint: number | null
   isLoading: boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -18,24 +22,33 @@ interface AuthContextType {
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
 
+function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(message))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
 // Helper function to fetch profile with retry logic
-async function fetchProfileWithRetry(
-  userId: string,
-  maxRetries = 3,
-  timeout = 10000
-): Promise<User | null> {
+async function fetchProfileWithRetry(userId: string, maxRetries = 3, timeout = 15000): Promise<User | null> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Create timeout promise
-      const timeoutPromise = new Promise<null>((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), timeout)
-      })
-
-      // Race between profile fetch and timeout
-      const profile = await Promise.race([
-        getUserProfile(userId),
-        timeoutPromise
-      ])
+      const profile = await runWithTimeout(
+        getUserProfile(userId).then((result) => result as User | null),
+        timeout,
+        "Profile fetch timeout",
+      )
 
       if (profile) {
         return profile
@@ -46,7 +59,12 @@ async function fetchProfileWithRetry(
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
       }
     } catch (error) {
-      console.error(`Profile fetch attempt ${attempt} failed:`, error)
+      const warningMessage = `Profile fetch attempt ${attempt} failed after ${timeout}ms`
+      if (attempt === maxRetries) {
+        console.error(`${warningMessage}:`, error)
+      } else {
+        console.warn(`${warningMessage}:`, error)
+      }
       
       // Wait before retry (except on last attempt)
       if (attempt < maxRetries) {
@@ -62,6 +80,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<SupabaseUser | null>(null)
   const [userProfile, setUserProfile] = React.useState<User | null>(null)
   const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
+  const [walletEarningsBalance, setWalletEarningsBalance] = React.useState<number | null>(null)
+  const [walletLockedEarningsBalance, setWalletLockedEarningsBalance] = React.useState<number | null>(null)
+  const [userValuePerPoint, setUserValuePerPoint] = React.useState<number | null>(null)
+  const [nextTopupDueOn, setNextTopupDueOn] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [profileError, setProfileError] = React.useState(false)
 
@@ -70,6 +92,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setUserProfile(null)
     setWalletBalance(null)
+    setWalletEarningsBalance(null)
+    setWalletLockedEarningsBalance(null)
+    setNextTopupDueOn(null)
     setProfileError(false)
   }, [])
 
@@ -283,21 +308,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user])
 
+  const refreshPlatformSettings = React.useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('platform_settings')
+        .select('user_value_per_point')
+        .eq('id', 1)
+        .maybeSingle<{ user_value_per_point: number | null }>()
+
+      if (error) {
+        console.error('Error fetching platform settings:', error)
+        return
+      }
+
+      if (!data || data.user_value_per_point === null || typeof data.user_value_per_point === 'undefined') {
+        setUserValuePerPoint(null)
+        return
+      }
+
+      const numericValue = Number(data.user_value_per_point)
+      setUserValuePerPoint(Number.isFinite(numericValue) ? numericValue : null)
+    } catch (error) {
+      console.error('Error fetching platform settings:', error)
+    }
+  }, [])
+
   const refreshWalletBalance = React.useCallback(async () => {
     if (!user) {
       setWalletBalance(null)
+      setWalletEarningsBalance(null)
+      setWalletLockedEarningsBalance(null)
+      setNextTopupDueOn(null)
       return
     }
     
     try {
       const { data, error } = await supabase
         .from('wallets')
-        .select('points_balance')
+        .select('points_balance, earnings_points, locked_earnings_points, next_topup_due_on, last_topup_reminder_at')
         .eq('user_id', user.id)
         .maybeSingle()
       
       if (!error && data) {
         setWalletBalance(Number(data.points_balance))
+        setWalletEarningsBalance(Number(data.earnings_points ?? 0))
+        setWalletLockedEarningsBalance(Number(data.locked_earnings_points ?? 0))
+        setNextTopupDueOn(data.next_topup_due_on ?? null)
       }
     } catch (error) {
       console.error('Error refreshing wallet balance:', error)
@@ -308,6 +364,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!user) {
       setWalletBalance(null)
+      setWalletEarningsBalance(null)
+      setWalletLockedEarningsBalance(null)
+      setNextTopupDueOn(null)
       return
     }
 
@@ -329,8 +388,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         (payload) => {
           if (!isMounted) return
-          const newBalance = (payload.new as any).points_balance
-          setWalletBalance(Number(newBalance))
+          const newPayload = payload.new as { points_balance: number; earnings_points?: number; locked_earnings_points?: number; next_topup_due_on?: string }
+          setWalletBalance(Number(newPayload.points_balance))
+          if (typeof newPayload.earnings_points === 'number') {
+            setWalletEarningsBalance(Number(newPayload.earnings_points))
+          }
+          if (typeof newPayload.locked_earnings_points === 'number') {
+            setWalletLockedEarningsBalance(Number(newPayload.locked_earnings_points))
+          }
+          setNextTopupDueOn(newPayload.next_topup_due_on ?? null)
         }
       )
       .subscribe()
@@ -341,10 +407,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, refreshWalletBalance])
 
+  React.useEffect(() => {
+    refreshPlatformSettings()
+  }, [refreshPlatformSettings])
+
+  React.useEffect(() => {
+    if (!user) {
+      setUserValuePerPoint(null)
+      return
+    }
+    refreshPlatformSettings()
+  }, [user, refreshPlatformSettings])
+
   const value = {
     user,
     userProfile,
     walletBalance,
+    walletEarningsBalance,
+    walletLockedEarningsBalance,
+    nextTopupDueOn,
+    userValuePerPoint,
     isLoading,
     signOut: handleSignOut,
     refreshProfile,

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, RotateCw } from "lucide-react"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { PostMedia } from "@/types"
@@ -148,10 +148,11 @@ export function PostMediaLightbox({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent hideCloseButton className="!max-w-[95vw] !max-h-[95dvh] !w-[95vw] !h-[95dvh] !top-[2.5dvh] !left-[2.5vw] !right-auto !bottom-auto !translate-x-0 !translate-y-0 p-0 border-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md !overflow-hidden">
-        {/* Visually Hidden Title for Accessibility */}
-        <DialogTitle className="sr-only">
-          Post Image {currentIndex + 1} of {sortedMedia.length}
-        </DialogTitle>
+        {/* Visually Hidden Dialog Header for Accessibility */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>Post media {currentIndex + 1} of {sortedMedia.length}</DialogTitle>
+          <DialogDescription>Use arrow keys or on-screen controls to navigate through post media.</DialogDescription>
+        </DialogHeader>
         
         {/* Custom Close Button */}
         <Button

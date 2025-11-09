@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon } from "lucide-react"
+import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -26,16 +26,39 @@ interface GlobalHeaderProps {
   onMenuClick: () => void
   isSidebarOpen: boolean
   isMobile?: boolean
+  fullscreenTargetRef?: React.RefObject<HTMLDivElement | null>
 }
 
-export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: GlobalHeaderProps) {
-  const { user, userProfile, walletBalance, signOut, isLoading, refreshProfile } = useAuth()
+export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, fullscreenTargetRef }: GlobalHeaderProps) {
+  const { user, userProfile, walletBalance, walletEarningsBalance, userValuePerPoint, signOut, isLoading, refreshProfile } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
   const [userCommunities, setUserCommunities] = React.useState<Community[]>([])
   const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
   const [isRetryingProfile, setIsRetryingProfile] = React.useState(false)
+  const [isFullscreen, setIsFullscreen] = React.useState(false)
+  const earningsDollarValue = React.useMemo(() => {
+    if (walletEarningsBalance === null || userValuePerPoint === null) {
+      return null
+    }
+    const numericBalance = Number(walletEarningsBalance)
+    if (!Number.isFinite(numericBalance)) {
+      return null
+    }
+    const value = numericBalance * userValuePerPoint
+    return Number.isFinite(value) ? value : null
+  }, [walletEarningsBalance, userValuePerPoint])
+  const earningsDisplay = React.useMemo(() => {
+    if (earningsDollarValue === null) {
+      return "—"
+    }
+    const formatted = earningsDollarValue.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+    return `$${formatted} TTD`
+  }, [earningsDollarValue])
   
   // Memoize user initials to prevent unnecessary re-renders
   const userInitials = React.useMemo(() => {
@@ -111,7 +134,111 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
     setAuthDialogOpen(true)
   }
 
+  const updateFullscreenState = React.useCallback(() => {
+    if (typeof document === "undefined") return
+    const doc = document as any
+    const fullscreenElement =
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
 
+    setIsFullscreen(Boolean(fullscreenElement))
+  }, [])
+
+  React.useEffect(() => {
+    if (typeof document === "undefined") return
+
+    const handler = () => updateFullscreenState()
+    const vendorEvents = ["webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"] as const
+
+    document.addEventListener("fullscreenchange", handler)
+    vendorEvents.forEach((event) => document.addEventListener(event as any, handler))
+
+    updateFullscreenState()
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handler)
+      vendorEvents.forEach((event) => document.removeEventListener(event as any, handler))
+    }
+  }, [updateFullscreenState])
+
+  const toggleFullscreen = React.useCallback(async () => {
+    if (typeof document === "undefined") return
+    const element = (fullscreenTargetRef?.current ?? document.documentElement) as any
+    const doc = document as any
+
+    const fullscreenElement =
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
+
+    try {
+      if (!fullscreenElement) {
+        const requestWithOptions = async () => {
+          if (!element.requestFullscreen) return false
+
+          if (isMobile) {
+            try {
+              await element.requestFullscreen({ navigationUI: "show" })
+              return true
+            } catch (err) {
+              // Fallback to default request if options unsupported
+              try {
+                await element.requestFullscreen()
+                return true
+              } catch (innerErr) {
+                console.warn("Fullscreen request failed:", innerErr)
+                return false
+              }
+            }
+          }
+
+          await element.requestFullscreen()
+          return true
+        }
+
+        let didRequest = await requestWithOptions()
+
+        if (!didRequest) {
+          try {
+            if (element.webkitRequestFullscreen) {
+              element.webkitRequestFullscreen()
+              didRequest = true
+            } else if (element.mozRequestFullScreen) {
+              element.mozRequestFullScreen()
+              didRequest = true
+            } else if (element.msRequestFullscreen) {
+              element.msRequestFullscreen()
+              didRequest = true
+            }
+          } catch (fallbackError) {
+            console.warn("Vendor fullscreen request failed:", fallbackError)
+          }
+        }
+
+        if (!didRequest) {
+          throw new Error("Fullscreen API not supported")
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen()
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen()
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen()
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen()
+        } else {
+          throw new Error("Fullscreen API not supported")
+        }
+      }
+    } catch (error) {
+      console.error("Error toggling fullscreen:", error)
+      toast.error("Unable to toggle fullscreen")
+    }
+  }, [fullscreenTargetRef, isMobile])
 
   return (
     <>
@@ -281,30 +408,54 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false }: G
               </Button>
             </>
           ) : user ? (
-            // Hide user profile on mobile (shown in bottom nav)
-            <div className="hidden md:block">
-              <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer">
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0 avatar-feedback cursor-pointer">
-                  <Avatar className="h-8 w-8 border-4 border-white/20">
-                    <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
-                    <AvatarFallback className="text-xs">
-                      {userProfile ? userInitials : "..."}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </Link>
-            </div>
+            <>
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/wallet" className="cursor-pointer">
+                  <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
+                    <WalletIcon className="h-4 w-4 mr-1" />
+                    <span className="text-sm">{walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}</span>
+                  </Button>
+                </Link>
+                <Link href="/wallet?tab=payouts" className="cursor-pointer">
+                  <Button variant="ghost" className="h-8 px-3 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
+                    <Coins className="h-4 w-4 mr-1" />
+                    <span className="text-sm">{earningsDisplay}</span>
+                  </Button>
+                </Link>
+              </div>
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/messages" className="cursor-pointer">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer">
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0 avatar-feedback cursor-pointer">
+                    <Avatar className="h-8 w-8 border-4 border-white/20">
+                      <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
+                      <AvatarFallback className="text-xs">
+                        {userProfile ? userInitials : "..."}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </Link>
+              </div>
+            </>
           ) : null}
 
-          {/* Hide points/wallet on mobile (shown in bottom nav) */}
-          {user && (
-            <Link href="/wallet" className="ml-1 hidden md:block cursor-pointer">
-              <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback cursor-pointer">
-                <WalletIcon className="h-4 w-4 mr-1" />
-                <span className="text-sm">{walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}</span>
-              </Button>
-            </Link>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="h-8 w-8 hover:bg-white/20 touch-feedback"
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="h-4 w-4 text-white/80" />
+            ) : (
+              <Maximize2 className="h-4 w-4 text-white/80" />
+            )}
+          </Button>
           
           {/* Mobile menu button - far right */}
           {isMobile && (

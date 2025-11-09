@@ -137,6 +137,44 @@ export async function GET(request: NextRequest) {
       recordings = recordingsData || []
     }
 
+    // Fetch uploaded videos created by the user
+    let uploadedVideos: any[] = []
+    const { data: uploadsData, error: uploadsError } = await supabase
+      .from('uploaded_videos')
+      .select(`
+        id,
+        community_id,
+        user_id,
+        title,
+        description,
+        storage_path,
+        storage_url,
+        file_size_bytes,
+        duration_seconds,
+        created_at,
+        community:communities(
+          id,
+          name,
+          slug
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (uploadsError) {
+      if (uploadsError.code === '42P01') {
+        console.warn('uploaded_videos table not found - migration may be pending')
+      } else {
+        console.error('Error fetching uploaded videos:', uploadsError)
+        return NextResponse.json({
+          error: 'Failed to fetch uploaded videos',
+          details: uploadsError.message
+        }, { status: 500 })
+      }
+    } else if (uploadsData) {
+      uploadedVideos = uploadsData
+    }
+
     // Get storage pricing settings
     const { data: settings } = await supabase
       .from('platform_settings')
@@ -147,6 +185,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       storage: storageData,
       recordings: recordings || [],
+      uploads: uploadedVideos || [],
       pricing: {
         purchasePricePerGb: settings?.storage_purchase_price_per_gb ?? 10,
         monthlyCostPerGb: settings?.storage_monthly_cost_per_gb ?? 4

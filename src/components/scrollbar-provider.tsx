@@ -8,13 +8,8 @@ interface ScrollbarProviderProps {
 
 /**
  * Lightweight scrollbar provider using native CSS
- * Removed OverlayScrollbars for better performance
+ * Safe-area-inset handling moved to ClientLayoutWrapper to prevent hydration mismatches
  */
 export function ScrollbarProvider({ children }: ScrollbarProviderProps) {
-  return (
-    <div className="h-screen w-full overflow-hidden">
-      {children}
-    </div>
-  )
+  return <>{children}</>
 }
-

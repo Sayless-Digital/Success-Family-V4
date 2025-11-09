@@ -15,7 +15,9 @@ async function getSettings() {
     stream_start_cost: 1,
     stream_join_cost: 1,
     storage_purchase_price_per_gb: 10,
-    storage_monthly_cost_per_gb: 4
+    storage_monthly_cost_per_gb: 4,
+    payout_minimum_ttd: 100,
+    mandatory_topup_ttd: 50,
   }
 }
 
@@ -44,6 +46,8 @@ export default async function AdminSettingsPage() {
     const streamJoinCost = Number(formData.get('stream_join_cost'))
     const storagePurchasePrice = Number(formData.get('storage_purchase_price_per_gb'))
     const storageMonthlyCost = Number(formData.get('storage_monthly_cost_per_gb'))
+    const payoutMinimum = Number(formData.get('payout_minimum_ttd'))
+    const mandatoryTopup = Number(formData.get('mandatory_topup_ttd'))
 
     if (!Number.isFinite(buyPrice) || buyPrice <= 0) return
     if (!Number.isFinite(userValue) || userValue <= 0) return
@@ -51,6 +55,8 @@ export default async function AdminSettingsPage() {
     if (!Number.isFinite(streamJoinCost) || streamJoinCost < 0) return
     if (!Number.isFinite(storagePurchasePrice) || storagePurchasePrice < 0) return
     if (!Number.isFinite(storageMonthlyCost) || storageMonthlyCost < 0) return
+    if (!Number.isFinite(payoutMinimum) || payoutMinimum <= 0) return
+    if (!Number.isFinite(mandatoryTopup) || mandatoryTopup <= 0) return
 
     await supabase
       .from('platform_settings')
@@ -61,13 +67,15 @@ export default async function AdminSettingsPage() {
         stream_start_cost: Math.floor(streamStartCost),
         stream_join_cost: Math.floor(streamJoinCost),
         storage_purchase_price_per_gb: Math.floor(storagePurchasePrice),
-        storage_monthly_cost_per_gb: Math.floor(storageMonthlyCost)
+        storage_monthly_cost_per_gb: Math.floor(storageMonthlyCost),
+        payout_minimum_ttd: payoutMinimum,
+        mandatory_topup_ttd: mandatoryTopup,
       })
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Platform Settings" subtitle="Configure point pricing and stream costs." />
+      <PageHeader title="Platform Settings" subtitle="Configure point pricing, payouts, and stream costs." />
       <form action={updateSettings} className="space-y-6 max-w-xl">
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-white/90">Point Pricing</h3>
@@ -112,6 +120,38 @@ export default async function AdminSettingsPage() {
             <Label htmlFor="storage_monthly_cost_per_gb" className="text-white/80">Storage Monthly Cost (points per GB)</Label>
             <Input id="storage_monthly_cost_per_gb" name="storage_monthly_cost_per_gb" type="number" step="1" min="0" defaultValue={settings.storage_monthly_cost_per_gb ?? 4} />
             <p className="text-white/60 text-xs">Monthly cost per GB for storage used over 1 GB free tier. Charged on the 1st of each month.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white/90">Payouts & Wallet</h3>
+          <div className="space-y-2">
+            <Label htmlFor="payout_minimum_ttd" className="text-white/80">Minimum Payout (TTD)</Label>
+            <Input
+              id="payout_minimum_ttd"
+              name="payout_minimum_ttd"
+              type="number"
+              step="0.01"
+              min="1"
+              defaultValue={settings.payout_minimum_ttd ?? 100}
+            />
+            <p className="text-white/60 text-xs">
+              Payouts are generated on the 1st only when a creator&apos;s confirmed earnings exceed this amount.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mandatory_topup_ttd" className="text-white/80">Mandatory Monthly Top-Up (TTD)</Label>
+            <Input
+              id="mandatory_topup_ttd"
+              name="mandatory_topup_ttd"
+              type="number"
+              step="0.01"
+              min="1"
+              defaultValue={settings.mandatory_topup_ttd ?? 50}
+            />
+            <p className="text-white/60 text-xs">
+              Users must top up at least this amount every month. Reminders are scheduled automatically.
+            </p>
           </div>
         </div>
 

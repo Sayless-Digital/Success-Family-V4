@@ -3,7 +3,7 @@
 import React from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { Home, MessageSquare, Video, VideoIcon, Users, Shield } from "lucide-react"
+import { Home, MessageSquare, Video, VideoIcon, Users, Shield, ListMusic } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface CommunityNavigationProps {
@@ -24,7 +24,8 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
     if (pathname === `/${slug}` || pathname === `/${slug}/`) return "home"
     if (pathname === `/${slug}/feed`) return "feed"
     if (pathname === `/${slug}/events`) return "events"
-    if (pathname === `/${slug}/recordings`) return "recordings"
+    if (pathname === `/${slug}/videos`) return "videos"
+    if (pathname === `/${slug}/playlists`) return "playlists"
     if (pathname === `/${slug}/members`) return "members"
     if (pathname === `/${slug}/settings`) return "settings"
     return "home"
@@ -52,12 +53,20 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
           </Link>
         </TabsTrigger>
         {(isOwner || isMember) && (
-          <TabsTrigger value="recordings" asChild>
-            <Link href={`/${slug}/recordings`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
-              <VideoIcon className="h-4 w-4" />
-              Recordings
-            </Link>
-          </TabsTrigger>
+          <>
+            <TabsTrigger value="videos" asChild>
+              <Link href={`/${slug}/videos`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
+                <VideoIcon className="h-4 w-4" />
+                Videos
+              </Link>
+            </TabsTrigger>
+            <TabsTrigger value="playlists" asChild>
+              <Link href={`/${slug}/playlists`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
+                <ListMusic className="h-4 w-4" />
+                Playlists
+              </Link>
+            </TabsTrigger>
+          </>
         )}
         <TabsTrigger value="members" asChild>
           <Link href={`/${slug}/members`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
@@ -77,5 +86,9 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
     </Tabs>
   )
 }
+
+
+
+
 
 
