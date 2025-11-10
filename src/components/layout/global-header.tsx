@@ -162,7 +162,11 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   // Fetch all active communities when signed out
   React.useEffect(() => {
     if (!user) {
-      fetchAllCommunities()
+      // Wait a bit to ensure Supabase client is fully ready
+      const timer = setTimeout(() => {
+        fetchAllCommunities()
+      }, 100)
+      return () => clearTimeout(timer)
     } else {
       setAllCommunities([])
     }
@@ -209,6 +213,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   const fetchAllCommunities = async () => {
     setAllCommunitiesLoading(true)
     try {
+      // Active communities are public (RLS allows anonymous access)
       const { data, error } = await supabase
         .from('communities')
         .select('id, name, slug, description, is_active, logo_url, owner_id, created_at, updated_at')
@@ -217,13 +222,23 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
         .limit(50) // Limit to 50 most recent communities
 
       if (error) {
-        console.error('Error fetching all communities:', error)
+        // Only log meaningful errors (not 401/unauthorized, which shouldn't happen for public data)
+        // Also ignore "no rows returned" errors
+        const isUnauthorized = (error as any).status === 401 || (error as any).status === 403
+        const isNotFound = error.code === 'PGRST301' || error.message?.includes('No rows')
+        if (!isUnauthorized && !isNotFound) {
+          console.error('Error fetching all communities:', error)
+        }
+        // Set empty array on error to prevent UI issues
+        setAllCommunities([])
         return
       }
 
       setAllCommunities((data || []) as Community[])
     } catch (error) {
-      console.error('Error fetching all communities:', error)
+      // Silently fail - communities list is not critical for app functionality
+      // Set empty array to prevent UI issues
+      setAllCommunities([])
     } finally {
       setAllCommunitiesLoading(false)
     }

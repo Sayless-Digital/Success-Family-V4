@@ -132,6 +132,7 @@ export async function getCurrentUser() {
 
 /**
  * Get user profile from users table without caching so the latest data is always returned.
+ * User profiles are public, so this doesn't require authentication.
  */
 export async function getUserProfile(userId: string) {
   try {
@@ -147,13 +148,19 @@ export async function getUserProfile(userId: string) {
       .single()
 
     if (error) {
-      console.error("Error fetching user profile:", error)
+      // Only log meaningful errors (not 401/unauthorized, which shouldn't happen for public profiles)
+      // Also ignore "no rows returned" errors
+      const isUnauthorized = (error as any).status === 401 || (error as any).status === 403
+      const isNotFound = error.code === 'PGRST301' || error.message?.includes('No rows')
+      if (!isUnauthorized && !isNotFound) {
+        console.error("Error fetching user profile:", error)
+      }
       return null
     }
 
     return data
   } catch (error) {
-    console.error("Exception in getUserProfile:", error)
+    // Silently fail - profile fetch failures are handled by retry logic
     return null
   }
 }

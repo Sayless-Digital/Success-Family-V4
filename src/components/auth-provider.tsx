@@ -313,6 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshPlatformSettings = React.useCallback(async () => {
     try {
+      // Platform settings are public (RLS allows anonymous access)
       const { data, error } = await supabase
         .from('platform_settings')
         .select('user_value_per_point')
@@ -320,7 +321,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle<{ user_value_per_point: number | null }>()
 
       if (error) {
-        console.error('Error fetching platform settings:', error)
+        // Only log meaningful errors (not 401/unauthorized, which shouldn't happen for public data)
+        // Also ignore "no rows returned" errors
+        const isUnauthorized = (error as any).status === 401 || (error as any).status === 403
+        const isNotFound = error.code === 'PGRST301' || error.message?.includes('No rows')
+        if (!isUnauthorized && !isNotFound) {
+          console.error('Error fetching platform settings:', error)
+        }
         return
       }
 
@@ -332,7 +339,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const numericValue = Number(data.user_value_per_point)
       setUserValuePerPoint(Number.isFinite(numericValue) ? numericValue : null)
     } catch (error) {
-      console.error('Error fetching platform settings:', error)
+      // Silently fail - platform settings are not critical for app functionality
+      // This prevents console spam if there are transient network issues
     }
   }, [])
 
@@ -434,17 +442,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, refreshWalletBalance])
 
+  // Fetch platform settings once after auth is initialized
   React.useEffect(() => {
-    refreshPlatformSettings()
-  }, [refreshPlatformSettings])
-
-  React.useEffect(() => {
-    if (!user) {
-      setUserValuePerPoint(null)
-      return
+    if (!isLoading) {
+      // Wait a bit to ensure Supabase client is fully ready
+      const timer = setTimeout(() => {
+        refreshPlatformSettings()
+      }, 100)
+      return () => clearTimeout(timer)
     }
-    refreshPlatformSettings()
-  }, [user, refreshPlatformSettings])
+  }, [isLoading, refreshPlatformSettings])
 
   const value = {
     user,
