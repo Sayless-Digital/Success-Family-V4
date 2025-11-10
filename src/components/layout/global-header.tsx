@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
-import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle } from "lucide-react"
+import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle, LogIn, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -39,7 +39,9 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
   const [userCommunities, setUserCommunities] = React.useState<Community[]>([])
+  const [allCommunities, setAllCommunities] = React.useState<Community[]>([])
   const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
+  const [allCommunitiesLoading, setAllCommunitiesLoading] = React.useState(false)
   const [isRetryingProfile, setIsRetryingProfile] = React.useState(false)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const earningsDollarValue = React.useMemo(() => {
@@ -99,10 +101,20 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
       return
     }
 
-    const existing = userCommunities.find((community) => community.slug === currentCommunitySlug)
-    if (existing) {
-      setActiveCommunity(existing)
-      return
+    // Check user communities first if signed in
+    if (user) {
+      const existing = userCommunities.find((community) => community.slug === currentCommunitySlug)
+      if (existing) {
+        setActiveCommunity(existing)
+        return
+      }
+    } else {
+      // Check all communities if signed out
+      const existing = allCommunities.find((community) => community.slug === currentCommunitySlug)
+      if (existing) {
+        setActiveCommunity(existing)
+        return
+      }
     }
 
     let isCancelled = false
@@ -136,7 +148,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
     return () => {
       isCancelled = true
     }
-  }, [currentCommunitySlug, userCommunities])
+  }, [currentCommunitySlug, userCommunities, allCommunities, user])
 
   // Fetch user's communities
   React.useEffect(() => {
@@ -146,6 +158,15 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
       setUserCommunities([])
     }
   }, [user, userProfile])
+
+  // Fetch all active communities when signed out
+  React.useEffect(() => {
+    if (!user) {
+      fetchAllCommunities()
+    } else {
+      setAllCommunities([])
+    }
+  }, [user])
 
   const fetchUserCommunities = async () => {
     if (!user) return
@@ -182,6 +203,29 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
       console.error('Error fetching user communities:', error)
     } finally {
       setCommunitiesLoading(false)
+    }
+  }
+
+  const fetchAllCommunities = async () => {
+    setAllCommunitiesLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('communities')
+        .select('id, name, slug, description, is_active, logo_url, owner_id, created_at, updated_at')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(50) // Limit to 50 most recent communities
+
+      if (error) {
+        console.error('Error fetching all communities:', error)
+        return
+      }
+
+      setAllCommunities((data || []) as Community[])
+    } catch (error) {
+      console.error('Error fetching all communities:', error)
+    } finally {
+      setAllCommunitiesLoading(false)
     }
   }
 
@@ -312,7 +356,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-8 w-8 hover:bg-white/20 touch-feedback"
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
               aria-label="Toggle sidebar"
             >
               <Sidebar className="h-4 w-4" />
@@ -320,60 +364,65 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
           )}
           
           {/* Logo / Communities Dropdown */}
-          {user ? (
-            <DropdownMenu onOpenChange={(open) => {
-              // Remove focus state on mobile when dropdown closes to prevent persistent border
-              if (!open && isMobile && typeof document !== "undefined") {
-                // Blur any focused element after a short delay to ensure dropdown closes first
-                setTimeout(() => {
-                  const activeElement = document.activeElement as HTMLElement
-                  if (activeElement && activeElement.blur) {
-                    activeElement.blur()
-                  }
-                }, 100)
-              }
-            }}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20 touch-feedback cursor-pointer",
-                    "focus-visible:ring-0 focus-visible:ring-offset-0",
-                    "focus:outline-none focus-visible:outline-none",
-                    "active:bg-white/20",
-                    // Remove all focus styles on mobile to prevent persistent border
-                    isMobile && "!ring-0 !ring-offset-0 focus:!ring-0 focus-visible:!ring-0"
+          <DropdownMenu onOpenChange={(open) => {
+            // Remove focus state on mobile when dropdown closes to prevent persistent border
+            if (!open && isMobile && typeof document !== "undefined") {
+              // Blur any focused element after a short delay to ensure dropdown closes first
+              setTimeout(() => {
+                const activeElement = document.activeElement as HTMLElement
+                if (activeElement && activeElement.blur) {
+                  activeElement.blur()
+                }
+              }, 100)
+            }
+          }}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20 touch-feedback cursor-pointer",
+                  "focus-visible:ring-0 focus-visible:ring-offset-0",
+                  "focus:outline-none focus-visible:outline-none",
+                  "active:bg-white/20",
+                  // Remove all focus styles on mobile to prevent persistent border
+                  isMobile && "!ring-0 !ring-offset-0 focus:!ring-0 focus-visible:!ring-0"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  {activeCommunity ? (
+                    <CommunityLogo
+                      name={activeCommunity.name}
+                      logoUrl={activeCommunity.logo_url}
+                      size="sm"
+                      className="border-4 border-white/20"
+                    />
+                  ) : (
+                    <PlatformLogo size="xs" />
                   )}
-                >
-                    <div className="flex items-center gap-2">
-                    {activeCommunity ? (
-                      <CommunityLogo
-                        name={activeCommunity.name}
-                        logoUrl={activeCommunity.logo_url}
-                        size="sm"
-                        className="border-4 border-white/20"
-                      />
-                    ) : (
-                      <PlatformLogo size="xs" />
-                    )}
-                    <span className="font-semibold text-white text-sm truncate max-w-[140px]">
-                      {activeCommunity?.name ?? "Success Family"}
-                    </span>
-                    <ChevronDown className="h-4 w-4 text-white" />
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-64 z-[170000]" align="start" forceMount>
-                <DropdownMenuLabel>
-                  {communitiesLoading 
-                    ? "Your Communities" 
-                    : userCommunities.length > 0 
-                      ? "Your Communities"
-                      : "Communities"
-                  }
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {communitiesLoading ? (
+                  <span className="font-semibold text-white text-sm truncate max-w-[140px]">
+                    {activeCommunity?.name ?? "Success Family"}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-white" />
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64 z-[170000]" align="start" forceMount>
+              <DropdownMenuLabel>
+                {user 
+                  ? (communitiesLoading 
+                      ? "Your Communities" 
+                      : userCommunities.length > 0 
+                        ? "Your Communities"
+                        : "Communities")
+                  : (allCommunitiesLoading 
+                      ? "Communities" 
+                      : "Communities")
+                }
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {user ? (
+                // Signed in - show user's communities
+                communitiesLoading ? (
                   <DropdownMenuItem disabled>
                     <span className="text-sm text-muted-foreground">Loading...</span>
                   </DropdownMenuItem>
@@ -389,7 +438,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                         <span>Browse All Communities</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => (user ? setCreateOpen(true) : (setAuthDialogTab("signin"), setAuthDialogOpen(true)))}>
+                    <DropdownMenuItem onClick={() => setCreateOpen(true)}>
                       <Users className="mr-2 h-4 w-4" />
                       <span>Create Community</span>
                     </DropdownMenuItem>
@@ -429,22 +478,76 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                         <span>Browse All Communities</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => (user ? setCreateOpen(true) : (setAuthDialogTab("signin"), setAuthDialogOpen(true)))}>
+                    <DropdownMenuItem onClick={() => setCreateOpen(true)}>
                       <Users className="mr-2 h-4 w-4" />
                       <span>Create Community</span>
                     </DropdownMenuItem>
                   </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Link href="/" className="flex items-center gap-2">
-              <PlatformLogo size="xs" />
-              <span className="font-semibold text-white hidden sm:block">
-                Success Family
-              </span>
-            </Link>
-          )}
+                )
+              ) : (
+                // Signed out - show all active communities
+                allCommunitiesLoading ? (
+                  <DropdownMenuItem disabled>
+                    <span className="text-sm text-muted-foreground">Loading...</span>
+                  </DropdownMenuItem>
+                ) : allCommunities.length === 0 ? (
+                  <>
+                    <DropdownMenuItem disabled>
+                      <span className="text-sm text-muted-foreground">No communities available</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/communities" className="cursor-pointer">
+                        <Home className="mr-2 h-4 w-4" />
+                        <span>Browse All Communities</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => (setAuthDialogTab("signin"), setAuthDialogOpen(true))}>
+                      <Users className="mr-2 h-4 w-4" />
+                      <span>Create Community</span>
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    {allCommunities.map((community) => (
+                      <DropdownMenuItem key={community.id} asChild>
+                        <Link 
+                          href={`/${community.slug}`} 
+                          className={cn(
+                            "cursor-pointer rounded-md",
+                            activeCommunity?.id === community.id && "bg-white/10 text-white"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <CommunityLogo
+                              name={community.name}
+                              logoUrl={community.logo_url}
+                              size="sm"
+                              className="border-4 border-white/20 flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{community.name}</p>
+                            </div>
+                          </div>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/communities" className="cursor-pointer">
+                        <Home className="mr-2 h-4 w-4" />
+                        <span>Browse All Communities</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => (setAuthDialogTab("signin"), setAuthDialogOpen(true))}>
+                      <Users className="mr-2 h-4 w-4" />
+                      <span>Create Community</span>
+                    </DropdownMenuItem>
+                  </>
+                )
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
@@ -464,37 +567,26 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             </Button>
           ) : !user ? (
             <>
+              {/* Desktop auth buttons only - hide on mobile */}
               <Button
                 variant="ghost"
-                size="sm"
-                className="hidden sm:inline-flex hover:bg-white/20 touch-feedback"
+                className="hidden md:inline-flex h-10 px-3 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
                 onClick={handleSignInClick}
               >
-                Sign In
+                <LogIn className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                <span className="text-xs font-semibold whitespace-nowrap">
+                  Sign In
+                </span>
               </Button>
-              <Button
-                size="sm"
-                className="hidden sm:inline-flex touch-feedback"
-                onClick={handleSignUpClick}
-              >
-                Sign Up
-              </Button>
-              
-              {/* Mobile auth buttons - smaller */}
               <Button
                 variant="ghost"
-                size="sm"
-                className="sm:hidden text-xs px-2 hover:bg-white/20 touch-feedback"
-                onClick={handleSignInClick}
-              >
-                Sign In
-              </Button>
-              <Button
-                size="sm"
-                className="sm:hidden text-xs px-2 touch-feedback"
+                className="hidden md:inline-flex h-10 px-3 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
                 onClick={handleSignUpClick}
               >
-                Sign Up
+                <UserPlus className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                <span className="text-xs font-semibold whitespace-nowrap">
+                  Sign Up
+                </span>
               </Button>
             </>
           ) : user ? (
@@ -537,13 +629,13 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             variant="ghost"
             size="icon"
             onClick={toggleFullscreen}
-            className="h-8 w-8 hover:bg-white/20 touch-feedback"
+            className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
             aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
           >
             {isFullscreen ? (
-              <Minimize2 className="h-4 w-4 text-white/80" />
+              <Minimize2 className="h-4 w-4" />
             ) : (
-              <Maximize2 className="h-4 w-4 text-white/80" />
+              <Maximize2 className="h-4 w-4" />
             )}
           </Button>
           
@@ -553,7 +645,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-8 w-8 hover:bg-white/20 touch-feedback"
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
               aria-label="Toggle sidebar"
             >
               <Menu className="h-4 w-4" />

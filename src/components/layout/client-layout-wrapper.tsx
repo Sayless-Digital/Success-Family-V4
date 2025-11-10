@@ -180,10 +180,10 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     "transition-all duration-300 ease-in-out",
     {
       "pt-0 pb-0 ml-0": isStreamPage,
-      "pt-12": !isStreamPage,
+      "pt-12": !isStreamPage, // Top padding for header (mobile and desktop)
       "ml-64": !isStreamPage && isSidebarPinned && !isMobile,
       "ml-0": !isStreamPage && ((!isSidebarPinned && !isMobile) || isMobile),
-      "pb-12": !isStreamPage && isMobile,
+      "pb-12": !isStreamPage && isMobile, // Bottom padding for mobile bottom nav
     }
   )
 

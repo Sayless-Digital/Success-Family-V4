@@ -163,16 +163,19 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   const shouldShowSidebar = isMobile ? isOpen : (isPinned || isOpen)
 
   const sidebarClasses = cn(
-    "fixed top-14 left-2 w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg",
+    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg",
     {
-      // Mobile: slide from right with full rounding, account for bottom nav (48px)
-      "right-2 left-auto": isMobile,
-      "h-[calc(100dvh-4rem-3rem)]": isMobile, // Header (48px) + Bottom Nav (48px) = 96px = 6rem, but using 4rem+3rem=7rem for calc
+      // Mobile: slide from right - left border (facing content)
+      // Header is h-12 (3rem) fixed at top, bottom nav is h-12 (3rem) fixed at bottom
+      // Sidebar starts at top-14 (3.5rem from top = 3rem header + 0.5rem gap)
+      // Height: Available space from top-14 to bottom, minus bottom nav and gap
+      "top-14 right-2 left-auto border-l border-white/20": isMobile,
+      "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
       "translate-x-0": shouldShowSidebar,
       "translate-x-full": isMobile && !shouldShowSidebar,
-      // Desktop: slide from left with full rounding
-      "left-2": !isMobile,
-      "h-[calc(100dvh-4rem)]": !isMobile,
+      // Desktop: slide from left - right border (facing content)
+      "top-14 left-2 border-r border-white/20": !isMobile, // 3rem header + 0.5rem gap = 3.5rem
+      "h-[calc(100dvh-3.5rem-0.5rem)]": !isMobile, // 100dvh - sidebar top (3.5rem) - bottom spacing (0.5rem)
       "-translate-x-full": !isMobile && !shouldShowSidebar,
       // Hide completely when not showing
       "opacity-0 pointer-events-none": !shouldShowSidebar,
@@ -184,7 +187,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       {/* Desktop hover trigger area when unpinned */}
       {!isMobile && !isPinned && (
         <div
-          className="fixed top-14 left-0 w-8 h-[calc(100dvh-4rem)] z-30"
+          className="fixed top-14 left-0 w-8 h-[calc(100dvh-3.5rem)] z-30"
           onMouseEnter={handleHoverEnter}
           onMouseLeave={handleHoverLeave}
         />
