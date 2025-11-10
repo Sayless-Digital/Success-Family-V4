@@ -2233,7 +2233,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                 ) : (
                   <>
                     {/* Content Preview */}
-                    <p className="text-white/80 text-base line-clamp-3">
+                    <p className="text-white/80 text-base whitespace-pre-wrap break-words">
                       {post.content}
                     </p>
 
@@ -2296,7 +2296,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                             e.stopPropagation()
                             openPostComments(index)
                           }}
-                          className="group flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                          className="group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                         >
                           <Feather className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
                           <span className="text-xs font-medium text-white/70 group-hover:text-white">

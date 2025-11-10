@@ -3,7 +3,14 @@ const nextConfig = {
   // Generate build ID for cache busting
   generateBuildId: async () => {
     // Use environment variable if set, otherwise generate from timestamp
-    return process.env.NEXT_PUBLIC_BUILD_ID || Date.now().toString()
+    // In development, use timestamp for cache busting on every restart
+    // In production, use build ID for stable versioning
+    if (process.env.NEXT_PUBLIC_BUILD_ID) {
+      return process.env.NEXT_PUBLIC_BUILD_ID
+    }
+    // Generate a unique build ID based on current time
+    // This ensures cache busting on every build/restart
+    return `build-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
   },
   // Turbopack is enabled by default in Next.js 16 with --turbo flag
   // No need for experimental.turbo config
@@ -43,12 +50,25 @@ const nextConfig = {
   // Headers for WebSocket support and cache busting
   async headers() {
     return [
+      // Global no-cache for all pages (except static assets)
       {
         source: '/:path*',
         headers: [
           {
             key: 'Connection',
             value: 'keep-alive',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate, max-age=0',
+          },
+          {
+            key: 'Pragma',
+            value: 'no-cache',
+          },
+          {
+            key: 'Expires',
+            value: '0',
           },
         ],
       },
@@ -90,7 +110,7 @@ const nextConfig = {
           },
         ],
       },
-      // Long cache for static assets (immutable)
+      // Long cache for static assets (immutable) - these are versioned by Next.js
       {
         source: '/_next/static/:path*',
         headers: [

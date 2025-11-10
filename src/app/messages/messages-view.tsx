@@ -1367,17 +1367,12 @@ export default function MessagesView({
                       )}
                     >
                       <div className="px-3 py-3 flex items-start gap-3">
-                        <div className="relative">
-                          <Avatar className="h-11 w-11 border-4 border-white/20">
-                            <AvatarImage src={avatarImage} alt={displayName} />
-                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
-                              {initials}
-                            </AvatarFallback>
-                          </Avatar>
-                          {presenceMap[conversation.thread_id] && (
-                            <span className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-emerald-400 border-2 border-background shadow-lg shadow-emerald-500/30" />
-                          )}
-                        </div>
+                        <Avatar className="h-11 w-11 border-4 border-white/20" isOnline={presenceMap[conversation.thread_id] || false}>
+                          <AvatarImage src={avatarImage} alt={displayName} />
+                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-white/80 font-medium truncate">{displayName}</p>
@@ -1432,7 +1427,7 @@ export default function MessagesView({
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
                     )}
-                    <Avatar className="h-11 w-11 border-4 border-white/20">
+                    <Avatar className="h-11 w-11 border-4 border-white/20" isOnline={isPeerOnline}>
                       <AvatarImage src={peerAvatar ?? undefined} alt={peerName} />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
                         {peerInitials}

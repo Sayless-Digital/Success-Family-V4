@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { GlobalLayout } from "@/components/layout/global-layout";
 import { AuthProvider } from "@/components/auth-provider";
+import { OnlineStatusProvider } from "@/components/online-status-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ScrollbarProvider } from "@/components/scrollbar-provider";
 import { HMRErrorSuppressor } from "@/components/hmr-error-suppressor";
@@ -52,9 +53,11 @@ export default function RootLayout({
         <HMRErrorSuppressor />
         <ScrollbarProvider>
           <AuthProvider>
-            <GlobalLayout>
-              {children}
-            </GlobalLayout>
+            <OnlineStatusProvider>
+              <GlobalLayout>
+                {children}
+              </GlobalLayout>
+            </OnlineStatusProvider>
           </AuthProvider>
         </ScrollbarProvider>
       </body>

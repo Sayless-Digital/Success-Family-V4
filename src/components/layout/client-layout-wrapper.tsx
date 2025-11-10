@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { GlobalHeader } from "./global-header"
 import { GlobalSidebar } from "./global-sidebar"
+import { OnlineUsersSidebar } from "./online-users-sidebar"
 import { MobileBottomNav } from "./mobile-bottom-nav"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
@@ -22,9 +23,10 @@ interface ClientLayoutWrapperProps {
 
 export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const pathname = usePathname()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isSidebarPinned, setIsSidebarPinned] = useState(false)
-  const [isMobile, setIsMobile] = useState(true)
+  const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 768 : false
+  const [isSidebarOpen, setIsSidebarOpen] = useState(isDesktop)
+  const [isSidebarPinned, setIsSidebarPinned] = useState(isDesktop)
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const fullscreenTargetRef = useRef<HTMLDivElement | null>(null)
   
@@ -96,9 +98,12 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     // Register service worker with version-based cache busting
     const registerSW = async () => {
       try {
+        // Register service worker - cache headers ensure fresh fetch
+        // updateViaCache: "none" forces browser to check for updates
+        // The service worker route includes ETag and version headers for cache busting
         const registration = await navigator.serviceWorker.register("/sw.js", {
           scope: "/",
-          updateViaCache: "none", // Always check for updates
+          updateViaCache: "none", // Always check for updates, bypass HTTP cache
         })
 
         // Check for updates immediately
@@ -224,18 +229,21 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const pageAreaClasses = cn(
     "transition-all duration-300 ease-in-out",
     {
-      "pt-0 pb-0 ml-0": isStreamPage,
+      "pt-0 pb-0 ml-0 mr-0": isStreamPage,
       "pt-12": !isStreamPage, // Top padding for header (mobile and desktop)
       "ml-64": !isStreamPage && isSidebarPinned && !isMobile,
       "ml-0": !isStreamPage && ((!isSidebarPinned && !isMobile) || isMobile),
       "pb-12": !isStreamPage && isMobile, // Bottom padding for mobile bottom nav
     }
   )
+  
+  // Calculate right margin for online users sidebar (matching w-64 like global sidebar)
+  const contentRightMargin = !isStreamPage && isHomePage && !isMobile ? '16rem' : '0'
 
   return (
     <div
       ref={fullscreenTargetRef}
-      className="min-h-dvh bg-background flex flex-col relative"
+      className="min-h-dvh bg-background flex flex-col relative overflow-hidden"
       style={{
         paddingTop: "env(safe-area-inset-top, 0)",
         paddingBottom: isFullscreen && isMobile
@@ -279,6 +287,9 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
             isMobile={isMobile}
           />
 
+          {/* Online Users Sidebar - Only on home page, desktop */}
+          {isHomePage && <OnlineUsersSidebar isMobile={isMobile} />}
+
           {isMobile && isSidebarOpen && (
             <div
               className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[950] transition-opacity duration-300"
@@ -289,11 +300,16 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         </>
       )}
 
-      <main className={cn(pageAreaClasses, "flex-1 relative z-10 overflow-y-auto min-h-0 flex flex-col")}>
+      <main
+        className={cn(pageAreaClasses, "flex-1 relative z-10 overflow-y-auto min-h-0 flex flex-col")}
+        style={{
+          marginRight: contentRightMargin,
+        }}
+      >
         {isStreamPage ? (
           children
         ) : (
-          <div className="pt-4 pb-4 px-4 sm:px-6 lg:px-8 flex-1 flex flex-col">
+          <div className="pt-2.5 pb-4 px-4 sm:px-6 lg:px-8 flex-1 flex flex-col">
             {children}
           </div>
         )}

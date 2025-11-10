@@ -447,6 +447,52 @@
     }
   }
 
+  @keyframes ripple-grow {
+    0%, 100% {
+      transform: translate(-50%, -50%) scale(0.9);
+      opacity: 0.8;
+    }
+    50% {
+      transform: translate(-50%, -50%) scale(1.1);
+      opacity: 0.2;
+    }
+  }
+
+  .avatar-online-ripple {
+    position: relative;
+    display: inline-block;
+    overflow: visible;
+    padding: 8px;
+    margin: -8px;
+  }
+
+  .avatar-online-ripple::before,
+  .avatar-online-ripple::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(100% - 16px);
+    height: calc(100% - 16px);
+    border: 2.5px solid rgb(16 185 129); /* emerald-500 */
+    border-radius: 50%;
+    transform-origin: center center;
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.8;
+    pointer-events: none;
+    z-index: 0;
+    box-sizing: border-box;
+  }
+
+  .avatar-online-ripple::before {
+    animation: ripple-grow 3s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+  }
+
+  .avatar-online-ripple::after {
+    animation: ripple-grow 3s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+    animation-delay: 1.5s;
+  }
+
   /* Ensure loading states have smooth transitions too */
   .page-transition-enter {
     animation: fade-in 0.2s ease-out;

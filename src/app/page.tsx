@@ -7,10 +7,10 @@ export default async function HomePage() {
   const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   
-  // Get platform settings for payout calculation
+  // Get platform settings for payout calculation and user goal
   const { data: settings } = await supabase
     .from('platform_settings')
-    .select('payout_minimum_ttd, user_value_per_point')
+    .select('payout_minimum_ttd, user_value_per_point, user_goal')
     .single()
   
   const payoutMinimumTtd = Number(settings?.payout_minimum_ttd ?? 100)
@@ -18,6 +18,14 @@ export default async function HomePage() {
   const minimumPayoutPoints = userValuePerPoint > 0 
     ? Math.ceil(payoutMinimumTtd / userValuePerPoint)
     : 0
+  
+  // Get total user count
+  const { count: totalUsers } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+  
+  const userGoal = Number(settings?.user_goal ?? 100)
+  const currentUserCount = totalUsers ?? 0
   
   // Fetch posts from all active communities
   const { data: posts, error: postsError } = await supabase
@@ -57,7 +65,7 @@ export default async function HomePage() {
   
   // If no posts, show empty state
   if (!posts || posts.length === 0) {
-    return <DiscoveryFeedView posts={[]} currentUserId={user?.id} initialRelativeTimes={{}} payoutMinimumPoints={minimumPayoutPoints} />
+    return <DiscoveryFeedView posts={[]} currentUserId={user?.id} initialRelativeTimes={{}} payoutMinimumPoints={minimumPayoutPoints} currentUserCount={currentUserCount} userGoal={userGoal} />
   }
   
   const postIds = posts.map(p => p.id)
@@ -210,6 +218,8 @@ export default async function HomePage() {
       currentUserId={user?.id}
       initialRelativeTimes={initialRelativeTimes}
       payoutMinimumPoints={minimumPayoutPoints}
+      currentUserCount={currentUserCount}
+      userGoal={userGoal}
     />
   )
 }
