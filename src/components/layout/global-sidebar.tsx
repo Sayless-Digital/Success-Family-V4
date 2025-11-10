@@ -163,18 +163,18 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   const shouldShowSidebar = isMobile ? isOpen : (isPinned || isOpen)
 
   const sidebarClasses = cn(
-    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg",
+    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg border border-white/20",
     {
-      // Mobile: slide from right - left border (facing content)
+      // Mobile: slide from right
       // Header is h-12 (3rem) fixed at top, bottom nav is h-12 (3rem) fixed at bottom
       // Sidebar starts at top-14 (3.5rem from top = 3rem header + 0.5rem gap)
       // Height: Available space from top-14 to bottom, minus bottom nav and gap
-      "top-14 right-2 left-auto border-l border-white/20": isMobile,
+      "top-14 right-2 left-auto": isMobile,
       "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
       "translate-x-0": shouldShowSidebar,
       "translate-x-full": isMobile && !shouldShowSidebar,
-      // Desktop: slide from left - right border (facing content)
-      "top-14 left-2 border-r border-white/20": !isMobile, // 3rem header + 0.5rem gap = 3.5rem
+      // Desktop: slide from left
+      "top-14 left-2": !isMobile, // 3rem header + 0.5rem gap = 3.5rem
       "h-[calc(100dvh-3.5rem-0.5rem)]": !isMobile, // 100dvh - sidebar top (3.5rem) - bottom spacing (0.5rem)
       "-translate-x-full": !isMobile && !shouldShowSidebar,
       // Hide completely when not showing
