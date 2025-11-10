@@ -68,17 +68,20 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
   // Show skeleton only while wallet data is actively loading, not when it's null (null is valid state)
   const isWalletLoading = Boolean(user && !walletDataLoaded)
   const isProfileLoading = Boolean(user && !userProfile && !isLoading)
-  // Show wallet skeletons during initial auth check or when wallet data is loading
-  const showWalletSkeletons = isLoading || (user && isWalletLoading)
+  // Show wallet skeletons only when user exists and wallet data is loading
+  const showWalletSkeletons = user && isWalletLoading
 
   // Only show on mobile - always render the bar structure immediately
   if (!isMobile) {
     return null
   }
 
-  // Show wallet buttons if user is authenticated OR if we're still loading (to show skeletons)
-  const showWalletButtons = user && !isLoading
+  // Show wallet buttons if user is authenticated (show skeletons while loading wallet data)
+  const showWalletButtons = user
+  // Show auth buttons if no user and not loading
   const showAuthButtons = !user && !isLoading
+  // Show auth button skeletons if no user and still loading
+  const showAuthButtonSkeletons = !user && isLoading
 
   return (
     <>
@@ -150,23 +153,21 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                   </span>
                 </Button>
               </>
-            ) : isLoading ? (
+            ) : showAuthButtonSkeletons ? (
               <>
                 <Button 
                   variant="ghost" 
-                  className="h-10 px-2 bg-white/10 text-white/80 touch-feedback"
+                  className="h-10 px-3 bg-white/10 text-white/80 touch-feedback"
                   disabled
                 >
-                  <WalletIcon className="h-3.5 w-3.5 mr-1.5 flex-shrink-0 opacity-50" />
-                  <Skeleton className="h-3 w-12 bg-white/20" />
+                  <Skeleton className="h-3 w-16 bg-white/20" />
                 </Button>
                 <Button
                   variant="ghost"
-                  className="h-10 px-2 bg-white/10 text-white/80 touch-feedback"
+                  className="h-10 px-3 bg-white/10 text-white/80 touch-feedback"
                   disabled
                 >
-                  <Coins className="h-3.5 w-3.5 mr-1.5 flex-shrink-0 opacity-50" />
-                  <Skeleton className="h-3 w-14 bg-white/20" />
+                  <Skeleton className="h-3 w-16 bg-white/20" />
                 </Button>
               </>
             ) : null}

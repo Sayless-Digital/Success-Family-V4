@@ -93,11 +93,56 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
 
     if (!isSecureOrigin) return
 
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
-      .catch((error) => {
+    // Register service worker with version-based cache busting
+    const registerSW = async () => {
+      try {
+        const registration = await navigator.serviceWorker.register("/sw.js", {
+          scope: "/",
+          updateViaCache: "none", // Always check for updates
+        })
+
+        // Check for updates immediately
+        registration.update()
+
+        // Listen for service worker updates
+        registration.addEventListener("updatefound", () => {
+          const newWorker = registration.installing
+          if (!newWorker) return
+
+          newWorker.addEventListener("statechange", () => {
+            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+              // New service worker is available
+              console.log("[PWA] New service worker available")
+              // Force activation
+              newWorker.postMessage({ type: "SKIP_WAITING" })
+            }
+          })
+        })
+
+        // Listen for controller change (new SW activated)
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          console.log("[PWA] Service worker updated, reloading page")
+          // Reload to get the latest version
+          window.location.reload()
+        })
+
+        // Periodically check for updates (every 5 minutes)
+        setInterval(() => {
+          registration.update()
+        }, 5 * 60 * 1000)
+
+        // Check for updates on page visibility change
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) {
+            registration.update()
+          }
+        })
+      } catch (error) {
         console.error("[PWA] Service worker registration failed", error)
-      })
+      }
+    }
+
+    registerSW()
   }, [])
 
   useEffect(() => {

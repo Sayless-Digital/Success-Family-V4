@@ -7,6 +7,7 @@
     "dev:http": "next dev --turbo",
     "dev:https": "node server.js",
     "setup:https": "bash scripts/setup-https.sh || ./scripts/setup-https.sh",
+    "prebuild": "node scripts/generate-build-id.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

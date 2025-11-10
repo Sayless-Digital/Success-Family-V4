@@ -40,6 +40,20 @@ export async function middleware(request: NextRequest) {
     
     await Promise.race([userPromise, timeoutPromise])
 
+    // Add cache-busting headers for HTML pages
+    const pathname = request.nextUrl.pathname
+    const isHTMLPage = !pathname.startsWith('/_next') && 
+                       !pathname.startsWith('/api') && 
+                       !pathname.includes('.') &&
+                       !pathname.startsWith('/sw.js') &&
+                       !pathname.startsWith('/manifest.webmanifest')
+
+    if (isHTMLPage) {
+      supabaseResponse.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+      supabaseResponse.headers.set('Pragma', 'no-cache')
+      supabaseResponse.headers.set('Expires', '0')
+    }
+
     return supabaseResponse
   } catch (error) {
     console.error('Middleware error:', error)

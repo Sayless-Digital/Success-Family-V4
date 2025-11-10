@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Generate build ID for cache busting
+  generateBuildId: async () => {
+    // Use environment variable if set, otherwise generate from timestamp
+    return process.env.NEXT_PUBLIC_BUILD_ID || Date.now().toString()
+  },
   // Turbopack is enabled by default in Next.js 16 with --turbo flag
   // No need for experimental.turbo config
   
@@ -35,7 +40,7 @@ const nextConfig = {
     '10.76.78.173',
   ] : [],
   
-  // Headers for WebSocket support
+  // Headers for WebSocket support and cache busting
   async headers() {
     return [
       {
@@ -44,6 +49,54 @@ const nextConfig = {
           {
             key: 'Connection',
             value: 'keep-alive',
+          },
+        ],
+      },
+      // Cache busting for service worker
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate, max-age=0',
+          },
+          {
+            key: 'Pragma',
+            value: 'no-cache',
+          },
+          {
+            key: 'Expires',
+            value: '0',
+          },
+        ],
+      },
+      // Cache busting for manifest
+      {
+        source: '/manifest.webmanifest',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate, max-age=0',
+          },
+        ],
+      },
+      // No cache for API routes
+      {
+        source: '/api/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate, max-age=0',
+          },
+        ],
+      },
+      // Long cache for static assets (immutable)
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
           },
         ],
       },
