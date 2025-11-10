@@ -130,9 +130,10 @@
         <li>Reloads the app with fresh data</li>
       </ol>
       
-      <h2 style="margin-top: 24px;">Manual Alternative:</h2>
+      <h2 style="margin-top: 24px;">Manual Alternative (Recommended):</h2>
       <ol>
-        <li>Open DevTools (F12)</li>
+        <li>Press <strong>Ctrl+Shift+R</strong> (Windows/Linux) or <strong>Cmd+Shift+R</strong> (Mac) to hard refresh</li>
+        <li>Or open DevTools (F12)</li>
         <li>Go to Application tab</li>
         <li>Click "Clear site data"</li>
         <li>Reload the page</li>
@@ -190,7 +191,7 @@
         
       } catch (error) {
         console.error('Error clearing cache:', error);
-        status.textContent = '✗ Error: ' + error.message + '. Try manual clearing.';
+        status.textContent = '✗ Error: ' + error.message + '. Try manual clearing or hard refresh (Ctrl+Shift+R).';
         status.className = 'status show error';
       }
     }

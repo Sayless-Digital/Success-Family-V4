@@ -57,26 +57,27 @@ const swSource = `
     );
   });
 
-  // Network-first strategy with no caching
+  // Network-first strategy - pass through without modification
   self.addEventListener("fetch", (event) => {
-    if (event.request.method !== "GET") return;
+    const url = new URL(event.request.url);
+    
+    // NEVER intercept these - let them go through normally
+    const shouldSkip = 
+      event.request.method !== "GET" ||
+      url.hostname.includes("supabase.co") ||
+      url.pathname.startsWith("/api/") ||
+      url.hostname !== self.location.hostname;
+    
+    if (shouldSkip) {
+      // Don't intercept - let the request go through normally
+      return;
+    }
 
-    // Always fetch from network, never cache
+    // For same-origin GET requests, use network-first with no caching
     event.respondWith(
-      fetch(event.request, {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
-        },
-      })
-        .then((response) => {
-          // Clone the response before returning
-          return response;
-        })
+      fetch(event.request)
         .catch((error) => {
           console.error("[SW] Fetch failed:", error);
-          // Fallback to network request without cache headers
           return fetch(event.request);
         })
     );
