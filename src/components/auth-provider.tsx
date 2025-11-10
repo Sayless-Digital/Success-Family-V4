@@ -15,6 +15,7 @@ interface AuthContextType {
   nextTopupDueOn: string | null
   userValuePerPoint: number | null
   isLoading: boolean
+  walletDataLoaded: boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   refreshWalletBalance: () => Promise<void>
@@ -85,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userValuePerPoint, setUserValuePerPoint] = React.useState<number | null>(null)
   const [nextTopupDueOn, setNextTopupDueOn] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  const [walletDataLoaded, setWalletDataLoaded] = React.useState(false)
   const [profileError, setProfileError] = React.useState(false)
 
   // Helper to clear all auth state
@@ -95,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setWalletEarningsBalance(null)
     setWalletLockedEarningsBalance(null)
     setNextTopupDueOn(null)
+    setWalletDataLoaded(false)
     setProfileError(false)
   }, [])
 
@@ -349,14 +352,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('user_id', user.id)
         .maybeSingle()
       
-      if (!error && data) {
+      if (error) {
+        console.error('Error fetching wallet:', error)
+        // If error, set to null to indicate no wallet (user needs first top-up)
+        setWalletBalance(null)
+        setWalletEarningsBalance(null)
+        setWalletLockedEarningsBalance(null)
+        setNextTopupDueOn(null)
+        return
+      }
+
+      if (data) {
         setWalletBalance(Number(data.points_balance))
         setWalletEarningsBalance(Number(data.earnings_points ?? 0))
         setWalletLockedEarningsBalance(Number(data.locked_earnings_points ?? 0))
         setNextTopupDueOn(data.next_topup_due_on ?? null)
+      } else {
+        // No wallet record exists - user needs first top-up
+        setWalletBalance(null)
+        setWalletEarningsBalance(null)
+        setWalletLockedEarningsBalance(null)
+        setNextTopupDueOn(null)
       }
+      setWalletDataLoaded(true)
     } catch (error) {
       console.error('Error refreshing wallet balance:', error)
+      // On error, set to null
+      setWalletBalance(null)
+      setWalletEarningsBalance(null)
+      setWalletLockedEarningsBalance(null)
+      setNextTopupDueOn(null)
+      setWalletDataLoaded(true)
     }
   }, [user])
 
@@ -367,6 +393,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setWalletEarningsBalance(null)
       setWalletLockedEarningsBalance(null)
       setNextTopupDueOn(null)
+      setWalletDataLoaded(false)
       return
     }
 
@@ -428,6 +455,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     nextTopupDueOn,
     userValuePerPoint,
     isLoading,
+    walletDataLoaded,
     signOut: handleSignOut,
     refreshProfile,
     refreshWalletBalance,

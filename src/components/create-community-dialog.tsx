@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Building2 } from "lucide-react"
+import { Building2, Sparkles, AlertCircle, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -11,22 +11,29 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import { useTopupCheck } from "@/hooks/use-topup-check"
-import { TopUpDialog } from "@/components/topup-dialog"
+import { cn } from "@/lib/utils"
 
 interface CreateCommunityDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
+const MAX_NAME_LENGTH = 100
+const MAX_DESCRIPTION_LENGTH = 500
+
 export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDialogProps) {
   const router = useRouter()
   const { user } = useAuth()
-  const { needsTopup, topupMessage } = useTopupCheck()
+  const { needsTopup } = useTopupCheck()
   const [name, setName] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [showTopupDialog, setShowTopupDialog] = React.useState(false)
+
+  const nameLength = name.length
+  const descriptionLength = description.length
+  const isNameValid = name.trim().length > 0 && nameLength <= MAX_NAME_LENGTH
+  const isDescriptionValid = descriptionLength <= MAX_DESCRIPTION_LENGTH
 
   const reset = () => {
     setName("")
@@ -42,12 +49,24 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
     
     // Check if user needs to top up
     if (needsTopup) {
-      setShowTopupDialog(true)
+      onOpenChange(false)
+      const returnUrl = encodeURIComponent('/communities')
+      router.push(`/topup?returnUrl=${returnUrl}`)
       return
     }
     
     if (!name.trim()) {
       setError("Community name is required.")
+      return
+    }
+
+    if (nameLength > MAX_NAME_LENGTH) {
+      setError(`Community name must be ${MAX_NAME_LENGTH} characters or less.`)
+      return
+    }
+
+    if (descriptionLength > MAX_DESCRIPTION_LENGTH) {
+      setError(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less.`)
       return
     }
 
@@ -103,65 +122,171 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
     }
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      if (isNameValid && isDescriptionValid && !submitting) {
+        handleCreate()
+      }
+    }
+  }
+
   return (
-    <>
-      <TopUpDialog 
-        open={showTopupDialog} 
-        onOpenChange={setShowTopupDialog}
-        message={topupMessage || undefined}
-        actionText="Top Up to Create Community"
-      />
-      <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset() }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Building2 className="h-4 w-4 text-white/80" />
-              Create Community
-            </DialogTitle>
-            <DialogDescription className="text-white/60">
-              Set the name and optional description for your new community space.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="cc-name" className="text-white">Community Name</Label>
-              <Input
-                id="cc-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Tech Innovators Network"
-                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
-              />
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset() }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 border border-white/20">
+              <Building2 className="h-5 w-5 text-white/80" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="cc-desc" className="text-white">Description (optional)</Label>
-              <Textarea
-                id="cc-desc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Brief description of your community..."
-                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
-                rows={4}
-              />
-            </div>
-            {error && <p className="text-sm text-white/70">{error}</p>}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={submitting}
-                className="border-white/20 text-white hover:bg-white/10"
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleCreate} disabled={submitting}>
-                {submitting ? 'Creating…' : 'Create'}
-              </Button>
+            <div className="flex-1">
+              <DialogTitle className="text-xl font-semibold text-white">
+                Create New Community
+              </DialogTitle>
+              <DialogDescription className="text-white/60 mt-1">
+                Build a space for your community to connect and grow
+              </DialogDescription>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+        </DialogHeader>
+
+        <div className="space-y-6 pt-2">
+          {/* Community Name Field */}
+          <div className="space-y-2">
+            <Label htmlFor="cc-name" className="text-white/90 font-medium flex items-center gap-2">
+              <span>Community Name</span>
+              <span className="text-white/40 text-xs font-normal">(required)</span>
+            </Label>
+            <Input
+              id="cc-name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setError(null)
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g., Tech Innovators Network"
+              className={cn(
+                "bg-white/5 border-white/20 text-white placeholder:text-white/40",
+                "focus-visible:border-white/40 focus-visible:ring-white/20",
+                "transition-colors",
+                nameLength > 0 && !isNameValid && "border-red-500/50 focus-visible:border-red-500/50"
+              )}
+              disabled={submitting}
+              maxLength={MAX_NAME_LENGTH}
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/50">
+                Choose a name that reflects your community's purpose
+              </p>
+              <span className={cn(
+                "text-xs transition-colors",
+                nameLength > MAX_NAME_LENGTH 
+                  ? "text-red-400" 
+                  : nameLength > MAX_NAME_LENGTH * 0.8 
+                    ? "text-white/60" 
+                    : "text-white/40"
+              )}>
+                {nameLength}/{MAX_NAME_LENGTH}
+              </span>
+            </div>
+          </div>
+
+          {/* Description Field */}
+          <div className="space-y-2">
+            <Label htmlFor="cc-desc" className="text-white/90 font-medium flex items-center gap-2">
+              <span>Description</span>
+              <span className="text-white/40 text-xs font-normal">(optional)</span>
+            </Label>
+            <Textarea
+              id="cc-desc"
+              value={description}
+              onChange={(e) => {
+                setDescription(e.target.value)
+                setError(null)
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="What makes your community special? Share a brief overview..."
+              className={cn(
+                "bg-white/5 border-white/20 text-white placeholder:text-white/40",
+                "focus-visible:border-white/40 focus-visible:ring-white/20",
+                "transition-colors resize-none",
+                descriptionLength > 0 && !isDescriptionValid && "border-red-500/50 focus-visible:border-red-500/50"
+              )}
+              rows={4}
+              disabled={submitting}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-white/50">
+                Help others understand what your community is about
+              </p>
+              <span className={cn(
+                "text-xs transition-colors",
+                descriptionLength > MAX_DESCRIPTION_LENGTH 
+                  ? "text-red-400" 
+                  : descriptionLength > MAX_DESCRIPTION_LENGTH * 0.8 
+                    ? "text-white/60" 
+                    : "text-white/40"
+              )}>
+                {descriptionLength}/{MAX_DESCRIPTION_LENGTH}
+              </span>
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="flex items-start gap-2 p-3 rounded-md bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-red-200 flex-1">{error}</p>
+            </div>
+          )}
+
+          {/* Helpful Tip */}
+          {!error && (
+            <div className="flex items-start gap-2 p-3 rounded-md bg-white/5 border border-white/10">
+              <Sparkles className="h-4 w-4 text-white/60 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-white/60">
+                Tip: You can customize your community settings, logo, and branding after creation.
+              </p>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+              className="border-white/20 text-white hover:bg-white/10 hover:border-white/30"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreate} 
+              disabled={submitting || !isNameValid || !isDescriptionValid}
+              className="min-w-[120px]"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Create Community
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Keyboard Shortcut Hint */}
+          <p className="text-xs text-white/40 text-center">
+            Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs font-mono">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs font-mono">Enter</kbd> to create
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

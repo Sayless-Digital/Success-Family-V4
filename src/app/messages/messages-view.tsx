@@ -863,7 +863,7 @@ export default function MessagesView({
           const extension = file.name?.split(".").pop() ?? "bin"
           const { bucket, objectPath, storagePath } = buildDmMediaStoragePath(viewer.id, extension)
           const { error } = await supabase.storage.from(bucket).upload(objectPath, file, {
-            cacheControl: "3600",
+            cacheControl: "0",
             upsert: false,
             contentType: file.type || "application/octet-stream",
           })

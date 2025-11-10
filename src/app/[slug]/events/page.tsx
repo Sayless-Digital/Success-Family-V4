@@ -14,7 +14,7 @@ export default async function CommunityEventsPage({ params }: CommunityEventsPag
   const { slug } = await params
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community data (cached)
+  // Fetch community data (always fresh)
   const community = await getCommunityBySlug(slug)
   if (!community) {
     notFound()

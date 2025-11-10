@@ -1,12 +1,9 @@
-import { cache } from "react"
 import { createServerSupabaseClient } from "./supabase-server"
 
 /**
- * Cached community data fetcher
- * Uses React cache() to deduplicate requests within the same render
- * This makes navigation between community pages instant since community data is cached
+ * Fetches community data by slug without caching to ensure the latest content is returned.
  */
-export const getCommunityBySlug = cache(async (slug: string) => {
+export const getCommunityBySlug = async (slug: string) => {
   const supabase = await createServerSupabaseClient()
   
   const { data: community, error } = await supabase
@@ -29,11 +26,4 @@ export const getCommunityBySlug = cache(async (slug: string) => {
   }
 
   return community
-})
-
-
-
-
-
-
-
+}

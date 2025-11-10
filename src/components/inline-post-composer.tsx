@@ -400,7 +400,7 @@ export function InlinePostComposer({
         .from('post-media')
         .upload(filePath, file, {
           contentType: file.type,
-          cacheControl: '3600',
+          cacheControl: '0',
           upsert: false
         })
 
@@ -444,7 +444,7 @@ export function InlinePostComposer({
         .from('post-media')
         .upload(filePath, file, {
           contentType: file.type,
-          cacheControl: '3600',
+          cacheControl: '0',
           upsert: false
         })
 

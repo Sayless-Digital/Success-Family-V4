@@ -189,7 +189,7 @@ export default function CommunityVideosView({
       const { error: uploadError } = await supabase.storage
         .from(BUCKET_NAME)
         .upload(objectPath, uploadFile, {
-          cacheControl: "3600",
+          cacheControl: "0",
           contentType,
           upsert: false,
         })

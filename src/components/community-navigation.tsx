@@ -1,12 +1,11 @@
 "use client"
 
 import React from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Home, MessageSquare, Video, VideoIcon, Users, Shield, ListMusic } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTopupCheck } from "@/hooks/use-topup-check"
-import { TopUpDialog } from "@/components/topup-dialog"
 
 interface CommunityNavigationProps {
   slug: string
@@ -20,8 +19,8 @@ interface CommunityNavigationProps {
  */
 export function CommunityNavigation({ slug, isOwner = false, isMember = false }: CommunityNavigationProps) {
   const pathname = usePathname()
-  const { needsTopup, topupMessage } = useTopupCheck()
-  const [showTopupDialog, setShowTopupDialog] = React.useState(false)
+  const router = useRouter()
+  const { needsTopup } = useTopupCheck()
   
   // Determine active tab based on pathname
   const getActiveTab = React.useMemo(() => {
@@ -35,23 +34,16 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
     return "home"
   }, [pathname, slug])
 
-  const handleRestrictedClick = (e: React.MouseEvent) => {
+  const handleRestrictedClick = (e: React.MouseEvent, targetPath: string) => {
     if (needsTopup) {
       e.preventDefault()
-      setShowTopupDialog(true)
+      const returnUrl = encodeURIComponent(targetPath)
+      router.push(`/topup?returnUrl=${returnUrl}`)
     }
   }
 
   return (
-    <>
-      <TopUpDialog 
-        open={showTopupDialog} 
-        onOpenChange={setShowTopupDialog}
-        message={topupMessage || undefined}
-        actionText="Top Up to Access Community"
-      />
-      
-      <Tabs value={getActiveTab} className="w-full">
+    <Tabs value={getActiveTab} className="w-full">
         <TabsList className="w-full">
           <TabsTrigger value="home" asChild>
             <Link href={`/${slug}`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
@@ -64,7 +56,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
               href={needsTopup ? '#' : `/${slug}/feed`} 
               className="flex items-center gap-2 touch-feedback" 
               prefetch={!needsTopup}
-              onClick={handleRestrictedClick}
+              onClick={(e) => handleRestrictedClick(e, `/${slug}/feed`)}
             >
               <MessageSquare className="h-4 w-4" />
               Feed
@@ -75,7 +67,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
               href={needsTopup ? '#' : `/${slug}/events`} 
               className="flex items-center gap-2 touch-feedback" 
               prefetch={!needsTopup}
-              onClick={handleRestrictedClick}
+              onClick={(e) => handleRestrictedClick(e, `/${slug}/events`)}
             >
               <Video className="h-4 w-4" />
               Events
@@ -88,7 +80,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
                   href={needsTopup ? '#' : `/${slug}/videos`} 
                   className="flex items-center gap-2 touch-feedback" 
                   prefetch={!needsTopup}
-                  onClick={handleRestrictedClick}
+                  onClick={(e) => handleRestrictedClick(e, `/${slug}/videos`)}
                 >
                   <VideoIcon className="h-4 w-4" />
                   Videos
@@ -99,7 +91,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
                   href={needsTopup ? '#' : `/${slug}/playlists`} 
                   className="flex items-center gap-2 touch-feedback" 
                   prefetch={!needsTopup}
-                  onClick={handleRestrictedClick}
+                  onClick={(e) => handleRestrictedClick(e, `/${slug}/playlists`)}
                 >
                   <ListMusic className="h-4 w-4" />
                   Playlists
@@ -112,7 +104,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
               href={needsTopup ? '#' : `/${slug}/members`} 
               className="flex items-center gap-2 touch-feedback" 
               prefetch={!needsTopup}
-              onClick={handleRestrictedClick}
+              onClick={(e) => handleRestrictedClick(e, `/${slug}/members`)}
             >
               <Users className="h-4 w-4" />
               Members
@@ -124,7 +116,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
                 href={needsTopup ? '#' : `/${slug}/settings`} 
                 className="flex items-center gap-2 touch-feedback" 
                 prefetch={!needsTopup}
-                onClick={handleRestrictedClick}
+                onClick={(e) => handleRestrictedClick(e, `/${slug}/settings`)}
               >
                 <Shield className="h-4 w-4" />
                 Settings
@@ -133,6 +125,5 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
           )}
         </TabsList>
       </Tabs>
-    </>
   )
 }

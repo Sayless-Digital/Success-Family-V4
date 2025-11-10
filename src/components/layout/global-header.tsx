@@ -23,6 +23,7 @@ import { supabase } from "@/lib/supabase"
 import type { Community } from "@/types"
 import { CreateCommunityDialog } from "@/components/create-community-dialog"
 import { CommunityLogo } from "@/components/community-logo"
+import { PlatformLogo } from "@/components/platform-logo"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -54,7 +55,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   }, [walletEarningsBalance, userValuePerPoint])
   const earningsDisplay = React.useMemo(() => {
     if (earningsDollarValue === null) {
-      return "—"
+      return "$0.00 TTD"
     }
     const formatted = earningsDollarValue.toLocaleString("en-US", {
       minimumFractionDigits: 2,
@@ -320,19 +321,41 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
           
           {/* Logo / Communities Dropdown */}
           {user ? (
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => {
+              // Remove focus state on mobile when dropdown closes to prevent persistent border
+              if (!open && isMobile && typeof document !== "undefined") {
+                // Blur any focused element after a short delay to ensure dropdown closes first
+                setTimeout(() => {
+                  const activeElement = document.activeElement as HTMLElement
+                  if (activeElement && activeElement.blur) {
+                    activeElement.blur()
+                  }
+                }, 100)
+              }
+            }}>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20 touch-feedback cursor-pointer"
+                  className={cn(
+                    "h-auto p-1 gap-2 hover:bg-white/20 data-[state=open]:bg-white/20 touch-feedback cursor-pointer",
+                    "focus-visible:ring-0 focus-visible:ring-offset-0",
+                    "focus:outline-none focus-visible:outline-none",
+                    "active:bg-white/20",
+                    // Remove all focus styles on mobile to prevent persistent border
+                    isMobile && "!ring-0 !ring-offset-0 focus:!ring-0 focus-visible:!ring-0"
+                  )}
                 >
                     <div className="flex items-center gap-2">
-                    <CommunityLogo
-                      name={activeCommunity?.name ?? "Success Family"}
-                      logoUrl={activeCommunity?.logo_url}
-                      size="sm"
-                      className="border-4 border-white/20"
-                    />
+                    {activeCommunity ? (
+                      <CommunityLogo
+                        name={activeCommunity.name}
+                        logoUrl={activeCommunity.logo_url}
+                        size="sm"
+                        className="border-4 border-white/20"
+                      />
+                    ) : (
+                      <PlatformLogo size="xs" />
+                    )}
                     <span className="font-semibold text-white text-sm truncate max-w-[140px]">
                       {activeCommunity?.name ?? "Success Family"}
                     </span>
@@ -416,7 +439,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             </DropdownMenu>
           ) : (
             <Link href="/" className="flex items-center gap-2">
-              <CommunityLogo name="Success Family" size="sm" className="border-4 border-white/20" />
+              <PlatformLogo size="xs" />
               <span className="font-semibold text-white hidden sm:block">
                 Success Family
               </span>
@@ -427,8 +450,8 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
         <div className="flex items-center gap-2">
           {isLoading ? (
-            // Show loading state to prevent flash - but with timeout protection
-            <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse" />
+            // Show loading state to prevent flash - but with timeout protection (desktop only)
+            <div className="hidden md:block h-8 w-8 rounded-full bg-white/10 animate-pulse" />
           ) : user && !userProfile && !isRetryingProfile ? (
             // User is authenticated but profile failed to load - show retry option
             <Button
@@ -480,7 +503,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                 <Link href="/wallet" className="cursor-pointer">
                   <Button variant="ghost" className="h-8 px-2 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
                     <WalletIcon className="h-4 w-4 mr-1" />
-                    <span className="text-sm">{walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}</span>
+                    <span className="text-sm">{walletBalance === null ? '0 pts' : `${Math.trunc(walletBalance)} pts`}</span>
                   </Button>
                 </Link>
                 <Link href="/wallet?tab=payouts" className="cursor-pointer">

@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { AlertCircle, Upload, FileText, X } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useRouter } from "next/navigation"
+import { AlertCircle, Wallet, Upload, FileText, X } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -12,34 +13,34 @@ import { CopyField } from "@/components/ui/copy-field"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 
-interface TopUpDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  message?: string
-  actionText?: string
+interface TopUpPageViewProps {
+  banks: Array<{
+    id: string
+    account_name: string
+    bank_name: string
+    account_number: string
+    account_type: string
+  }>
+  mandatoryTopupTtd: number
+  buyPricePerPoint: number
+  returnUrl: string
 }
 
-interface Bank {
-  id: string
-  account_name: string
-  bank_name: string
-  account_number: string
-  account_type: string
-}
-
-export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up Required" }: TopUpDialogProps) {
-  const { user } = useAuth()
+export function TopUpPageView({ 
+  banks, 
+  mandatoryTopupTtd, 
+  buyPricePerPoint,
+  returnUrl 
+}: TopUpPageViewProps) {
   const router = useRouter()
-  const [banks, setBanks] = React.useState<Bank[]>([])
-  const [mandatoryTopupTtd, setMandatoryTopupTtd] = React.useState<number>(25)
-  const [buyPricePerPoint, setBuyPricePerPoint] = React.useState<number>(0.01)
-  const [loading, setLoading] = React.useState(true)
+  const { user } = useAuth()
   const [submitting, setSubmitting] = React.useState(false)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const singleBank = banks.length === 1 ? banks[0] : null
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -63,58 +64,12 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  // Reset file selection when dialog closes
-  React.useEffect(() => {
-    if (!open) {
-      setSelectedFile(null)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }, [open])
-
-  // Fetch banks and platform settings
-  React.useEffect(() => {
-    const fetchData = async () => {
-      if (!user || !open) return
-
-      setLoading(true)
-      try {
-        // Fetch banks
-        const { data: banksData } = await supabase
-          .from('bank_accounts')
-          .select('*')
-          .eq('is_active', true)
-          .is('community_id', null)
-
-        if (banksData) {
-          setBanks(banksData as Bank[])
-        }
-
-        // Fetch platform settings
-        const { data: settings } = await supabase
-          .from('platform_settings')
-          .select('mandatory_topup_ttd, buy_price_per_point')
-          .eq('id', 1)
-          .single()
-
-        if (settings) {
-          setMandatoryTopupTtd(settings.mandatory_topup_ttd || 25)
-          setBuyPricePerPoint(settings.buy_price_per_point || 0.01)
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [user, open])
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!user) return
+    if (!user) {
+      toast.error('Please sign in to top up')
+      return
+    }
 
     setSubmitting(true)
 
@@ -122,10 +77,11 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
       const formData = new FormData(e.currentTarget)
       const file = selectedFile || (formData.get('file') as File)
       const bankAccountId = formData.get('bank_account_id') as string
-      const points = formData.get('points') as string
+      const amountTtd = formData.get('amount_ttd') as string
 
-      if (!file || !bankAccountId || !points) {
+      if (!file || !bankAccountId || !amountTtd) {
         toast.error('Please fill all required fields')
+        setSubmitting(false)
         return
       }
 
@@ -144,10 +100,11 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
         throw new Error('Failed to upload receipt: ' + uploadError.message)
       }
 
-      // Create transaction
-      const pointsValue = parseInt(points)
-      const amountTtd = pointsValue * buyPricePerPoint
+      // Calculate points from amount
+      const amount = parseFloat(amountTtd)
+      const pointsValue = Math.floor(amount / buyPricePerPoint)
 
+      // Create transaction
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
@@ -155,7 +112,7 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
           type: 'top_up',
           points_delta: pointsValue,
           earnings_points_delta: 0,
-          amount_ttd: amountTtd,
+          amount_ttd: amount,
           status: 'pending',
           bank_account_id: bankAccountId,
           receipt_url: filePath
@@ -166,42 +123,41 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
       }
 
       toast.success('Top-up submitted successfully! Awaiting verification.')
-      onOpenChange(false)
-      router.refresh()
+      
+      // Redirect to return URL after a brief delay
+      setTimeout(() => {
+        router.push(returnUrl)
+        router.refresh()
+      }, 1000)
     } catch (error: any) {
       console.error('Error submitting top-up:', error)
       toast.error(error.message || 'Failed to submit top-up')
-    } finally {
       setSubmitting(false)
     }
   }
 
-  const singleBank = banks.length === 1 ? banks[0] : null
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
+    <div className="space-y-6">
+      <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-white">
             <AlertCircle className="h-5 w-5 text-amber-400" />
-            {actionText}
-          </DialogTitle>
-          <DialogDescription className="text-white/60">
-            {message || "Please top up your account to continue using this feature."}
-          </DialogDescription>
-        </DialogHeader>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-white/20 border-t-white" />
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+            Top Up Your Account
+          </CardTitle>
+          <CardDescription className="text-white/60">
+            Upload your receipt and select the bank account used to add points to your wallet.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="points" className="text-white/80">
                 Points
               </Label>
-              <TopUpAmount buyPricePerPoint={Number(buyPricePerPoint)} minAmount={mandatoryTopupTtd} />
+              <TopUpAmount 
+                buyPricePerPoint={buyPricePerPoint} 
+                minAmount={mandatoryTopupTtd} 
+              />
             </div>
 
             <div className="space-y-2">
@@ -209,8 +165,8 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
               {singleBank ? (
                 <>
                   <input type="hidden" name="bank_account_id" value={singleBank.id} />
-                  <div className="rounded-md bg-white/10 p-3 space-y-2">
-                    <div className="text-white/80 text-sm mb-1">{singleBank.bank_name}</div>
+                  <div className="rounded-md bg-white/10 p-4 space-y-3 border border-white/20">
+                    <div className="text-white/80 font-medium mb-2">{singleBank.bank_name}</div>
                     <CopyField label="Account Name" value={singleBank.account_name} />
                     <CopyField label="Account Number" value={singleBank.account_number} />
                     <CopyField label="Account Type" value={singleBank.account_type} />
@@ -218,7 +174,7 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
                 </>
               ) : (
                 <Select name="bank_account_id" required>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -248,10 +204,10 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
               />
               
               {selectedFile ? (
-                <div className="rounded-lg border border-white/20 bg-white/10 p-3 space-y-2">
+                <div className="rounded-lg border border-white/20 bg-white/10 p-4 space-y-3">
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 rounded-md bg-white/10 p-2 border border-white/20">
-                      <FileText className="h-4 w-4 text-white/80" />
+                    <div className="flex-shrink-0 rounded-md bg-white/10 p-2.5 border border-white/20">
+                      <FileText className="h-5 w-5 text-white/80" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
@@ -278,16 +234,16 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className={cn(
-                    "w-full rounded-lg border-2 border-dashed border-white/30 bg-white/5 p-5 transition-all",
+                    "w-full rounded-lg border-2 border-dashed border-white/30 bg-white/5 p-6 transition-all",
                     "hover:border-white/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-0",
-                    "flex flex-col items-center justify-center gap-2 cursor-pointer group"
+                    "flex flex-col items-center justify-center gap-3 cursor-pointer group"
                   )}
                 >
-                  <div className="rounded-full bg-white/10 p-2.5 border border-white/20 group-hover:bg-white/20 group-hover:border-white/30 transition-colors">
-                    <Upload className="h-5 w-5 text-white/70 group-hover:text-white/90" />
+                  <div className="rounded-full bg-white/10 p-3 border border-white/20 group-hover:bg-white/20 group-hover:border-white/30 transition-colors">
+                    <Upload className="h-6 w-6 text-white/70 group-hover:text-white/90" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-white/90 mb-0.5">
+                    <p className="text-sm font-medium text-white/90 mb-1">
                       Click to upload receipt
                     </p>
                     <p className="text-xs text-white/60">
@@ -296,22 +252,25 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
                   </div>
                 </button>
               )}
+              <p className="text-xs text-white/60">
+                Upload a screenshot or PDF of your bank transfer receipt.
+              </p>
             </div>
 
-            <DialogFooter className="w-full flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => router.push(returnUrl)}
                 disabled={submitting}
-                className="border-white/20 text-white hover:bg-white/10 touch-feedback w-full sm:w-auto"
+                className="border-white/20 text-white hover:bg-white/10 touch-feedback"
               >
                 Cancel
               </Button>
               <Button 
                 type="submit" 
                 disabled={submitting}
-                className="bg-white/10 text-white/80 hover:bg-white/20 touch-feedback w-full sm:w-auto"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback flex-1"
               >
                 {submitting ? (
                   <>
@@ -319,13 +278,16 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
                     Submitting...
                   </>
                 ) : (
-                  'Submit Top-Up'
+                  <>
+                    <Wallet className="h-4 w-4 mr-2" />
+                    Submit Top-Up
+                  </>
                 )}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        )}
-      </DialogContent>
-    </Dialog>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

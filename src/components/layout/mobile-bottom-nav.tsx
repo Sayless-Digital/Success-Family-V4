@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Wallet as WalletIcon, Coins, MessageCircle } from "lucide-react"
+import { Wallet as WalletIcon, Coins, MessageCircle, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from "@/components/auth-provider"
@@ -26,7 +26,7 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
   }, [walletEarningsBalance, userValuePerPoint])
   const earningsDisplay = React.useMemo(() => {
     if (earningsDollarValue === null) {
-      return "—"
+      return "$0.00 TTD"
     }
     const formatted = earningsDollarValue.toLocaleString("en-US", {
       minimumFractionDigits: 2,
@@ -34,6 +34,21 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
     })
     return `$${formatted} TTD`
   }, [earningsDollarValue])
+  
+  const walletDisplay = React.useMemo(() => {
+    if (walletBalance === null) {
+      return "0 pts"
+    }
+    const balance = Math.trunc(walletBalance)
+    // Format large numbers with K/M suffix for mobile
+    if (balance >= 1000000) {
+      return `${(balance / 1000000).toFixed(1)}M pts`
+    }
+    if (balance >= 1000) {
+      return `${(balance / 1000).toFixed(1)}K pts`
+    }
+    return `${balance} pts`
+  }, [walletBalance])
   
   // Memoize user initials to prevent unnecessary re-renders
   const userInitials = React.useMemo(() => {
@@ -56,41 +71,50 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
           <Link href="/wallet" prefetch={true}>
             <Button 
               variant="ghost" 
-              className="h-10 px-4 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+              className="h-10 px-2 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
             >
-              <WalletIcon className="h-4 w-4 mr-2" />
-              <span className="text-sm font-semibold">
-                {walletBalance === null ? '—' : `${Math.trunc(walletBalance)} pts`}
+              <WalletIcon className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+              <span className="text-xs font-semibold whitespace-nowrap">
+                {walletDisplay}
               </span>
             </Button>
           </Link>
           <Link href="/wallet?tab=payouts" prefetch={true}>
             <Button
               variant="ghost"
-              className="h-10 px-4 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+              className="h-10 px-2 bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
             >
-              <Coins className="h-4 w-4 mr-2" />
-              <span className="text-sm font-semibold">
+              <Coins className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+              <span className="text-xs font-semibold whitespace-nowrap">
                 {earningsDisplay}
               </span>
             </Button>
           </Link>
         </div>
 
-        {/* Right side - User Profile */}
-        <div className="flex items-center gap-2">
+        {/* Right side - Messages, Home Feed, Profile */}
+        <div className="flex items-center gap-1.5">
           <Link href="/messages" prefetch={true}>
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
             >
-              <MessageCircle className="h-5 w-5" />
+              <MessageCircle className="h-4 w-4" />
+            </Button>
+          </Link>
+          <Link href="/" prefetch={true}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+            >
+              <Home className="h-4 w-4" />
             </Button>
           </Link>
           <Link href={`/profile/${userProfile?.username || ''}`} prefetch={true}>
-            <Button variant="ghost" className="relative h-11 w-11 rounded-full p-[3px] avatar-feedback">
-              <Avatar className="h-[38px] w-[38px] border-2 border-white/20">
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full p-[2px] avatar-feedback">
+              <Avatar className="h-full w-full border-2 border-white/20">
                 <AvatarImage 
                   src={userProfile?.profile_picture || undefined} 
                   alt={userProfile?.username || user.email || "User"} 

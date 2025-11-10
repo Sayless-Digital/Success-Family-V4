@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createServerSupabaseClient()
     
-    // Fetch community data (cached)
+    // Fetch community data (always fresh)
     const community = await getCommunityBySlug(slug)
     if (!community) {
       return NextResponse.json({ isOwner: false, isMember: false }, { status: 200 })

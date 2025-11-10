@@ -90,21 +90,33 @@ export default function BankAccountsPage() {
     setIsSaving(true)
     
     try {
+      // For platform admin, ensure community_id is null (platform-wide account)
+      const dataToSubmit = {
+        ...formData,
+        community_id: null,
+      }
+
       if (editingAccount) {
         // Update existing account
         const { error } = await supabase
           .from('bank_accounts')
-          .update(formData)
+          .update(dataToSubmit)
           .eq('id', editingAccount.id)
 
         if (error) throw error
       } else {
         // Create new account
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('bank_accounts')
-          .insert([formData])
+          .insert([dataToSubmit])
+          .select()
 
         if (error) throw error
+        
+        // Verify the insert was successful
+        if (!data || data.length === 0) {
+          throw new Error('Account was not created. No data returned.')
+        }
       }
 
       // Reset form and close dialog
@@ -118,13 +130,14 @@ export default function BankAccountsPage() {
       setDialogOpen(false)
       
       // Refresh list
-      fetchBankAccounts()
+      await fetchBankAccounts()
       
       // Show success toast
       toast.success(editingAccount ? 'Account updated' : 'Account created')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving bank account:', error)
-      toast.error('Failed to save account')
+      const errorMessage = error?.message || error?.error_description || 'Failed to save account'
+      toast.error(errorMessage)
     } finally {
       setIsSaving(false)
     }

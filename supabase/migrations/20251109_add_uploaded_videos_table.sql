@@ -167,3 +167,4 @@ COMMENT ON COLUMN public.uploaded_videos.storage_url IS 'Public URL to the uploa
 COMMENT ON COLUMN public.uploaded_videos.file_size_bytes IS 'Size of the uploaded video in bytes';
 
 
+

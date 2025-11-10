@@ -41,3 +41,4 @@ COMMENT ON VIEW public.dm_conversation_summaries
   IS 'Flattened view of DM threads scoped per participant for sidebar rendering, including other participant metadata.';
 
 
+

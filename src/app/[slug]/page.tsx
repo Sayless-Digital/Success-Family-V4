@@ -23,7 +23,7 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
   
   const supabase = await createServerSupabaseClient()
   
-  // Fetch community data (cached) - but we need full data with members for home page
+  // Fetch community data (always fresh) - needs full data with members for home page
   const communityBasic = await getCommunityBySlug(slug)
   if (!communityBasic) {
     notFound()
