@@ -213,11 +213,12 @@ export async function updateInboundEndpoint(
       const { data: existingEndpoint } = await inbound.endpoints.get(endpointId)
       if (existingEndpoint && existingEndpoint.config) {
         // Preserve existing config and update URL and headers
+        const existingConfigAny = existingEndpoint.config as any
         existingConfig = {
-          ...existingEndpoint.config,
+          ...existingConfigAny,
           url: webhookUrl,
           headers: {
-            ...(existingEndpoint.config.headers || {}),
+            ...(existingConfigAny.headers || {}),
             'X-User-Id': userId,
           },
         }
@@ -228,12 +229,19 @@ export async function updateInboundEndpoint(
     }
     
     // Update the endpoint with the new URL
+    console.log(`[Inbound] Updating endpoint config:`, {
+      endpointId,
+      newUrl: webhookUrl,
+      config: existingConfig,
+    })
+    
     const { data: endpointData, error: endpointError } = await inbound.endpoints.update(endpointId, {
       config: existingConfig,
     })
 
     if (endpointError || !endpointData) {
       console.error('[Inbound] Endpoint update error:', endpointError)
+      console.error('[Inbound] Endpoint data received:', endpointData)
       let errorMsg: string
       const err = endpointError as unknown
       if (typeof err === 'string') {
@@ -246,7 +254,15 @@ export async function updateInboundEndpoint(
       throw new Error(errorMsg)
     }
 
+    // Verify the update was successful by checking the returned data
+    const updatedUrl = (endpointData as any)?.config?.url
     console.log(`[Inbound] Endpoint updated successfully: ${endpointId}`)
+    console.log(`[Inbound] Updated endpoint URL: ${updatedUrl || 'URL not found in response'}`)
+    
+    if (updatedUrl && updatedUrl !== webhookUrl) {
+      console.warn(`[Inbound] WARNING: Endpoint URL mismatch! Expected: ${webhookUrl}, Got: ${updatedUrl}`)
+    }
+    
     return endpointData
   } catch (error: any) {
     console.error('Error updating Inbound endpoint:', error)

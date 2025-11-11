@@ -61,24 +61,36 @@ export async function POST(request: Request) {
       // Always update the endpoint URL to match current environment
       // This fixes cases where endpoints were created with localhost in dev but are now in production
       try {
-        await updateInboundEndpoint(
+        const updatedEndpoint = await updateInboundEndpoint(
           existingEmail.inbound_endpoint_id,
           webhookUrl,
           user.id
         )
-        console.log(`[Setup] Updated endpoint URL for ${existingEmail.email_address} to ${webhookUrl}`)
-        return NextResponse.json({
-          email: existingEmail.email_address,
-          message: "Email address updated with current webhook URL",
-        })
-      } catch (updateError) {
-        // If update fails, log but still return success
-        // The endpoint might not exist or there might be a temporary issue
-        console.warn(`[Setup] Could not update endpoint URL:`, updateError)
+        
+        // Verify the update was successful
+        const updatedUrl = (updatedEndpoint as any)?.config?.url
+        if (updatedUrl && updatedUrl === webhookUrl) {
+          console.log(`[Setup] Successfully updated endpoint URL for ${existingEmail.email_address} to ${webhookUrl}`)
+          return NextResponse.json({
+            email: existingEmail.email_address,
+            message: "Email address updated with current webhook URL",
+          })
+        } else {
+          console.warn(`[Setup] Endpoint update may have failed. Expected URL: ${webhookUrl}, Got: ${updatedUrl}`)
+          return NextResponse.json({
+            email: existingEmail.email_address,
+            message: "Email address exists",
+            warning: "Endpoint URL update may have failed. Please verify in Inbound dashboard.",
+          })
+        }
+      } catch (updateError: any) {
+        // If update fails, log the error details
+        console.error(`[Setup] Failed to update endpoint URL:`, updateError)
+        const errorMessage = updateError?.message || String(updateError)
         return NextResponse.json({
           email: existingEmail.email_address,
           message: "Email address already exists",
-          warning: "Could not update webhook URL. Please check your Inbound dashboard.",
+          warning: `Could not update webhook URL: ${errorMessage}. Please check your Inbound dashboard.`,
         })
       }
     }
