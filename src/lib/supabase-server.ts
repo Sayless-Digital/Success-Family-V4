@@ -47,3 +47,27 @@ export const createPublicSupabaseClient = () => {
     }
   )
 }
+
+/**
+ * Creates a service role Supabase client that bypasses RLS.
+ * Use this ONLY in server-side operations that need to bypass Row Level Security,
+ * such as webhooks, cron jobs, or admin operations.
+ * 
+ * WARNING: This client has full access to your database. Use with caution.
+ */
+export const createServiceRoleSupabaseClient = () => {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured. This is required for service role operations.')
+  }
+  
+  return createClient(
+    env.NEXT_PUBLIC_SUPABASE_URL!,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  )
+}

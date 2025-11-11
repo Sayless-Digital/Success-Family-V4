@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase-server"
+import { createServiceRoleSupabaseClient } from "@/lib/supabase-server"
 import { env } from "@/lib/env"
 
 // Webhook endpoint for receiving emails from Inbound
@@ -104,24 +104,36 @@ export async function POST(request: Request) {
       recipientEmail = emailMatch[1]
     }
 
-    console.log("[Webhook] Recipient email:", recipientEmail)
+    console.log("[Webhook] Recipient email extracted:", recipientEmail)
 
     // Find user by email address
-    const supabase = await createServerSupabaseClient()
+    // Use service role client to bypass RLS since webhooks don't have an authenticated user
+    const supabase = createServiceRoleSupabaseClient()
+    
+    // Try to find the user with case-insensitive matching
     const { data: userEmail, error: userEmailError } = await supabase
       .from("user_emails")
-      .select("user_id")
-      .eq("email_address", recipientEmail)
+      .select("user_id, email_address")
+      .ilike("email_address", recipientEmail) // Case-insensitive match
       .eq("is_active", true)
       .single()
 
     if (userEmailError || !userEmail) {
-      console.warn(`[Webhook] No user found for email: ${recipientEmail}`, userEmailError)
+      console.error(`[Webhook] No user found for email: ${recipientEmail}`)
+      console.error(`[Webhook] Query error:`, userEmailError)
+      console.error(`[Webhook] Email payload recipient fields:`, {
+        recipient: email.recipient,
+        to: email.to,
+        to_email: email.to_email,
+        destination: email.destination,
+        address: email.address,
+      })
+      
       // Return 200 to prevent Inbound from retrying
       // We don't want to retry if the user doesn't exist
       return NextResponse.json({ 
         success: false, 
-        message: "User not found for this email address" 
+        message: `User not found for this email address: ${recipientEmail}`
       }, { status: 200 })
     }
 
