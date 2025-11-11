@@ -4,7 +4,7 @@ import React from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
-import { Users, Shield, BarChart3, Settings } from "lucide-react"
+import { Users, Shield, BarChart3, Settings, Mail } from "lucide-react"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 
 export default function AdminDashboard() {
@@ -181,6 +181,21 @@ export default function AdminDashboard() {
             </h3>
             <p className="text-xs sm:text-sm text-white/80">
               Access platform analytics and reports
+            </p>
+          </button>
+
+          <button
+            onClick={() => router.push('/admin/emails')}
+            className="group rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-3 sm:p-4 text-left transition-all hover:bg-white/20 hover:scale-105 cursor-pointer"
+          >
+            <h3 className="font-semibold text-white mb-1 sm:mb-2 text-sm sm:text-base">
+              Test Emails
+              <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none ml-2">
+                →
+              </span>
+            </h3>
+            <p className="text-xs sm:text-sm text-white/80">
+              Test email templates and verify delivery
             </p>
           </button>
         </div>

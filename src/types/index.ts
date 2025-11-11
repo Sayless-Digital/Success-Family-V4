@@ -36,6 +36,41 @@ export interface User {
   updated_at: string
 }
 
+// Personalized email types
+export interface UserEmail {
+  id: string
+  user_id: string
+  email_address: string
+  inbound_address_id?: string | null
+  inbound_endpoint_id?: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface UserEmailMessage {
+  id: string
+  user_id: string
+  email_address: string
+  message_type: 'sent' | 'received'
+  inbound_email_id?: string | null
+  from_email: string
+  from_name?: string | null
+  to_email: string
+  to_name?: string | null
+  subject: string
+  html_content?: string | null
+  text_content?: string | null
+  is_read: boolean
+  read_at?: string | null
+  is_archived: boolean
+  archived_at?: string | null
+  received_at?: string | null
+  sent_at?: string
+  created_at: string
+  updated_at: string
+}
+
 // Bank account types
 export interface BankAccount {
   id: string

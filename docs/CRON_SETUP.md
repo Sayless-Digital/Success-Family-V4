@@ -97,8 +97,8 @@ Common cron schedule formats:
 3. Check deployment logs for errors
 
 ### Emails not sending
-1. Verify `RESEND_API_KEY` is set correctly
-2. Check Resend dashboard for email delivery status
+1. Verify `INBOUND_API_KEY` is set correctly
+2. Check Inbound dashboard for email delivery status
 3. Review cron job logs for errors
 
 ### Too many/few reminders

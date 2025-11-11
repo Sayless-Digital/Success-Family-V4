@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Success Family platform uses Resend API for sending transactional emails related to subscription and payment management. The email system covers both platform subscriptions (for creating communities) and community subscriptions (for joining communities).
+The Success Family platform uses Inbound API for sending transactional emails related to subscription and payment management. The email system covers both platform subscriptions (for creating communities) and community subscriptions (for joining communities).
 
 ## Email Templates
 
@@ -131,7 +131,7 @@ New fields added to `payment_receipts` table:
 ## Environment Variables
 
 Required environment variables (set in `.env.local`):
-- `RESEND_API_KEY` - Your Resend API key
+- `INBOUND_API_KEY` - Your Inbound API key
 - `NEXT_PUBLIC_SITE_URL` - Base URL for email links (defaults to http://localhost:3000 in development)
 
 ## Future Enhancements
@@ -147,5 +147,5 @@ Required environment variables (set in `.env.local`):
 - All emails are sent asynchronously to prevent blocking the main flow
 - Email failures are logged but don't fail the parent operation
 - Consider rate limiting for production use
-- Review Resend quota and pricing for high-volume scenarios
+- Review Inbound quota and pricing for high-volume scenarios
 

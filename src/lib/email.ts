@@ -1,4 +1,5 @@
 import { env } from './env'
+import { Inbound } from '@inboundemail/sdk'
 
 export interface EmailOptions {
   to: string | string[]
@@ -7,31 +8,52 @@ export interface EmailOptions {
   from?: string
 }
 
-export async function sendEmail({ to, subject, html, from = 'Success Family <hello@successfamily.online>' }: EmailOptions) {
-  if (!env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is not configured')
+function getInboundClient(): Inbound {
+  if (!env.INBOUND_API_KEY) {
+    throw new Error('INBOUND_API_KEY is not configured')
   }
+  
+  // Create a new client instance for each request to avoid issues in serverless environments
+  return new Inbound(env.INBOUND_API_KEY)
+}
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
+export async function sendEmail({ to, subject, html, from = 'Success Family <hello@successfamily.online>' }: EmailOptions) {
+  const inbound = getInboundClient()
+  
+  // Convert to array if single email
+  const recipients = Array.isArray(to) ? to : [to]
+  
+  // Send emails to all recipients
+  // The SDK accepts a single 'to' string, so we send separate emails for multiple recipients
+  const sendPromises = recipients.map(async (recipient) => {
+    const { data, error } = await inbound.emails.send({
       from,
-      to: Array.isArray(to) ? to : [to],
+      to: recipient,
       subject,
       html,
-    }),
   })
 
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Failed to send email: ${error}`)
-  }
+    if (error) {
+      let errorMsg: string
+      const err = error as unknown
+      if (typeof err === 'string') {
+        errorMsg = err
+      } else if (err && typeof err === 'object' && 'message' in err) {
+        errorMsg = String((err as { message: unknown }).message)
+      } else {
+        errorMsg = JSON.stringify(err)
+      }
+      throw new Error(`Failed to send email to ${recipient}: ${errorMsg}`)
+    }
 
-  return response.json()
+    return data
+  })
+
+  // Send all emails (can be parallel for better performance)
+  const results = await Promise.all(sendPromises)
+
+  // Return first result for backwards compatibility, or all results if array was passed
+  return Array.isArray(to) ? results : results[0]
 }
 
 // Base email template wrapper
