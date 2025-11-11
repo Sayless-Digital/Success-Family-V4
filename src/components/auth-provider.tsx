@@ -117,27 +117,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let authInitialized = false
     let isProcessingAuthChange = false
 
-    // Get initial session
+    // Get initial session with timeout protection
     const initializeAuth = async () => {
+      let timeoutFired = false
+      
+      // Set a maximum timeout for the entire initialization (5 seconds)
+      // This prevents infinite loading states on slow networks (especially mobile)
+      const initTimeout = setTimeout(() => {
+        if (!authInitialized && isMounted) {
+          console.warn("Auth initialization timeout - assuming no session")
+          timeoutFired = true
+          clearAuthState()
+          userRef.current = null
+          userProfileRef.current = null
+          authInitialized = true
+          setIsLoading(false)
+        }
+      }, 5000)
+
       try {
         // First, get session from cookies (fast, for instant UI)
-        const { data: { session } } = await supabase.auth.getSession()
+        // Wrap getSession in a timeout to prevent hanging on slow networks
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
+          setTimeout(() => resolve({ data: { session: null }, error: null }), 3000)
+        })
         
-        if (!isMounted) return
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
+        
+        // Check if timeout already fired - if so, don't continue
+        if (timeoutFired || !isMounted || authInitialized) {
+          return
+        }
 
         if (session?.user) {
           // CRITICAL: Validate session with server using getUser()
           // This ensures the session is actually valid, not just cached in cookies
-          const { data: { user }, error } = await supabase.auth.getUser()
+          // Also wrap getUser in a timeout
+          const userPromise = supabase.auth.getUser()
+          const userTimeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
+            setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), 2000)
+          })
           
-          if (!isMounted) return
+          const { data: { user }, error } = await Promise.race([userPromise, userTimeoutPromise])
+          
+          // Check again if timeout fired or component unmounted
+          if (timeoutFired || !isMounted || authInitialized) {
+            return
+          }
           
           if (error || !user) {
-            // Session is invalid - clear state (stale cookies)
+            // Session is invalid - clear state (stale cookies or timeout)
             console.warn("Session validation failed:", error?.message || "No user")
             clearAuthState()
             userRef.current = null
             userProfileRef.current = null
+            authInitialized = true
+            setIsLoading(false)
             return
           }
           
@@ -145,10 +181,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(user)
           userRef.current = user
           
-          // Fetch profile with retry logic
+          // Fetch profile with retry logic (this has its own timeout)
           const profile = await fetchProfileWithRetry(user.id)
           
-          if (!isMounted) return
+          // Check again if timeout fired or component unmounted
+          if (timeoutFired || !isMounted || authInitialized) {
+            return
+          }
           
           if (profile) {
             setUserProfile(profile)
@@ -160,20 +199,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Don't sign out - keep user authenticated but show error state
           }
         } else {
-          // No session, ensure state is cleared
+          // No session, ensure state is cleared (fast path)
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
         }
       } catch (error) {
         console.error("Error initializing auth:", error)
+        if (timeoutFired || authInitialized) {
+          // Timeout already handled it, don't double-clear
+          return
+        }
         if (isMounted) {
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
         }
       } finally {
-        if (isMounted) {
+        // Clear the timeout since we're done (either successfully or with error)
+        clearTimeout(initTimeout)
+        
+        // Only set loading to false if timeout didn't fire and we're not already initialized
+        if (!timeoutFired && isMounted && !authInitialized) {
           authInitialized = true
           setIsLoading(false)
         }
@@ -264,13 +311,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthState()
       userRef.current = null
       userProfileRef.current = null
+      // CRITICAL: Set loading to false immediately to prevent skeleton loaders
+      // This ensures the UI doesn't get stuck showing loading states after sign out
+      setIsLoading(false)
       
       // Sign out from Supabase (this clears cookies server-side)
-      const { error } = await supabase.auth.signOut()
+      // Wrap in timeout to prevent hanging on slow networks
+      const signOutPromise = supabase.auth.signOut()
+      const timeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 2000)
+      })
       
-      if (error) {
-        console.error("Sign out error:", error)
-      }
+      await Promise.race([signOutPromise, timeoutPromise])
       
       // Force a page reload to ensure all cookies/storage are cleared
       // This is necessary because Next.js SSR can cache auth state
@@ -284,6 +336,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthState()
       userRef.current = null
       userProfileRef.current = null
+      // CRITICAL: Set loading to false even on error
+      setIsLoading(false)
       
       // Still force reload to clear any cached state
       if (typeof window !== 'undefined') {
