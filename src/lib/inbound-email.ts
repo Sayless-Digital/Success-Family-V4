@@ -179,6 +179,82 @@ export async function createInboundEmailAddress(
 }
 
 /**
+ * Update an existing endpoint's webhook URL
+ * @param endpointId The endpoint ID to update
+ * @param webhookUrl The new webhook URL
+ * @param userId The user ID to include in webhook headers
+ * @returns Updated endpoint data
+ */
+export async function updateInboundEndpoint(
+  endpointId: string,
+  webhookUrl: string,
+  userId: string
+) {
+  const inbound = getInboundClient()
+  
+  try {
+    console.log(`[Inbound] Updating endpoint ${endpointId} with webhook URL: ${webhookUrl}`)
+    
+    if (!inbound.endpoints || typeof inbound.endpoints.update !== 'function') {
+      throw new Error('Inbound SDK client does not have endpoints.update method.')
+    }
+    
+    // First, try to get the existing endpoint to preserve other settings
+    let existingConfig: any = {
+      url: webhookUrl,
+      headers: {
+        'X-User-Id': userId,
+      },
+      timeout: 30,
+      retryAttempts: 3,
+    }
+    
+    try {
+      const { data: existingEndpoint } = await inbound.endpoints.get(endpointId)
+      if (existingEndpoint && existingEndpoint.config) {
+        // Preserve existing config and update URL and headers
+        existingConfig = {
+          ...existingEndpoint.config,
+          url: webhookUrl,
+          headers: {
+            ...(existingEndpoint.config.headers || {}),
+            'X-User-Id': userId,
+          },
+        }
+      }
+    } catch (getError) {
+      // If we can't get the endpoint, just use the default config
+      console.warn('[Inbound] Could not fetch existing endpoint, using default config:', getError)
+    }
+    
+    // Update the endpoint with the new URL
+    const { data: endpointData, error: endpointError } = await inbound.endpoints.update(endpointId, {
+      config: existingConfig,
+    })
+
+    if (endpointError || !endpointData) {
+      console.error('[Inbound] Endpoint update error:', endpointError)
+      let errorMsg: string
+      const err = endpointError as unknown
+      if (typeof err === 'string') {
+        errorMsg = err
+      } else if (err && typeof err === 'object' && 'toString' in err && typeof err.toString === 'function') {
+        errorMsg = err.toString()
+      } else {
+        errorMsg = JSON.stringify(err) || 'Failed to update endpoint'
+      }
+      throw new Error(errorMsg)
+    }
+
+    console.log(`[Inbound] Endpoint updated successfully: ${endpointId}`)
+    return endpointData
+  } catch (error: any) {
+    console.error('Error updating Inbound endpoint:', error)
+    throw error
+  }
+}
+
+/**
  * Delete an email address from Inbound
  */
 export async function deleteInboundEmailAddress(addressId: string, endpointId?: string) {

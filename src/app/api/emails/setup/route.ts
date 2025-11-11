@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import { createInboundEmailAddress } from "@/lib/inbound-email"
+import { createInboundEmailAddress, updateInboundEndpoint } from "@/lib/inbound-email"
 
 export async function POST(request: Request) {
   try {
@@ -34,12 +34,53 @@ export async function POST(request: Request) {
       .eq("is_active", true)
       .single()
 
-    // If email exists and Inbound is already configured, return it
+    // Get webhook URL (always use current environment URL)
+    // In production, ensure we use HTTPS if the URL doesn't specify a protocol
+    let baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    
+    // If baseUrl doesn't have a protocol and it's not localhost, assume HTTPS for production
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      // If it's localhost, use http, otherwise use https
+      if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+        baseUrl = `http://${baseUrl}`
+      } else {
+        baseUrl = `https://${baseUrl}`
+      }
+    }
+    
+    // Ensure production URLs use HTTPS (except localhost)
+    if (process.env.NODE_ENV === 'production' && !baseUrl.includes('localhost') && !baseUrl.includes('127.0.0.1')) {
+      baseUrl = baseUrl.replace(/^http:\/\//, 'https://')
+    }
+    
+    const webhookUrl = `${baseUrl}/api/emails/webhook`
+
+    // If email exists and Inbound is already configured, always update endpoint URL
+    // This ensures the webhook URL matches the current environment (dev vs production)
     if (existingEmail && existingEmail.inbound_address_id && existingEmail.inbound_endpoint_id) {
-      return NextResponse.json({
-        email: existingEmail.email_address,
-        message: "Email address already exists",
-      })
+      // Always update the endpoint URL to match current environment
+      // This fixes cases where endpoints were created with localhost in dev but are now in production
+      try {
+        await updateInboundEndpoint(
+          existingEmail.inbound_endpoint_id,
+          webhookUrl,
+          user.id
+        )
+        console.log(`[Setup] Updated endpoint URL for ${existingEmail.email_address} to ${webhookUrl}`)
+        return NextResponse.json({
+          email: existingEmail.email_address,
+          message: "Email address updated with current webhook URL",
+        })
+      } catch (updateError) {
+        // If update fails, log but still return success
+        // The endpoint might not exist or there might be a temporary issue
+        console.warn(`[Setup] Could not update endpoint URL:`, updateError)
+        return NextResponse.json({
+          email: existingEmail.email_address,
+          message: "Email address already exists",
+          warning: "Could not update webhook URL. Please check your Inbound dashboard.",
+        })
+      }
     }
 
     // Determine email address (use existing or generate new)
@@ -65,10 +106,6 @@ export async function POST(request: Request) {
       }
       emailAddress = generatedEmail
     }
-
-    // Get webhook URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-    const webhookUrl = `${baseUrl}/api/emails/webhook`
 
     // Create/retry email address in Inbound
     let inboundAddressId: string | null = null
