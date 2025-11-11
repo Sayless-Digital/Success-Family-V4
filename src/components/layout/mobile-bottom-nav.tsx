@@ -2,21 +2,30 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Wallet as WalletIcon, Coins, MessageCircle, Home, LogIn, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AuthDialog } from "@/components/auth-dialog"
 import { useAuth } from "@/components/auth-provider"
+import { useUnreadMessagesCount } from "@/hooks/use-unread-messages-count"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 
 interface MobileBottomNavProps {
   isMobile: boolean
 }
 
 export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
+  const pathname = usePathname()
   const { user, userProfile, walletBalance, walletEarningsBalance, userValuePerPoint, isLoading, walletDataLoaded } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
+  const { unreadCount } = useUnreadMessagesCount(user?.id ?? null)
+  
+  // Check if we're on the home page
+  const isHomePage = pathname === "/"
   
   const earningsDollarValue = React.useMemo(() => {
     if (walletEarningsBalance === null || userValuePerPoint === null) {
@@ -177,7 +186,7 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
           <div className="flex items-center gap-1.5">
             {user ? (
               <>
-                <Link href="/messages" prefetch={true}>
+                <Link href="/messages" prefetch={true} className="relative">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -185,12 +194,20 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                   >
                     <MessageCircle className="h-4 w-4" />
                   </Button>
+                  {unreadCount > 0 && (
+                    <Badge className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Badge>
+                  )}
                 </Link>
                 <Link href="/" prefetch={true}>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+                    className={cn(
+                      "h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
+                      !isHomePage && "animate-shimmer"
+                    )}
                   >
                     <Home className="h-4 w-4" />
                   </Button>
@@ -219,7 +236,10 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+                    className={cn(
+                      "h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
+                      !isHomePage && "animate-shimmer"
+                    )}
                   >
                     <Home className="h-4 w-4" />
                   </Button>

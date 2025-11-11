@@ -4,15 +4,20 @@ import { env } from "@/lib/env"
 
 // Webhook endpoint for receiving emails from Inbound
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID()
+  
   try {
     // Log the incoming request for debugging
-    console.log("[Webhook] Request received:", {
+    console.log(`[Webhook ${requestId}] Request received:`, {
       method: request.method,
       url: request.url,
+      timestamp: new Date().toISOString(),
       headers: {
         'x-endpoint-id': request.headers.get('x-endpoint-id'),
         'x-webhook-event': request.headers.get('x-webhook-event'),
         'x-email-id': request.headers.get('x-email-id'),
+        'user-agent': request.headers.get('user-agent'),
+        'content-type': request.headers.get('content-type'),
       },
     })
 
@@ -33,14 +38,23 @@ export async function POST(request: Request) {
     //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     // }
 
-    // Parse request body
+    // Parse request body with timeout protection
     let body: any
     try {
-      body = await request.json()
-      console.log("[Webhook] Payload received:", JSON.stringify(body, null, 2))
-    } catch (parseError) {
-      console.error("[Webhook] Failed to parse JSON:", parseError)
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+      // Set a timeout for reading the request body (10 seconds)
+      const bodyPromise = request.json()
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Request body read timeout")), 10000)
+      )
+      body = await Promise.race([bodyPromise, timeoutPromise]) as any
+      console.log(`[Webhook ${requestId}] Payload received (size: ${JSON.stringify(body).length} chars)`)
+    } catch (parseError: any) {
+      console.error(`[Webhook ${requestId}] Failed to parse JSON:`, parseError)
+      return NextResponse.json({ 
+        error: "Invalid JSON", 
+        details: parseError.message,
+        requestId 
+      }, { status: 400 })
     }
     
     // Validate webhook payload - check if it has an email property
@@ -93,8 +107,8 @@ export async function POST(request: Request) {
     }
     
     if (!recipientEmail) {
-      console.error("[Webhook] No recipient email found. Payload:", JSON.stringify(body, null, 2))
-      return NextResponse.json({ error: "No recipient email found" }, { status: 400 })
+      console.error(`[Webhook ${requestId}] No recipient email found. Payload:`, JSON.stringify(body, null, 2))
+      return NextResponse.json({ error: "No recipient email found", requestId }, { status: 400 })
     }
     
     // Clean up email address
@@ -104,13 +118,14 @@ export async function POST(request: Request) {
       recipientEmail = emailMatch[1]
     }
 
-    console.log("[Webhook] Recipient email extracted:", recipientEmail)
+    console.log(`[Webhook ${requestId}] Recipient email extracted: ${recipientEmail}`)
 
     // Find user by email address
     // Use service role client to bypass RLS since webhooks don't have an authenticated user
     const supabase = createServiceRoleSupabaseClient()
     
     // Try to find the user with case-insensitive matching
+    // First try exact match (case-insensitive)
     const { data: userEmail, error: userEmailError } = await supabase
       .from("user_emails")
       .select("user_id, email_address")
@@ -118,10 +133,20 @@ export async function POST(request: Request) {
       .eq("is_active", true)
       .single()
 
+    // If not found, try to find all emails and log them for debugging
     if (userEmailError || !userEmail) {
-      console.error(`[Webhook] No user found for email: ${recipientEmail}`)
-      console.error(`[Webhook] Query error:`, userEmailError)
-      console.error(`[Webhook] Email payload recipient fields:`, {
+      console.error(`[Webhook ${requestId}] No user found for email: ${recipientEmail}`)
+      console.error(`[Webhook ${requestId}] Query error:`, userEmailError)
+      
+      // Try to get all active emails for debugging
+      const { data: allEmails } = await supabase
+        .from("user_emails")
+        .select("email_address")
+        .eq("is_active", true)
+        .limit(10)
+      
+      console.error(`[Webhook ${requestId}] Available emails:`, allEmails?.map(e => e.email_address))
+      console.error(`[Webhook ${requestId}] Email payload recipient fields:`, {
         recipient: email.recipient,
         to: email.to,
         to_email: email.to_email,
@@ -133,11 +158,13 @@ export async function POST(request: Request) {
       // We don't want to retry if the user doesn't exist
       return NextResponse.json({ 
         success: false, 
-        message: `User not found for this email address: ${recipientEmail}`
+        message: `User not found for this email address: ${recipientEmail}`,
+        requestId,
+        searchedEmail: recipientEmail
       }, { status: 200 })
     }
 
-    console.log("[Webhook] Found user:", userEmail.user_id)
+    console.log(`[Webhook ${requestId}] Found user:`, userEmail.user_id)
 
     // Extract from email and name - same structure as 'to'
     let fromEmail: string | null = null
@@ -199,7 +226,7 @@ export async function POST(request: Request) {
     
     if (!fromEmail) {
       fromEmail = 'unknown@example.com'
-      console.warn("[Webhook] No from email found, using default")
+      console.warn(`[Webhook ${requestId}] No from email found, using default`)
     }
 
     // Extract email content
@@ -209,7 +236,7 @@ export async function POST(request: Request) {
     const receivedAt = email.receivedAt || email.received_at || email.timestamp || email.date || new Date().toISOString()
     const inboundEmailId = email.id || email.emailId || email.messageId || null
 
-    console.log("[Webhook] Storing email:", {
+    console.log(`[Webhook ${requestId}] Storing email:`, {
       subject,
       fromEmail,
       fromName,
@@ -238,30 +265,67 @@ export async function POST(request: Request) {
       })
 
     if (insertError) {
-      console.error("[Webhook] Error storing email:", insertError)
+      console.error(`[Webhook ${requestId}] Error storing email:`, insertError)
       return NextResponse.json(
-        { error: "Failed to store email", details: insertError.message },
+        { error: "Failed to store email", details: insertError.message, requestId },
         { status: 500 }
       )
     }
 
-    console.log("[Webhook] Email stored successfully")
-    return NextResponse.json({ success: true, message: "Email received and stored" })
+    console.log(`[Webhook ${requestId}] Email stored successfully`)
+    return NextResponse.json({ 
+      success: true, 
+      message: "Email received and stored",
+      requestId 
+    }, { status: 200 })
   } catch (error: any) {
-    console.error("[Webhook] Unexpected error:", error)
+    console.error(`[Webhook ${requestId}] Unexpected error:`, error)
+    console.error(`[Webhook ${requestId}] Error stack:`, error.stack)
     return NextResponse.json(
-      { error: "Internal server error", details: error.message },
+      { 
+        error: "Internal server error", 
+        details: error.message,
+        requestId 
+      },
       { status: 500 }
     )
   }
 }
 
-// Export a GET handler for testing
+// Export a GET handler for testing and health checks
 export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const healthCheck = url.searchParams.get('health') === 'check'
+  
+  if (healthCheck) {
+    // Perform a basic health check
+    try {
+      const supabase = createServiceRoleSupabaseClient()
+      // Quick database connection test
+      const { error } = await supabase.from('user_emails').select('id').limit(1)
+      
+      return NextResponse.json({ 
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        database: error ? "error" : "connected",
+        endpoint: "/api/emails/webhook",
+        method: "POST"
+      }, { status: error ? 503 : 200 })
+    } catch (error: any) {
+      return NextResponse.json({ 
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: error.message 
+      }, { status: 503 })
+    }
+  }
+  
   return NextResponse.json({ 
     message: "Email webhook endpoint", 
     status: "active",
+    timestamp: new Date().toISOString(),
     method: "POST",
-    path: "/api/emails/webhook"
+    path: "/api/emails/webhook",
+    healthCheck: "/api/emails/webhook?health=check"
   })
 }

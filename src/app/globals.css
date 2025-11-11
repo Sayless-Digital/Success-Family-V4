@@ -172,14 +172,7 @@
     color: var(--foreground);
     overflow: hidden;
     height: 100vh;
-    scrollbar-width: none !important;
     scroll-behavior: smooth;
-  }
-  
-  html::-webkit-scrollbar {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
   }
   
   body {
@@ -188,27 +181,57 @@
     overflow: hidden;
     height: 100vh;
     max-height: 100vh;
-    scrollbar-width: none !important;
   }
   
-  body::-webkit-scrollbar {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
+  /* Clean minimal scrollbar - just the thumb, no track background */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.4) transparent;
   }
   
-  /* Hide scrollbars on all scrollable containers by default */
-  main,
-  [data-scrollable-content] {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
   
-  main::-webkit-scrollbar,
-  [data-scrollable-content]::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.4);
+    border-radius: 3px;
+    border: none;
+  }
+  
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.6);
+  }
+  
+  *::-webkit-scrollbar-thumb:active {
+    background-color: rgba(255, 255, 255, 0.8);
+  }
+  
+  /* Mobile: thinner scrollbars */
+  @media (max-width: 768px) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.5) transparent;
+    }
+    
+    *::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    
+    *::-webkit-scrollbar-thumb {
+      background-color: rgba(255, 255, 255, 0.5);
+      border-radius: 2px;
+    }
+    
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(255, 255, 255, 0.7);
+    }
   }
   
 }
@@ -985,4 +1008,79 @@ html [data-sonner-toast][data-styled='true'] [data-close-button]:active,
 [data-sonner-toaster] [data-sonner-toast] [data-close-button]:active,
 [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-close-button]:active {
   opacity: 0.8 !important;
+}
+
+/* Email content styling - hide embedded headers and normalize display */
+.email-content {
+  /* Reset and normalize email content */
+  all: revert;
+}
+
+.email-content style,
+.email-content head {
+  display: none !important;
+}
+
+/* Hide elements with common email header class names */
+.email-content .email-header,
+.email-content .message-header,
+.email-content .email-subject,
+.email-content .mail-header,
+.email-content .msg-header,
+.email-content .email-metadata,
+.email-content .message-metadata,
+.email-content [class*="header"][class*="email"],
+.email-content [class*="header"][class*="message"],
+.email-content [class*="subject"][class*="email"],
+.email-content [id*="header"][id*="email"],
+.email-content [id*="subject"][id*="email"] {
+  display: none !important;
+}
+
+/* Hide table-based email headers (common in HTML emails from various clients) */
+.email-content table.email-header,
+.email-content table.message-header,
+.email-content table.mail-header,
+.email-content table[class*="header"],
+.email-content table[width="100%"][style*="border"]:first-child {
+  display: none !important;
+}
+
+/* Hide Gmail quoted email sections */
+.email-content .gmail_quote,
+.email-content .gmail_extra,
+.email-content [class*="gmail_"] {
+  display: none !important;
+}
+
+/* Hide Outlook email headers */
+.email-content [class*="Outlook"] {
+  display: none !important;
+}
+
+/* Remove borders from quoted/replied email sections (common pattern) */
+/* Many email clients add borders to quoted content - we'll normalize them */
+.email-content div[style*="border-left"] {
+  border-left: none !important;
+}
+
+.email-content blockquote[style*="border-left"] {
+  border-left: 2px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Normalize blockquotes in email content (keep for actual quoted text, but style properly) */
+.email-content blockquote {
+  border-left: 2px solid rgba(255, 255, 255, 0.2) !important;
+  padding-left: 1rem !important;
+  margin-left: 0 !important;
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* Hide common email client signature/header sections */
+.email-content [class*="moz-cite"],
+.email-content [class*="moz-signature"],
+.email-content [id*="signature"] {
+  display: none !important;
 }

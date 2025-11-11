@@ -13,3 +13,4 @@ CREATE POLICY "Anyone can view platform settings"
   FOR SELECT
   USING (true);
 
+

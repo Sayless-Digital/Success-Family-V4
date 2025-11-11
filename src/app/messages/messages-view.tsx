@@ -1,16 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
 import Image from "next/image"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import {
   ArrowLeft,
   ChevronDown,
+  Image as ImageIcon,
   Loader2,
   MessageCircle,
   Mic,
-  Paperclip,
   Pause,
   Play,
   Search,
@@ -34,6 +34,7 @@ import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useUnreadMessagesPerThread } from "@/hooks/use-unread-messages-per-thread"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -128,6 +129,7 @@ export default function MessagesView({
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialThreadId)
   const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageResult[]>>(initialMessagesByThread)
   const [threadPagination, setThreadPagination] = useState<ThreadPaginationState>(initialPaginationByThread)
+  const [loadingThreadId, setLoadingThreadId] = useState<string | null>(null)
   const [composerValue, setComposerValue] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [attachments, setAttachments] = useState<AttachmentState[]>([])
@@ -147,6 +149,12 @@ export default function MessagesView({
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // Get unread message counts per thread
+  const threadIds = conversations.map((c) => c.thread_id)
+  const { unreadCounts } = useUnreadMessagesPerThread(viewer.id, threadIds)
 
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -385,6 +393,13 @@ export default function MessagesView({
     }
   }, [selectedThreadId, selectedConversation, displayedConversations, initialThreadId])
 
+  // Set mobile view to conversation when initialThreadId is provided (e.g., from query parameter)
+  useEffect(() => {
+    if (initialThreadId && isMobile && isClient) {
+      setMobileView("conversation")
+    }
+  }, [initialThreadId, isMobile, isClient])
+
   const refreshConversations = useCallback(async () => {
     const response = await fetch("/api/dm/threads?limit=30", { cache: "no-store" })
     if (!response.ok) {
@@ -400,32 +415,178 @@ export default function MessagesView({
     return list
   }, [searchTerm])
 
+  // Prefetch messages for conversations on hover (desktop only) for instant switching
+  // Use a ref to track prefetch timeouts to debounce rapid hovers
+  const prefetchTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
+  
+  const prefetchMessages = useCallback(
+    async (threadId: string) => {
+      // Only prefetch if messages aren't already loaded
+      if (messagesRef.current[threadId]) {
+        return
+      }
+
+      // Clear any existing timeout for this thread
+      if (prefetchTimeoutRef.current[threadId]) {
+        clearTimeout(prefetchTimeoutRef.current[threadId])
+      }
+
+      // Debounce prefetch - wait 150ms after hover to avoid prefetching on quick mouse moves
+      prefetchTimeoutRef.current[threadId] = setTimeout(() => {
+        // Double-check messages aren't loaded (might have been loaded by click)
+        if (messagesRef.current[threadId]) {
+          delete prefetchTimeoutRef.current[threadId]
+          return
+        }
+
+        // Prefetch in background - don't await
+        fetch(`/api/dm/threads/${threadId}/messages?limit=${DEFAULT_PAGE_SIZE}`, {
+          cache: "no-store",
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              delete prefetchTimeoutRef.current[threadId]
+              return
+            }
+            const data = await response.json()
+            const fetchedMessages: MessageResult[] = data.messages ?? []
+            
+            // Double-check we still need to cache (might have been loaded by click)
+            if (messagesRef.current[threadId]) {
+              delete prefetchTimeoutRef.current[threadId]
+              return
+            }
+            
+            // Cache messages silently
+            setMessagesByThread((prev) => ({
+              ...prev,
+              [threadId]: fetchedMessages,
+            }))
+            setThreadPagination((prev) => ({
+              ...prev,
+              [threadId]: {
+                hasMore: Boolean(data.pageInfo?.hasMore),
+                nextCursor: data.pageInfo?.nextCursor ?? null,
+              },
+            }))
+            
+            // Prefetch attachment URLs in background (non-blocking)
+            ensureAttachmentUrls(fetchedMessages.flatMap((m) => m.attachments ?? [])).catch(() => {
+              // Silent fail - non-critical
+            }).finally(() => {
+              delete prefetchTimeoutRef.current[threadId]
+            })
+          })
+          .catch(() => {
+            // Silent fail - prefetch is optional
+            delete prefetchTimeoutRef.current[threadId]
+          })
+      }, 150) // 150ms debounce
+    },
+    [ensureAttachmentUrls],
+  )
+
+  // Prefetch messages for top conversations on load (desktop only) for faster switching
+  useEffect(() => {
+    if (isMobile || !isClient) return
+    
+    // Prefetch top 3 conversations (most likely to be opened)
+    const topConversations = conversations.slice(0, 3)
+    topConversations.forEach((conversation, index) => {
+      // Stagger prefetch slightly to avoid overwhelming the server
+      setTimeout(() => {
+        if (!messagesRef.current[conversation.thread_id]) {
+          prefetchMessages(conversation.thread_id)
+        }
+      }, index * 200) // 200ms delay between each prefetch
+    })
+  }, [conversations, isMobile, isClient, prefetchMessages])
+
   const handleSelectConversation = useCallback(
     async (threadId: string) => {
       const normalizedThreadId = threadId.trim()
-      setSelectedThreadId(normalizedThreadId)
-      if (isMobile) {
-        setMobileView("conversation")
+      
+      // Cancel any pending prefetch for this thread
+      if (prefetchTimeoutRef.current[normalizedThreadId]) {
+        clearTimeout(prefetchTimeoutRef.current[normalizedThreadId])
+        delete prefetchTimeoutRef.current[normalizedThreadId]
       }
 
-      const currentThreadParam = searchParams?.get("thread")
-      const hasPeerParam = !!searchParams?.get("peerId")
-      if (currentThreadParam !== normalizedThreadId || hasPeerParam) {
-        const nextParams = new URLSearchParams(searchParams?.toString() ?? "")
-        nextParams.set("thread", normalizedThreadId)
-        nextParams.delete("peerId")
-        const queryString = nextParams.toString()
-        router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+      // Cancel any in-flight fetch requests for previous conversation
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      
+      // Create new AbortController for this request
+      const abortController = new AbortController()
+      abortControllerRef.current = abortController
+      
+      // Immediately update UI state for instant feedback (SPA-like)
+      // Use startTransition to make state updates non-blocking
+      startTransition(() => {
+        setSelectedThreadId(normalizedThreadId)
+        if (isMobile) {
+          setMobileView("conversation")
+        }
+      })
+
+      // If messages are already cached, update URL and we're done - instant switch!
+      if (messagesRef.current[normalizedThreadId]) {
+        // Update URL asynchronously (non-blocking)
+        startTransition(() => {
+          const currentThreadParam = searchParams?.get("thread")
+          const hasPeerParam = !!searchParams?.get("peerId")
+          if (currentThreadParam !== normalizedThreadId || hasPeerParam) {
+            const nextParams = new URLSearchParams(searchParams?.toString() ?? "")
+            nextParams.set("thread", normalizedThreadId)
+            nextParams.delete("peerId")
+            const queryString = nextParams.toString()
+            router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+          }
+        })
+        setLoadingThreadId(null)
+        return
       }
 
-      if (!messagesRef.current[normalizedThreadId]) {
-        try {
-          const response = await fetch(`/api/dm/threads/${normalizedThreadId}/messages?limit=${DEFAULT_PAGE_SIZE}`, {
-            cache: "no-store",
-          })
-          if (!response.ok) throw new Error("Failed to load messages")
-          const data = await response.json()
-          const fetchedMessages: MessageResult[] = data.messages ?? []
+      // Set loading state immediately so UI can show loading indicator
+      setLoadingThreadId(normalizedThreadId)
+
+      // Update URL asynchronously (non-blocking) - use startTransition
+      startTransition(() => {
+        const currentThreadParam = searchParams?.get("thread")
+        const hasPeerParam = !!searchParams?.get("peerId")
+        if (currentThreadParam !== normalizedThreadId || hasPeerParam) {
+          const nextParams = new URLSearchParams(searchParams?.toString() ?? "")
+          nextParams.set("thread", normalizedThreadId)
+          nextParams.delete("peerId")
+          const queryString = nextParams.toString()
+          router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+        }
+      })
+
+      // Fetch messages in background - don't block UI
+      try {
+        const response = await fetch(`/api/dm/threads/${normalizedThreadId}/messages?limit=${DEFAULT_PAGE_SIZE}`, {
+          cache: "no-store",
+          signal: abortController.signal, // Allow cancellation if user switches quickly
+        })
+        
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          return
+        }
+        
+        if (!response.ok) throw new Error("Failed to load messages")
+        const data = await response.json()
+        const fetchedMessages: MessageResult[] = data.messages ?? []
+        
+        // Check again if request was aborted before updating state
+        if (abortController.signal.aborted) {
+          return
+        }
+        
+        // Update messages state using startTransition for non-blocking update
+        startTransition(() => {
           setMessagesByThread((prev) => ({
             ...prev,
             [normalizedThreadId]: fetchedMessages,
@@ -437,10 +598,23 @@ export default function MessagesView({
               nextCursor: data.pageInfo?.nextCursor ?? null,
             },
           }))
-          ensureAttachmentUrls(fetchedMessages.flatMap((m) => m.attachments ?? []))
-        } catch (error) {
-          console.error(error)
-          toast.error("We couldn’t load that conversation right now.")
+          setLoadingThreadId(null)
+        })
+        
+        // Ensure attachment URLs in background - don't block
+        ensureAttachmentUrls(fetchedMessages.flatMap((m) => m.attachments ?? [])).catch((error) => {
+          console.error("Error ensuring attachment URLs:", error)
+          // Non-critical error - don't show toast
+        })
+      } catch (error: any) {
+        // Ignore abort errors
+        if (error.name === 'AbortError') {
+          return
+        }
+        console.error(error)
+        if (!abortController.signal.aborted) {
+          setLoadingThreadId(null)
+          toast.error("We couldn't load that conversation right now.")
         }
       }
     },
@@ -500,6 +674,10 @@ export default function MessagesView({
         if (cancelled) return
 
         if (conversation) {
+          // Set mobile view to conversation when opening from query parameter
+          if (typeof window !== "undefined" && window.innerWidth < 1024) {
+            setMobileView("conversation")
+          }
           await handleSelectConversation(threadParam)
           if (!cancelled) {
             lastThreadFromQueryRef.current = threadParam
@@ -563,6 +741,10 @@ export default function MessagesView({
         const queryString = nextParams.toString()
         router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
 
+        // Set mobile view to conversation when opening from peerId
+        if (typeof window !== "undefined" && window.innerWidth < 1024) {
+          setMobileView("conversation")
+        }
         await handleSelectConversation(threadId)
         if (!cancelled) {
           lastThreadFromQueryRef.current = threadId
@@ -787,16 +969,6 @@ export default function MessagesView({
     }
   }, [selectedThreadId, typingIndicators])
 
-  const resetComposer = useCallback(() => {
-    setComposerValue("")
-    setAttachments((prev) => {
-      prev.forEach((attachment) => {
-        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
-      })
-      return []
-    })
-  }, [])
-
   const notifyTyping = useCallback(
     (typing: boolean) => {
       if (!channelRef.current) return
@@ -821,6 +993,43 @@ export default function MessagesView({
     }, TYPING_EXPIRATION_MS)
   }, [notifyTyping])
 
+  // Auto-resize textarea based on content
+  const autoResizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = "auto"
+    // Set height to scrollHeight, but respect max-height
+    const scrollHeight = textarea.scrollHeight
+    // Calculate max-height based on breakpoint (sm is 640px)
+    const isSmallScreen = typeof window !== "undefined" && window.innerWidth < 640
+    const maxHeight = isSmallScreen ? 96 : 128 // max-h-24 (96px) or sm:max-h-32 (128px)
+    // Min height should account for padding (4px top + 4px bottom = 8px) plus text height
+    const minHeight = 32 // Adjusted to better align with buttons
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight)
+    textarea.style.height = `${newHeight}px`
+  }, [])
+
+  const resetComposer = useCallback(() => {
+      setComposerValue("")
+      setAttachments((prev) => {
+        prev.forEach((attachment) => {
+          if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+        })
+        return []
+      })
+      // Reset textarea height after clearing
+      setTimeout(() => {
+        autoResizeTextarea()
+      }, 0)
+  }, [autoResizeTextarea])
+
+  // Auto-resize textarea on mount and when composer value changes
+  useEffect(() => {
+    autoResizeTextarea()
+  }, [composerValue, autoResizeTextarea])
+
   const handleComposerChange = useCallback(
     (value: string) => {
       setComposerValue(value)
@@ -829,8 +1038,13 @@ export default function MessagesView({
       typingTimeoutRef.current = setTimeout(() => {
         notifyTyping(false)
       }, TYPING_DEBOUNCE_MS)
+      
+      // Auto-resize textarea after state update
+      setTimeout(() => {
+        autoResizeTextarea()
+      }, 0)
     },
-    [notifyTyping, scheduleTypingBroadcast],
+    [notifyTyping, scheduleTypingBroadcast, autoResizeTextarea],
   )
 
   const handleAddFiles = useCallback(
@@ -1244,7 +1458,8 @@ export default function MessagesView({
                   const displayName = getDisplayName(otherProfile)
                   const initials = getInitials(otherProfile)
                   const avatarImage = otherProfile?.profile_picture ?? undefined
-                  const selected = conversation.thread_id === selectedThreadId
+                  // Only show selected state on desktop - on mobile, the list is hidden when viewing a conversation
+                  const selected = !isMobile && conversation.thread_id === selectedThreadId
                   const lastMessagePreview = conversation.last_message_preview || (conversation.last_message_sender_id ? "[attachment]" : "No messages yet")
                   const unread =
                     conversation.last_message_sender_id &&
@@ -1261,10 +1476,16 @@ export default function MessagesView({
                       key={conversation.thread_id}
                       type="button"
                       onClick={() => handleSelectConversation(conversation.thread_id)}
+                      onMouseEnter={() => {
+                        // Prefetch messages on hover for instant switching (desktop only)
+                        if (!isMobile) {
+                          prefetchMessages(conversation.thread_id)
+                        }
+                      }}
                       className={cn(
-                        "w-full rounded-xl border border-transparent transition-all text-left",
-                        "bg-transparent hover:bg-white/10",
-                        selected && "bg-white/15 border-white/20 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.6)]",
+                        "w-full rounded-xl border transition-all text-left backdrop-blur-md cursor-pointer",
+                        "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20",
+                        selected && "bg-white/10 border-white/20 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.6)]",
                       )}
                     >
                       <div className="px-3 py-3 flex items-start gap-3">
@@ -1291,9 +1512,17 @@ export default function MessagesView({
                               ? formatRelativeTime(conversation.last_message_at)
                               : formatRelativeTime(conversation.updated_at)}
                           </span>
-                          {unread && (
-                            <span className="h-2 w-2 rounded-full bg-white/80 shadow-[0_0_12px_rgba(255,255,255,0.9)]" />
-                          )}
+                          {(() => {
+                            const unreadCount = unreadCounts[conversation.thread_id] || 0
+                            if (unreadCount > 0) {
+                              return (
+                                <Badge className="h-5 min-w-5 px-1.5 flex items-center justify-center bg-white/90 text-black border-0 text-[10px] font-semibold shadow-md">
+                                  {unreadCount > 99 ? "99+" : unreadCount}
+                                </Badge>
+                              )
+                            }
+                            return null
+                          })()}
                         </div>
                       </div>
                     </button>
@@ -1343,29 +1572,38 @@ export default function MessagesView({
                 </div>
                 <div className="flex-1 flex flex-col overflow-hidden">
                   <div ref={messageContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-                    <div className="px-2 sm:px-4 py-3 sm:py-4 space-y-2">
-                      {threadPagination[selectedConversation.thread_id]?.hasMore && (
-                        <div className="flex justify-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-white/70 hover:text-white/90 hover:bg-white/10 border border-white/20"
-                            onClick={handleLoadOlderMessages}
-                            disabled={loadingOlderMessages}
-                          >
-                            {loadingOlderMessages ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Loading…
-                              </>
-                            ) : (
-                              "Load previous messages"
-                            )}
-                          </Button>
+                    {loadingThreadId === selectedThreadId && selectedMessages.length === 0 ? (
+                      // Show loading state while fetching messages for the first time
+                      <div className="flex-1 flex items-center justify-center min-h-[200px]">
+                        <div className="flex flex-col items-center gap-3">
+                          <Loader2 className="h-6 w-6 animate-spin text-white/60" />
+                          <p className="text-white/50 text-sm">Loading messages...</p>
                         </div>
-                      )}
+                      </div>
+                    ) : (
+                      <div className="px-2 sm:px-4 py-3 sm:py-4 space-y-2">
+                        {threadPagination[selectedConversation.thread_id]?.hasMore && (
+                          <div className="flex justify-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-white/70 hover:text-white/90 hover:bg-white/10 border border-white/20"
+                              onClick={handleLoadOlderMessages}
+                              disabled={loadingOlderMessages}
+                            >
+                              {loadingOlderMessages ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Loading…
+                                </>
+                              ) : (
+                                "Load previous messages"
+                              )}
+                            </Button>
+                          </div>
+                        )}
 
-                      {selectedMessages.map((message) => {
+                        {selectedMessages.map((message) => {
                         const isOwn = message.sender_id === viewer.id
                         const attachmentsForMessage = message.attachments ?? []
                         const hasImages = attachmentsForMessage.some(a => a.media_type === "image")
@@ -1578,7 +1816,7 @@ export default function MessagesView({
                                         className="bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-white/75 text-xs"
                                       >
                                         <div className="flex items-center gap-1.5">
-                                          <Paperclip className="h-3.5 w-3.5 text-white/60" />
+                                          <ImageIcon className="h-3.5 w-3.5 text-white/60" />
                                           <span>Attachment</span>
                                         </div>
                                       </div>
@@ -1642,8 +1880,9 @@ export default function MessagesView({
                         </div>
                       )}
                       
-                      <div className="h-1" />
-                    </div>
+                        <div className="h-1" />
+                      </div>
+                    )}
                   </div>
                   <Separator className="bg-white/10" />
                   <div className="p-3 sm:p-4 space-y-3">
@@ -1697,9 +1936,9 @@ export default function MessagesView({
                         composerDisabled && "opacity-60 pointer-events-none",
                       )}
                     >
-                      <div className="flex items-center gap-1.5 sm:gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                         <label
-                          className="rounded-full bg-white/10 border border-white/20 p-1.5 sm:p-2 text-white/70 hover:text-white/90 hover:bg-white/15 cursor-pointer transition flex-shrink-0"
+                          className="rounded-full bg-white/10 border border-white/20 text-white/70 hover:text-white/90 hover:bg-white/15 cursor-pointer transition flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center"
                           title="Attach images"
                         >
                           <input
@@ -1708,7 +1947,7 @@ export default function MessagesView({
                             className="hidden"
                             onChange={(event) => handleAddFiles(event.target.files ? Array.from(event.target.files) : null, "image")}
                           />
-                          <Paperclip className="h-4 w-4" />
+                          <ImageIcon className="h-4 w-4" />
                         </label>
                         <Button
                           type="button"
@@ -1717,10 +1956,11 @@ export default function MessagesView({
                           className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
                           onClick={() => setIsVoiceRecorderOpen(true)}
                         >
-                          <Mic className="h-4 w-4 sm:h-5 sm:w-5" />
+                          <Mic className="h-4 w-4" />
                         </Button>
                       </div>
                       <textarea
+                        ref={textareaRef}
                         value={composerValue}
                         onChange={(event) => handleComposerChange(event.target.value)}
                         placeholder={
@@ -1728,12 +1968,28 @@ export default function MessagesView({
                             ? "Cannot send messages"
                             : "Type a message"
                         }
-                        className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[24px]"
+                        className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-0.5 sm:pb-1.5"
                         rows={1}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault()
-                            handleSendMessage()
+                          // On mobile: Enter creates new line, Shift+Enter sends
+                          // On desktop: Enter sends, Shift+Enter creates new line
+                          if (event.key === "Enter") {
+                            if (isMobile) {
+                              // On mobile, allow Enter to create new line (default behavior)
+                              // Only prevent default and send if Shift+Enter is pressed
+                              if (event.shiftKey) {
+                                event.preventDefault()
+                                handleSendMessage()
+                              }
+                              // Otherwise, let Enter create a new line (no preventDefault)
+                            } else {
+                              // On desktop, Enter sends, Shift+Enter creates new line
+                              if (!event.shiftKey) {
+                                event.preventDefault()
+                                handleSendMessage()
+                              }
+                              // If Shift+Enter, allow default behavior (new line)
+                            }
                           }
                         }}
                       />
@@ -1741,9 +1997,9 @@ export default function MessagesView({
                         type="button"
                         disabled={isSending || composerDisabled}
                         onClick={handleSendMessage}
-                        className="rounded-full bg-white text-black hover:bg-white/90 h-9 w-9 sm:h-11 sm:w-11 flex items-center justify-center flex-shrink-0"
+                        className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center flex-shrink-0 transition-colors"
                       >
-                        {isSending ? <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" /> : <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                        {isSending ? <Loader2 className="h-4 w-4 animate-spin text-white/70" /> : <Send className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>

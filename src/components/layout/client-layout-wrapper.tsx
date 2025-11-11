@@ -33,16 +33,22 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   
   const isStreamPage = pathname?.includes('/stream')
   
-  // Check if we're on a page where online users sidebar should be open by default on desktop
-  const shouldOpenOnlineUsersSidebarByDefault = React.useMemo(() => {
-    if (!pathname) return false
+  // Check if we're on a page where online users sidebar should be available
+  // Returns object with shouldOpen and shouldPin
+  const onlineUsersSidebarConfig = React.useMemo(() => {
+    if (!pathname) return { shouldOpen: false, shouldPin: false }
     
-    // Home page
-    if (pathname === '/') return true
+    // Home page - pinned
+    if (pathname === '/') return { shouldOpen: true, shouldPin: true }
+    
+    // Emails page - unpinned (floating)
+    if (pathname === '/emails' || pathname.startsWith('/emails/')) {
+      return { shouldOpen: false, shouldPin: false } // Closed by default, but available on hover
+    }
     
     // Community pages - routes like /[slug] or /[slug]/*
     // Exclude known non-community routes
-    const nonCommunityRoutes = ['/communities', '/create-community', '/settings', '/admin', '/account', '/profile', '/messages', '/wallet', '/storage', '/topup']
+    const nonCommunityRoutes = ['/communities', '/create-community', '/settings', '/admin', '/account', '/profile', '/messages', '/wallet', '/storage', '/topup', '/emails']
     const isNonCommunityRoute = nonCommunityRoutes.some(route => 
       pathname === route || pathname.startsWith(route + '/')
     )
@@ -53,12 +59,13 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
       // Check if it matches the pattern /[slug] or /[slug]/*
       const pathSegments = pathname.split('/').filter(Boolean)
       // If there's at least one segment and it's not a known route, it's a community route
+      // Community pages: unpinned (floating) like emails page
       if (pathSegments.length > 0) {
-        return true
+        return { shouldOpen: false, shouldPin: false } // Unpinned, opens on hover
       }
     }
     
-    return false
+    return { shouldOpen: false, shouldPin: false }
   }, [pathname])
   
   // Initialize online users sidebar state - will be set by useEffect based on page
@@ -72,19 +79,20 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     if (isMobile) {
       // Always closed on mobile
       setIsOnlineUsersSidebarOpen(false)
+      setIsOnlineUsersSidebarPinned(false)
     } else {
       // On desktop
       const pathnameChanged = prevPathnameRef.current !== pathname
       if (!hasInitializedRef.current || pathnameChanged) {
         prevPathnameRef.current = pathname
         hasInitializedRef.current = true
-        // Open if we're on home page or community pages, and pin it
-        const shouldOpen = shouldOpenOnlineUsersSidebarByDefault
+        // Set state based on page configuration
+        const { shouldOpen, shouldPin } = onlineUsersSidebarConfig
         setIsOnlineUsersSidebarOpen(shouldOpen)
-        setIsOnlineUsersSidebarPinned(shouldOpen)
+        setIsOnlineUsersSidebarPinned(shouldPin)
       }
     }
-  }, [isMobile, shouldOpenOnlineUsersSidebarByDefault, pathname])
+  }, [isMobile, onlineUsersSidebarConfig, pathname])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -346,7 +354,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     "transition-all duration-300 ease-in-out",
     {
       "pt-0 pb-0 ml-0 mr-0": isStreamPage,
-      "pt-12": !isStreamPage, // Top padding for header (mobile and desktop)
+      "pt-0": !isStreamPage, // No padding on main - handled by inner wrapper
       "ml-64": !isStreamPage && isSidebarPinned && !isMobile,
       "ml-0": !isStreamPage && ((!isSidebarPinned && !isMobile) || isMobile),
       "pb-12": !isStreamPage && isMobile, // Bottom padding for mobile bottom nav
@@ -355,7 +363,8 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   
   // Calculate right margin for online users sidebar on desktop when pinned (not when floating/unpinned)
   // When unpinned and opened via hover, it should hover over content without pushing it
-  const contentRightMargin = !isStreamPage && !isMobile && isOnlineUsersSidebarPinned ? '16rem' : '0'
+  // Add extra margin (0.5rem = 8px) to account for scrollbar width (6px) + small gap
+  const contentRightMargin = !isStreamPage && !isMobile && isOnlineUsersSidebarPinned ? '16.5rem' : '0'
 
   return (
     <div
@@ -438,7 +447,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         data-scrollable-content
         className={cn(
           pageAreaClasses, 
-          "flex-1 relative z-10 overflow-y-auto min-h-0 flex flex-col scrollbar-hide"
+          "flex-1 relative z-10 min-h-0 flex flex-col"
         )}
         style={{
           marginRight: contentRightMargin,
@@ -447,7 +456,16 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         {isStreamPage ? (
           children
         ) : (
-          <div className="pt-2.5 pb-4 px-4 sm:px-6 lg:px-8">
+          <div 
+            className={cn(
+              "absolute inset-0 overflow-y-auto pl-3 pr-2.5 sm:pl-4 sm:pr-3.5 lg:pl-6 lg:pr-5",
+              isMobile ? "pb-16" : "pb-4" // Extra padding on mobile for bottom nav (48px nav + 16px spacing = 64px)
+            )}
+            style={{
+              top: '3rem', // Start below header
+              paddingTop: '12px', // Reduced content padding
+            }}
+          >
             {children}
           </div>
         )}

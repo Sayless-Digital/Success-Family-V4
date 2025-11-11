@@ -137,3 +137,4 @@ GRANT EXECUTE ON FUNCTION public.deduct_points_for_stream_creation(UUID, UUID, B
 COMMENT ON FUNCTION public.deduct_points_for_voice_notes IS 'Deducts points from user wallet for voice note creation. 1 point per voice note. Admins bypass point deduction.';
 COMMENT ON FUNCTION public.deduct_points_for_stream_creation IS 'Deducts points from user wallet for stream creation. Admins bypass point deduction.';
 
+

@@ -231,7 +231,7 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
         </div>
 
         {/* Users List */}
-        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="text-center py-8">
               <p className="text-white/60 text-sm">Loading users...</p>

@@ -34,26 +34,52 @@ export async function POST(request: Request) {
       .eq("is_active", true)
       .single()
 
-    // Get webhook URL (always use current environment URL)
-    // In production, ensure we use HTTPS if the URL doesn't specify a protocol
-    let baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    // Get webhook URL - ALWAYS use production URL for webhooks (even in dev)
+    // Webhooks must be publicly accessible, so we always use the production URL
+    // Priority: INBOUND_WEBHOOK_URL > NEXT_PUBLIC_APP_URL (if production) > hardcoded production URL
+    let webhookUrl: string
     
-    // If baseUrl doesn't have a protocol and it's not localhost, assume HTTPS for production
-    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-      // If it's localhost, use http, otherwise use https
-      if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
-        baseUrl = `http://${baseUrl}`
+    // First, try the dedicated webhook URL environment variable
+    if (process.env.INBOUND_WEBHOOK_URL) {
+      webhookUrl = process.env.INBOUND_WEBHOOK_URL
+      // Ensure it has the /api/emails/webhook path if not already included
+      if (!webhookUrl.includes('/api/emails/webhook')) {
+        webhookUrl = webhookUrl.replace(/\/$/, '') + '/api/emails/webhook'
+      }
+    } else {
+      // Fallback: Use production URL from NEXT_PUBLIC_APP_URL if it's a production URL
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      const isProductionUrl = appUrl && 
+        !appUrl.includes('localhost') && 
+        !appUrl.includes('127.0.0.1') && 
+        (appUrl.startsWith('https://') || appUrl.startsWith('http://'))
+      
+      if (isProductionUrl) {
+        const baseUrl = appUrl.replace(/\/$/, '')
+        webhookUrl = `${baseUrl}/api/emails/webhook`
       } else {
-        baseUrl = `https://${baseUrl}`
+        // Hardcoded production URL as final fallback
+        // Change this to your actual production domain
+        webhookUrl = 'https://successfamily.online/api/emails/webhook'
+        console.warn('[Setup] Using hardcoded production webhook URL. Set INBOUND_WEBHOOK_URL for customization.')
       }
     }
     
-    // Ensure production URLs use HTTPS (except localhost)
-    if (process.env.NODE_ENV === 'production' && !baseUrl.includes('localhost') && !baseUrl.includes('127.0.0.1')) {
-      baseUrl = baseUrl.replace(/^http:\/\//, 'https://')
+    // Ensure webhook URL is HTTPS (webhooks must be secure)
+    if (webhookUrl.startsWith('http://') && !webhookUrl.includes('localhost')) {
+      webhookUrl = webhookUrl.replace(/^http:\/\//, 'https://')
+      console.warn('[Setup] Upgraded webhook URL to HTTPS for security')
     }
     
-    const webhookUrl = `${baseUrl}/api/emails/webhook`
+    // Warn if somehow we ended up with localhost
+    if (webhookUrl.includes('localhost') || webhookUrl.includes('127.0.0.1')) {
+      console.error('[Setup] ❌ ERROR: Webhook URL cannot be localhost! Webhooks will not work.')
+      console.error('[Setup] Please set INBOUND_WEBHOOK_URL to your production domain (e.g., https://successfamily.online/api/emails/webhook)')
+      throw new Error('Webhook URL cannot be localhost. Set INBOUND_WEBHOOK_URL environment variable.')
+    }
+    
+    console.log(`[Setup] Using webhook URL: ${webhookUrl} (always production, even in dev mode)`)
+    console.log(`[Setup] Webhook URL source: ${process.env.INBOUND_WEBHOOK_URL ? 'INBOUND_WEBHOOK_URL' : process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost') ? 'NEXT_PUBLIC_APP_URL (production)' : 'hardcoded production URL'}`)
 
     // If email exists and Inbound is already configured, always update endpoint URL
     // This ensures the webhook URL matches the current environment (dev vs production)
@@ -214,4 +240,6 @@ export async function POST(request: Request) {
     )
   }
 }
+
+
 

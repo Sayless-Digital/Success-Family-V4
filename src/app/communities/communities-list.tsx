@@ -6,7 +6,6 @@ import { Users, Calendar, Globe, Building2, Search, Crown, ImageIcon } from "luc
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
-import { PageHeader } from "@/components/ui/page-header"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { CreateCommunityDialog } from "@/components/create-community-dialog"
@@ -51,21 +50,24 @@ export default function CommunitiesList({ communities }: CommunitiesListProps) {
   return (
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
-        <PageHeader
-          title="Explore Communities"
-          subtitle="Discover and join communities of like-minded individuals"
-        />
-
-        {/* Search Bar */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-          <Input
-            type="text"
-            placeholder="Search communities..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/40"
-          />
+        {/* Search Bar and Create Button */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+            <Input
+              type="text"
+              placeholder="Search communities..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/40"
+            />
+          </div>
+          <Button 
+            onClick={() => (user ? setCreateOpen(true) : setAuthOpen(true))}
+            className="w-full sm:w-auto"
+          >
+            Create Community
+          </Button>
         </div>
 
         {/* Communities Grid */}

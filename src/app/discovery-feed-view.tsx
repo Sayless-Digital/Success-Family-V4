@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
-import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight } from "lucide-react"
+import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -22,9 +22,18 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { LoadingSpinner } from "@/components/loading-spinner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Textarea } from "@/components/ui/textarea"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
@@ -75,6 +84,13 @@ export default function DiscoveryFeedView({
   const [commentsLoading, setCommentsLoading] = useState<Record<string, boolean>>({})
   const [membershipByCommunityId, setMembershipByCommunityId] = useState<Record<string, boolean>>({})
   const fetchedCommentsRef = React.useRef<Set<string>>(new Set())
+  
+  // Edit and delete state
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState<Record<string, string>>({})
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   // Update relative times periodically
   useEffect(() => {
@@ -295,6 +311,107 @@ export default function DiscoveryFeedView({
     })
   }
 
+  // Edit post handler
+  const handleEditPost = (post: PostWithAuthor) => {
+    setEditingPostId(post.id)
+    setEditingContent(prev => ({ ...prev, [post.id]: post.content }))
+  }
+
+  // Cancel edit handler
+  const handleCancelEdit = (postId: string) => {
+    setEditingPostId(null)
+    setEditingContent(prev => {
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+  }
+
+  // Save edit handler
+  const handleSaveEdit = async (postId: string) => {
+    const content = editingContent[postId]?.trim() || ''
+    
+    if (!content) {
+      toast.error("Post content cannot be empty")
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({ content })
+        .eq('id', postId)
+
+      if (error) throw error
+
+      // Update local state
+      setPosts(prevPosts =>
+        prevPosts.map(p => p.id === postId ? { ...p, content } : p)
+      )
+
+      setEditingPostId(null)
+      setEditingContent(prev => {
+        const updated = { ...prev }
+        delete updated[postId]
+        return updated
+      })
+
+      toast.success("Post updated successfully")
+    } catch (error: any) {
+      console.error('Error updating post:', error)
+      toast.error('Failed to update post. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Delete post handler
+  const handleDeletePost = (postId: string) => {
+    setDeletingPostId(postId)
+  }
+
+  // Confirm delete handler
+  const confirmDeletePost = async () => {
+    if (!deletingPostId) return
+
+    setIsDeleting(true)
+
+    try {
+      // Delete post media from storage first
+      const { data: mediaData } = await supabase
+        .from('post_media')
+        .select('storage_path')
+        .eq('post_id', deletingPostId)
+
+      if (mediaData) {
+        const paths = mediaData.map(m => m.storage_path).filter(Boolean)
+        if (paths.length > 0) {
+          await supabase.storage.from('post-media').remove(paths)
+        }
+      }
+
+      // Delete the post (this will cascade delete media records)
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', deletingPostId)
+
+      if (error) throw error
+
+      // Remove from local state
+      setPosts(prevPosts => prevPosts.filter(p => p.id !== deletingPostId))
+      toast.success("Post deleted successfully")
+      setDeletingPostId(null)
+    } catch (error: any) {
+      console.error('Error deleting post:', error)
+      toast.error('Failed to delete post. Please try again.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // Realtime subscription for boost updates
   useEffect(() => {
     if (!posts.length) return
@@ -499,25 +616,113 @@ export default function DiscoveryFeedView({
                               )}
                             </div>
                           </div>
+
+                          {/* Context Menu - Only show for post owner */}
+                          {user && post.author_id === user.id && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex items-center justify-center w-8 h-8 p-0 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
+                                >
+                                  <MoreVertical className="h-4 w-4 text-white/70" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                {(() => {
+                                  const postDate = new Date(post.created_at)
+                                  const now = new Date()
+                                  const diffMs = now.getTime() - postDate.getTime()
+                                  const diffMins = diffMs / 60000
+                                  const canEdit = diffMins < 5
+                                  
+                                  return (
+                                    <>
+                                      {/* Edit option - only if within 5 minutes */}
+                                      {canEdit && (
+                                        <DropdownMenuItem
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleEditPost(post)
+                                          }}
+                                          className="cursor-pointer"
+                                        >
+                                          <Edit className="h-4 w-4 mr-2 text-white/70" />
+                                          Edit
+                                        </DropdownMenuItem>
+                                      )}
+                                      {/* Separator only if Edit option exists */}
+                                      {canEdit && <DropdownMenuSeparator />}
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleDeletePost(post.id)
+                                        }}
+                                        className="cursor-pointer text-destructive focus:text-destructive"
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </>
+                                  )
+                                })()}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                       </div>
 
-                      {/* Content */}
-                      <div className="mb-3">
-                        <p className="text-white/80 text-base whitespace-pre-wrap break-words">
-                          {post.content}
-                        </p>
-
-                        {/* Post Media Slider */}
-                        {post.media && post.media.length > 0 && (
-                          <div className="mt-3">
-                            <PostMediaSlider media={post.media} author={post.author} />
+                      {/* Content - Edit Mode or View Mode */}
+                      {editingPostId === post.id ? (
+                        <div className="mb-3 space-y-3">
+                          <Textarea
+                            value={editingContent[post.id] || ''}
+                            onChange={(e) => setEditingContent(prev => ({ ...prev, [post.id]: e.target.value }))}
+                            placeholder="What's on your mind?"
+                            className="w-full bg-white/10 border-white/20 text-white placeholder:text-white/40 resize-none focus:ring-white/20 min-h-[100px]"
+                            onInput={(e) => {
+                              const target = e.target as HTMLTextAreaElement
+                              target.style.height = 'auto'
+                              target.style.height = Math.max(100, target.scrollHeight) + 'px'
+                            }}
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={() => handleSaveEdit(post.id)}
+                              disabled={isSaving}
+                              size="sm"
+                              className="bg-primary text-primary-foreground hover:bg-primary/90"
+                            >
+                              {isSaving ? "Saving..." : "Save"}
+                            </Button>
+                            <Button
+                              onClick={() => handleCancelEdit(post.id)}
+                              disabled={isSaving}
+                              size="sm"
+                              variant="outline"
+                              className="border-white/20 text-white hover:bg-white/10"
+                            >
+                              Cancel
+                            </Button>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mb-3">
+                            <p className="text-white/80 text-base whitespace-pre-wrap break-words">
+                              {post.content}
+                            </p>
 
-                      {/* Boost and Contribute Buttons */}
-                      <div className="flex items-center gap-2">
+                            {/* Post Media Slider */}
+                            {post.media && post.media.length > 0 && (
+                              <div className="mt-3">
+                                <PostMediaSlider media={post.media} author={post.author} />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Boost and Contribute Buttons */}
+                          <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => handleBoostToggle(post.id, post.author_id, e)}
                           disabled={!user || boostingPosts.has(post.id)}
@@ -580,6 +785,8 @@ export default function DiscoveryFeedView({
                           </button>
                         )}
                       </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 )
@@ -860,6 +1067,35 @@ export default function DiscoveryFeedView({
           </Dialog>
         )
       })()}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingPostId} onOpenChange={(open) => !open && !isDeleting && setDeletingPostId(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader className="space-y-2">
+            <DialogTitle>Delete Post</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this post? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeletingPostId(null)}
+              disabled={isDeleting}
+              className="border-white/20 text-white hover:bg-white/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeletePost}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Forever"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

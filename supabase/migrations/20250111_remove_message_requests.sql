@@ -77,3 +77,4 @@ CREATE TRIGGER set_dm_request_flag_trigger
 COMMENT ON COLUMN public.dm_threads.request_required
   IS 'DEPRECATED: Always false. Message requests are no longer used.';
 
+

@@ -335,7 +335,7 @@ export default function CommunityView({
             </DialogPrimitive.Close>
 
             {/* Scrollable Content Area */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent' }}>
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6">
               <div className="text-center space-y-4">
                 {/* Community Logo */}
                 <div className="flex justify-center">

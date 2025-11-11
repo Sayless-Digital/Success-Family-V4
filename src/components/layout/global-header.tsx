@@ -24,6 +24,8 @@ import type { Community } from "@/types"
 import { CreateCommunityDialog } from "@/components/create-community-dialog"
 import { CommunityLogo } from "@/components/community-logo"
 import { PlatformLogo } from "@/components/platform-logo"
+import { useUnreadMessagesCount } from "@/hooks/use-unread-messages-count"
+import { Badge } from "@/components/ui/badge"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -37,6 +39,7 @@ interface GlobalHeaderProps {
 export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, fullscreenTargetRef, onOnlineUsersSidebarToggle, isOnlineUsersSidebarOpen = false }: GlobalHeaderProps) {
   const { user, userProfile, walletBalance, walletEarningsBalance, userValuePerPoint, signOut, isLoading, refreshProfile } = useAuth()
   const pathname = usePathname()
+  const { unreadCount } = useUnreadMessagesCount(user?.id ?? null)
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -659,10 +662,15 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
 
           {/* Messages button - shown when user is logged in, desktop only */}
           {user && (
-            <Link href="/messages" className="cursor-pointer hidden md:flex">
+            <Link href="/messages" className="cursor-pointer hidden md:flex relative">
               <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
                 <MessageCircle className="h-4 w-4" />
               </Button>
+              {unreadCount > 0 && (
+                <Badge className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
+              )}
             </Link>
           )}
 
