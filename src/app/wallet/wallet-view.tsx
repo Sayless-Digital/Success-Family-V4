@@ -751,10 +751,20 @@ export function WalletView({
                 const amountDisplay = formatCurrencyTtd(t.amount_ttd)
                 const walletDelta = formatPointsDelta(t.points_delta)
                 const earningsDelta = formatPointsDelta(t.earnings_points_delta)
-                const recipientLabel =
-                  t.type === "point_refund" && t.points_delta > 0
-                    ? "You"
-                    : t.recipient_name || (t.type === "point_spend" && t.points_delta < 0 ? "Platform" : "—")
+                
+                // Determine recipient label based on transaction type
+                let recipientLabel = "—"
+                if (t.type === "point_refund" && t.points_delta > 0) {
+                  recipientLabel = "You"
+                } else if (t.type === "earning_credit" && t.recipient_user_id) {
+                  // For earning_credit, recipient_user_id is the sender
+                  recipientLabel = t.recipient_name ? `Received from ${t.recipient_name}` : "Received from user"
+                } else if (t.type === "point_spend" && t.points_delta < 0) {
+                  // For point_spend, recipient_user_id is who received the points
+                  recipientLabel = t.recipient_name ? `Sent to ${t.recipient_name}` : (t.recipient_user_id ? "Sent to user" : "Platform")
+                } else if (t.recipient_name) {
+                  recipientLabel = t.recipient_name
+                }
 
                 return (
                   <TableRow key={t.id}>
@@ -827,10 +837,20 @@ export function WalletView({
             const walletDelta = formatPointsDelta(t.points_delta)
             const earningsDelta = formatPointsDelta(t.earnings_points_delta)
             const amountDisplay = formatCurrencyTtd(t.amount_ttd)
-            const recipientLabel =
-              t.type === "point_refund" && t.points_delta > 0
-                ? "You"
-                : t.recipient_name || (t.type === "point_spend" && t.points_delta < 0 ? "Platform" : "—")
+            
+            // Determine recipient label based on transaction type
+            let recipientLabel = "—"
+            if (t.type === "point_refund" && t.points_delta > 0) {
+              recipientLabel = "You"
+            } else if (t.type === "earning_credit" && t.recipient_user_id) {
+              // For earning_credit, recipient_user_id is the sender
+              recipientLabel = t.recipient_name ? `Received from ${t.recipient_name}` : "Received from user"
+            } else if (t.type === "point_spend" && t.points_delta < 0) {
+              // For point_spend, recipient_user_id is who received the points
+              recipientLabel = t.recipient_name ? `Sent to ${t.recipient_name}` : (t.recipient_user_id ? "Sent to user" : "Platform")
+            } else if (t.recipient_name) {
+              recipientLabel = t.recipient_name
+            }
 
             return (
               <div
