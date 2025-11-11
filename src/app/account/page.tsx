@@ -264,7 +264,7 @@ export default function AccountPage() {
           <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
             <CardContent className="pt-6">
               <div className="flex flex-col sm:flex-row items-center gap-6">
-                <Avatar className="h-24 w-24 sm:h-32 sm:w-32 border-4 border-white/20">
+                <Avatar className="h-24 w-24 sm:h-32 sm:w-32 border-4 border-white/20" userId={user?.id}>
                   <AvatarImage src={formData.profilePicture} alt={formData.username || 'Profile'} />
                   <AvatarFallback className="bg-white/10 text-white text-3xl sm:text-4xl">
                     {(formData.firstName?.[0] || userProfile?.first_name?.[0] || '')}

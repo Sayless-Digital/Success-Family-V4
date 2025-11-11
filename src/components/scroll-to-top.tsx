@@ -23,8 +23,11 @@ export function ScrollToTop() {
   }, [])
 
   useEffect(() => {
-    // Find the scrollable main element
-    const scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement
+    // Find the scrollable content element (inner div with data attribute, or fallback to main)
+    let scrollableElement = document.querySelector('[data-scrollable-content]') as HTMLElement | null
+    if (!scrollableElement) {
+      scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement | null
+    }
 
     if (!scrollableElement) {
       return
@@ -51,7 +54,10 @@ export function ScrollToTop() {
   }, [])
 
   const scrollToTop = () => {
-    const scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement
+    let scrollableElement = document.querySelector('[data-scrollable-content]') as HTMLElement | null
+    if (!scrollableElement) {
+      scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement | null
+    }
     if (scrollableElement) {
       scrollableElement.scrollTo({
         top: 0,
@@ -69,7 +75,7 @@ export function ScrollToTop() {
       onClick={scrollToTop}
       size="icon"
       className={cn(
-        "fixed right-4 z-50 h-12 w-12 rounded-full",
+        "fixed right-4 z-[10000] h-12 w-12 rounded-full",
         // Account for mobile bottom nav (48px + 16px spacing = 64px)
         isMobile ? "bottom-16" : "bottom-4",
         "bg-white/10 backdrop-blur-md border border-white/20",

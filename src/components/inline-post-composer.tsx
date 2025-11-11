@@ -197,8 +197,9 @@ export function InlinePostComposer({
     if (!resolvedAllowVoiceNote) return
     if (!user) return
 
-    // Check wallet balance
-    if (walletBalance === null || walletBalance < 1) {
+    // Check wallet balance (skip for admins)
+    const isAdmin = userProfile?.role === 'admin'
+    if (!isAdmin && (walletBalance === null || walletBalance < 1)) {
       toast.error("You need at least 1 point to add a voice note")
       setShowVoiceRecorder(false)
       return
@@ -366,7 +367,7 @@ export function InlinePostComposer({
 
     console.log(`Uploading ${totalFiles} media files for post ${postId}`)
 
-    // Deduct points for voice note if present
+    // Deduct points for voice note if present (admins bypass this in the database function)
     if (voiceNote && user) {
       const { error: pointsError } = await supabase.rpc('deduct_points_for_voice_notes', {
         p_user_id: user.id,
@@ -378,8 +379,11 @@ export function InlinePostComposer({
         throw new Error(`Failed to deduct points: ${pointsError.message}`)
       }
 
-      // Refresh wallet balance
-      await refreshWalletBalance()
+      // Refresh wallet balance (only if not admin, as admin won't have points deducted)
+      const isAdmin = userProfile?.role === 'admin'
+      if (!isAdmin) {
+        await refreshWalletBalance()
+      }
     }
 
     let displayOrder = 0
@@ -609,7 +613,7 @@ export function InlinePostComposer({
             className="flex items-center gap-3"
             onClick={() => setIsExpanded(true)}
           >
-            <Avatar className="h-10 w-10 border-4 border-white/20 flex-shrink-0">
+            <Avatar className="h-10 w-10 border-4 border-white/20 flex-shrink-0" userId={user?.id}>
               <AvatarImage src={userProfile.profile_picture} alt={`${userProfile.first_name} ${userProfile.last_name}`} />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
                 {userProfile.first_name[0]}{userProfile.last_name[0]}
@@ -622,7 +626,7 @@ export function InlinePostComposer({
           <div className="space-y-4">
             {/* Header with Avatar */}
             <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10 border-4 border-white/20 flex-shrink-0">
+              <Avatar className="h-10 w-10 border-4 border-white/20 flex-shrink-0" userId={user?.id}>
                 <AvatarImage src={userProfile.profile_picture} alt={`${userProfile.first_name} ${userProfile.last_name}`} />
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
                   {userProfile.first_name[0]}{userProfile.last_name[0]}
@@ -838,7 +842,8 @@ export function InlinePostComposer({
                 <button
                   type="button"
                   onClick={() => {
-                    if (walletBalance === null || walletBalance < 1) {
+                    const isAdmin = userProfile?.role === 'admin'
+                    if (!isAdmin && (walletBalance === null || walletBalance < 1)) {
                       toast.error("You need at least 1 point to record a voice note")
                       return
                     }

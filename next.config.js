@@ -153,6 +153,12 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-avatar', '@radix-ui/react-dialog'],
   },
+  
+  // ESLint configuration
+  eslint: {
+    // Don't run ESLint during build (linting is done separately)
+    ignoreDuringBuilds: false,
+  },
 }
 
 module.exports = nextConfig

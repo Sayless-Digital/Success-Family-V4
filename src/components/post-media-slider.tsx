@@ -225,7 +225,7 @@ export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
                       animationDuration: playingAudio === voiceNote.id ? '2s' : 'none'
                     }}
                     >
-                      <Avatar className="h-10 w-10 border-2 border-white/20">
+                      <Avatar className="h-10 w-10 border-2 border-white/20" userId={author?.id}>
                         <AvatarImage src={author.profile_picture} alt={`${author.first_name} ${author.last_name}`} />
                         <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
                           {author.first_name[0]}{author.last_name[0]}

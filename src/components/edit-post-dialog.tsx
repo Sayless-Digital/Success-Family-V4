@@ -38,7 +38,7 @@ export function EditPostDialog({
   post,
   onPostUpdated
 }: EditPostDialogProps) {
-  const { user, walletBalance, refreshWalletBalance } = useAuth()
+  const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
   const [content, setContent] = React.useState(post.content)
   const [mediaFiles, setMediaFiles] = React.useState<MediaFile[]>([])
   const [existingMedia, setExistingMedia] = React.useState<ExistingMedia[]>([])
@@ -155,7 +155,9 @@ export function EditPostDialog({
   const handleVoiceNoteComplete = async (audioBlob: Blob) => {
     if (!user) return
 
-    if (walletBalance === null || walletBalance < 1) {
+    // Check wallet balance (skip for admins)
+    const isAdmin = userProfile?.role === 'admin'
+    if (!isAdmin && (walletBalance === null || walletBalance < 1)) {
       toast.error("You need at least 1 point to add a voice note")
       setShowVoiceRecorder(false)
       return
@@ -277,6 +279,9 @@ export function EditPostDialog({
 
       // Upload new media files
       const newMedia = [...mediaFiles]
+      let hasVoiceNotes = false
+      const isAdmin = userProfile?.role === 'admin'
+      
       for (let i = 0; i < newMedia.length; i++) {
         const media = newMedia[i]
         const fileName = `${post.id}-${Date.now()}-${i}.${media.file.name.split('.').pop()}`
@@ -289,8 +294,9 @@ export function EditPostDialog({
 
         if (uploadError) throw uploadError
 
-        // Deduct points for voice notes
+        // Deduct points for voice notes (admins bypass this in the database function)
         if (media.type === 'audio') {
+          hasVoiceNotes = true
           const { error: deductError } = await supabase.rpc('deduct_points_for_voice_notes', {
             p_user_id: user.id,
             p_point_cost: 1
@@ -312,7 +318,10 @@ export function EditPostDialog({
         if (mediaError) throw mediaError
       }
 
-      await refreshWalletBalance?.()
+      // Refresh wallet balance if we added voice notes (only for non-admins, as admins don't have points deducted)
+      if (hasVoiceNotes && !isAdmin) {
+        await refreshWalletBalance?.()
+      }
 
       // Fetch updated post
       const { data: updatedPostData, error: fetchError } = await supabase

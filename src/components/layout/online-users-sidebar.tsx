@@ -12,6 +12,10 @@ import { useAuth } from "@/components/auth-provider"
 
 interface OnlineUsersSidebarProps {
   isMobile: boolean
+  isOpen: boolean
+  isPinned: boolean
+  onClose: () => void
+  onHoverChange?: (isHovered: boolean) => void
 }
 
 interface UserProfile {
@@ -22,13 +26,32 @@ interface UserProfile {
   profile_picture: string | null
 }
 
-export function OnlineUsersSidebar({ isMobile }: OnlineUsersSidebarProps) {
+export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHoverChange }: OnlineUsersSidebarProps) {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([])
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const { onlineUserIds } = useOnlineStatus()
-  const { user } = useAuth()
+  const { user, userProfile } = useAuth()
+
+  const handleHoverEnter = () => {
+    if (!isMobile && !isPinned) {
+      onHoverChange?.(true)
+    }
+  }
+
+  const handleHoverLeave = () => {
+    // Don't signal hover leave immediately - allow time to move to sidebar
+    // The sidebar's onMouseEnter will keep it open if mouse moves there
+  }
+
+  const handleSidebarMouseEnter = () => {
+    // Keep sidebar open when hovering over it - signal hover state to parent
+    if (!isMobile && !isPinned) {
+      onHoverChange?.(true)
+    }
+  }
+
 
   // Fetch all users
   useEffect(() => {
@@ -52,9 +75,8 @@ export function OnlineUsersSidebar({ isMobile }: OnlineUsersSidebarProps) {
     fetchUsers()
   }, [])
 
-  // Filter online users based on search
+  // Filter and sort users: all online users first, then divider, then all offline users
   useEffect(() => {
-    // Filter out current user and only show online users
     const currentUserId = user?.id
     
     // Debug: Log filtering info
@@ -62,41 +84,148 @@ export function OnlineUsersSidebar({ isMobile }: OnlineUsersSidebarProps) {
       console.log('[OnlineUsersSidebar] All users:', allUsers.length)
       console.log('[OnlineUsersSidebar] Online user IDs:', Array.from(onlineUserIds))
       console.log('[OnlineUsersSidebar] Current user ID:', currentUserId)
+      console.log('[OnlineUsersSidebar] Current user in allUsers:', allUsers.some(u => u.id === currentUserId))
+      console.log('[OnlineUsersSidebar] Current user in onlineUserIds:', currentUserId ? onlineUserIds.has(currentUserId) : false)
     }
     
-    const onlineUsers = allUsers.filter(u => 
-      u.id !== currentUserId && onlineUserIds.has(u.id)
-    )
+    // Get all users (including current user)
+    let allUsersList = [...allUsers]
     
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[OnlineUsersSidebar] Filtered online users:', onlineUsers.length)
+    // If current user is online but not in allUsers, add them using userProfile
+    if (currentUserId && onlineUserIds.has(currentUserId)) {
+      const currentUserInAllUsers = allUsersList.some(u => u.id === currentUserId)
+      if (!currentUserInAllUsers && userProfile) {
+        allUsersList.push({
+          id: userProfile.id,
+          username: userProfile.username,
+          first_name: userProfile.first_name || null,
+          last_name: userProfile.last_name || null,
+          profile_picture: userProfile.profile_picture || null,
+        })
+      }
     }
     
-    if (!searchQuery.trim()) {
-      setFilteredUsers(onlineUsers)
-    } else {
+    // Apply search filter if present
+    if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      const filtered = onlineUsers.filter(u =>
+      allUsersList = allUsersList.filter(u =>
         u.first_name?.toLowerCase().includes(query) ||
         u.last_name?.toLowerCase().includes(query) ||
         u.username?.toLowerCase().includes(query)
       )
-      setFilteredUsers(filtered)
     }
-  }, [searchQuery, allUsers, onlineUserIds, user?.id])
+    
+    // Separate online and offline users
+    const onlineUsers = allUsersList.filter(u => onlineUserIds.has(u.id))
+    const offlineUsers = allUsersList.filter(u => !onlineUserIds.has(u.id))
+    
+    // Sort online users: current user first, then others alphabetically
+    const sortedOnlineUsers = onlineUsers.sort((a, b) => {
+      // Current user always comes first
+      if (a.id === currentUserId) return -1
+      if (b.id === currentUserId) return 1
+      
+      // For other users, sort alphabetically
+      const aFirstName = (a.first_name || '').toLowerCase()
+      const bFirstName = (b.first_name || '').toLowerCase()
+      if (aFirstName !== bFirstName) {
+        return aFirstName.localeCompare(bFirstName)
+      }
+      const aLastName = (a.last_name || '').toLowerCase()
+      const bLastName = (b.last_name || '').toLowerCase()
+      return aLastName.localeCompare(bLastName)
+    })
+    
+    // Sort offline users alphabetically
+    const sortedOfflineUsers = offlineUsers.sort((a, b) => {
+      const aFirstName = (a.first_name || '').toLowerCase()
+      const bFirstName = (b.first_name || '').toLowerCase()
+      if (aFirstName !== bFirstName) {
+        return aFirstName.localeCompare(bFirstName)
+      }
+      const aLastName = (a.last_name || '').toLowerCase()
+      const bLastName = (b.last_name || '').toLowerCase()
+      return aLastName.localeCompare(bLastName)
+    })
+    
+    // Build final list: online users first, then offline users
+    // We'll add a divider marker in the rendering logic
+    const finalList: UserProfile[] = []
+    finalList.push(...sortedOnlineUsers)
+    finalList.push(...sortedOfflineUsers)
+    
+    // Store divider index for rendering
+    const dividerIndex = sortedOnlineUsers.length
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[OnlineUsersSidebar] Online users:', sortedOnlineUsers.length)
+      console.log('[OnlineUsersSidebar] Offline users:', sortedOfflineUsers.length)
+      console.log('[OnlineUsersSidebar] Divider index:', dividerIndex)
+      console.log('[OnlineUsersSidebar] Total online users:', onlineUserIds.size)
+    }
+    
+    setFilteredUsers(finalList)
+    // Store divider index in a way we can access it during render
+    // We'll use the fact that offline users start after online users
+  }, [searchQuery, allUsers, onlineUserIds, user?.id, userProfile])
+  
+  // Calculate online user count (including current user if they're online)
+  const onlineUserCount = React.useMemo(() => {
+    return onlineUserIds.size
+  }, [onlineUserIds])
 
-  // Don't show on mobile
-  if (isMobile) return null
+  // Determine if sidebar should be visible (same logic as global sidebar)
+  const shouldShowSidebar = isMobile ? isOpen : (isPinned || isOpen)
+  
+  // On desktop when unpinned, always allow pointer events for hover tracking
+  // This ensures the sidebar can receive mouse events even during transitions
+  const allowPointerEvents = !isMobile && !isPinned
 
   const sidebarClasses = cn(
-    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg border border-white/20",
-    "top-14 right-2", // 3rem header + 0.5rem gap = 3.5rem
-    "h-[calc(100dvh-3.5rem-0.5rem)]" // 100dvh - sidebar top (3.5rem) - bottom spacing (0.5rem)
+    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out rounded-lg border border-white/20",
+    {
+      // Mobile: slide from right (same as global sidebar)
+      "top-14 right-2 left-auto": isMobile,
+      "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
+      "z-[9000]": isMobile,
+      // Desktop: slide from right (same as global sidebar but on right side)
+      "top-14 right-2": !isMobile,
+      "h-[calc(100dvh-3.5rem-0.5rem)]": !isMobile, // 100dvh - sidebar top (3.5rem) - bottom spacing (0.5rem)
+      "z-[9001]": !isMobile, // Higher z-index than trigger to ensure it's on top
+      // Show/hide based on state
+      "translate-x-0": shouldShowSidebar,
+      "translate-x-full": !shouldShowSidebar,
+      // Hide visually when not showing
+      "opacity-0": !shouldShowSidebar,
+      // Pointer events: always allow on desktop when unpinned (for hover), otherwise disable when hidden
+      "pointer-events-none": allowPointerEvents ? false : !shouldShowSidebar,
+    }
   )
 
   return (
-    <aside className={sidebarClasses}>
-      <div className="h-full flex flex-col">
+    <>
+      {/* Desktop hover trigger area when unpinned (same as global sidebar) */}
+      {/* Keep trigger visible even when sidebar is open to maintain hover continuity */}
+      {!isMobile && !isPinned && (
+        <div
+          className="fixed top-14 right-0 w-8 h-[calc(100dvh-3.5rem)] z-[8999]"
+          onMouseEnter={handleHoverEnter}
+          onMouseLeave={handleHoverLeave}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={sidebarClasses}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={() => {
+          // Notify parent that mouse left - parent will handle closing with delay
+          if (!isPinned && !isMobile) {
+            onHoverChange?.(false)
+          }
+        }}
+      >
+        <div className="h-full flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-white/20">
           <div className="flex items-center gap-2 mb-3">
@@ -104,8 +233,8 @@ export function OnlineUsersSidebar({ isMobile }: OnlineUsersSidebarProps) {
             <h3 className="text-white font-semibold text-base">
               Online Users
             </h3>
-            <span className="text-white/60 text-xs ml-auto">
-              {filteredUsers.length}
+            <span className="ml-auto flex items-center justify-center min-h-6 min-w-6 h-6 px-2 rounded-full bg-white/20 text-white font-bold text-xs">
+              {onlineUserCount}
             </span>
           </div>
           
@@ -123,7 +252,7 @@ export function OnlineUsersSidebar({ isMobile }: OnlineUsersSidebarProps) {
         </div>
 
         {/* Users List */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
           {loading ? (
             <div className="text-center py-8">
               <p className="text-white/60 text-sm">Loading users...</p>
@@ -136,33 +265,48 @@ export function OnlineUsersSidebar({ isMobile }: OnlineUsersSidebarProps) {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredUsers.map((user) => (
-                <Link
-                  key={user.id}
-                  href={`/profile/${user.username}`}
-                  className="flex items-center gap-3 p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-200 group"
-                >
-                  <Avatar className="h-10 w-10 border-2 border-white/20 flex-shrink-0" userId={user.id}>
-                    <AvatarImage src={user.profile_picture || ""} alt={`${user.first_name} ${user.last_name}`} />
-                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-sm">
-                      {user.first_name?.[0]}{user.last_name?.[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate group-hover:text-white/90">
-                      {user.first_name} {user.last_name}
-                    </p>
-                    <p className="text-white/60 text-xs truncate group-hover:text-white/70">
-                      @{user.username}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+              {filteredUsers.map((user, index) => {
+                const isOnline = onlineUserIds.has(user.id)
+                const prevUser = index > 0 ? filteredUsers[index - 1] : null
+                const prevIsOnline = prevUser ? onlineUserIds.has(prevUser.id) : false
+                
+                // Show divider between online and offline users
+                // Divider appears when transitioning from online (prev user) to offline (current user)
+                const showDivider = prevIsOnline && !isOnline
+                
+                return (
+                  <React.Fragment key={user.id}>
+                    {showDivider && (
+                      <div className="my-3 border-t border-white/20" />
+                    )}
+                    <Link
+                      href={`/profile/${user.username}`}
+                      className="flex items-center gap-3 p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-200 group"
+                    >
+                      <Avatar className="h-10 w-10 border-2 border-white/20 flex-shrink-0" userId={user.id}>
+                        <AvatarImage src={user.profile_picture || ""} alt={`${user.first_name} ${user.last_name}`} />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-sm">
+                          {user.first_name?.[0]}{user.last_name?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm truncate group-hover:text-white/90">
+                          {user.first_name} {user.last_name}
+                        </p>
+                        <p className="text-white/60 text-xs truncate group-hover:text-white/70">
+                          @{user.username}
+                        </p>
+                      </div>
+                    </Link>
+                  </React.Fragment>
+                )
+              })}
             </div>
           )}
         </div>
       </div>
-    </aside>
-  )
-}
+      </aside>
+          </>
+        )
+      }
 

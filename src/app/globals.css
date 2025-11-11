@@ -170,61 +170,47 @@
   html {
     background-color: var(--background);
     color: var(--foreground);
+    overflow: hidden;
+    height: 100vh;
+    scrollbar-width: none !important;
+    scroll-behavior: smooth;
   }
+  
+  html::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  
   body {
     background-color: var(--background);
     color: var(--foreground);
+    overflow: hidden;
+    height: 100vh;
+    max-height: 100vh;
+    scrollbar-width: none !important;
   }
   
-  /* Custom Native Scrollbar Styling - Lightweight and performant */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  body::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
   
-  *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  /* Hide scrollbars on all scrollable containers by default */
+  main,
+  [data-scrollable-content] {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
   
-  *::-webkit-scrollbar-track {
-    background: transparent;
+  main::-webkit-scrollbar,
+  [data-scrollable-content]::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   
-  *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 10px;
-    backdrop-filter: blur(10px);
-  }
-  
-  *::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-  }
-  
-  *::-webkit-scrollbar-thumb:active {
-    background: rgba(255, 255, 255, 0.6);
-  }
-  
-  /* Mobile: thinner scrollbar */
-  @media (max-width: 768px) {
-    * {
-      scrollbar-width: thin;
-    }
-    
-    *::-webkit-scrollbar {
-      width: 4px;
-      height: 4px;
-    }
-    
-    *::-webkit-scrollbar-thumb {
-      border-radius: 2px;
-    }
-  }
-  
-  /* Smooth scrolling */
-  html {
-    scroll-behavior: smooth;
-  }
 }
 
 @layer utilities {
@@ -241,11 +227,8 @@
     0% {
       background-position: -200% center;
     }
-    60% {
-      background-position: 200% center;
-    }
     100% {
-      background-position: -200% center;
+      background-position: 200% center;
     }
   }
   
@@ -285,7 +268,7 @@
       rgba(255, 255, 255, 0) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 8s linear infinite, shimmer-opacity 8s linear infinite;
+    animation: shimmer 3s linear infinite;
     pointer-events: none;
     border-radius: inherit;
   }
@@ -460,10 +443,23 @@
 
   .avatar-online-ripple {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     overflow: visible;
-    padding: 8px;
-    margin: -8px;
+    /* Wrapper will size to fit its content (the avatar) */
+    width: fit-content;
+    height: fit-content;
+  }
+
+  .avatar-online-ripple > * {
+    position: relative;
+    z-index: 10;
+    /* Avatar should maintain its explicit dimensions and render properly */
+    flex-shrink: 0;
+    /* Ensure the avatar content is visible */
+    min-width: 0;
+    min-height: 0;
   }
 
   .avatar-online-ripple::before,
@@ -472,8 +468,14 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: calc(100% - 16px);
-    height: calc(100% - 16px);
+    /* Use the avatar's computed size - reference the first child */
+    width: 100%;
+    height: 100%;
+    /* Force perfect circle - aspect-ratio constrains to square */
+    aspect-ratio: 1;
+    /* Ensure it uses the smaller dimension */
+    max-width: 100%;
+    max-height: 100%;
     border: 2.5px solid rgb(16 185 129); /* emerald-500 */
     border-radius: 50%;
     transform-origin: center center;

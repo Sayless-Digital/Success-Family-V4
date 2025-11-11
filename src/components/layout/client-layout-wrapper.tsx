@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import React from "react"
 import { usePathname } from "next/navigation"
 import { GlobalHeader } from "./global-header"
 import { GlobalSidebar } from "./global-sidebar"
@@ -31,7 +32,59 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const fullscreenTargetRef = useRef<HTMLDivElement | null>(null)
   
   const isStreamPage = pathname?.includes('/stream')
-  const isHomePage = pathname === '/'
+  
+  // Check if we're on a page where online users sidebar should be open by default on desktop
+  const shouldOpenOnlineUsersSidebarByDefault = React.useMemo(() => {
+    if (!pathname) return false
+    
+    // Home page
+    if (pathname === '/') return true
+    
+    // Community pages - routes like /[slug] or /[slug]/*
+    // Exclude known non-community routes
+    const nonCommunityRoutes = ['/communities', '/create-community', '/settings', '/admin', '/account', '/profile', '/messages', '/wallet', '/storage', '/topup']
+    const isNonCommunityRoute = nonCommunityRoutes.some(route => 
+      pathname === route || pathname.startsWith(route + '/')
+    )
+    
+    // If it's not a non-community route and not the home page, it's likely a community route
+    // Community routes don't start with /admin and have a slug as the first segment
+    if (!isNonCommunityRoute && !pathname.startsWith('/admin')) {
+      // Check if it matches the pattern /[slug] or /[slug]/*
+      const pathSegments = pathname.split('/').filter(Boolean)
+      // If there's at least one segment and it's not a known route, it's a community route
+      if (pathSegments.length > 0) {
+        return true
+      }
+    }
+    
+    return false
+  }, [pathname])
+  
+  // Initialize online users sidebar state - will be set by useEffect based on page
+  const [isOnlineUsersSidebarOpen, setIsOnlineUsersSidebarOpen] = useState(false)
+  const [isOnlineUsersSidebarPinned, setIsOnlineUsersSidebarPinned] = useState(false)
+  const prevPathnameRef = useRef<string | null>(null)
+  const hasInitializedRef = useRef(false)
+
+  // Update online users sidebar state when pathname changes or screen size changes
+  useEffect(() => {
+    if (isMobile) {
+      // Always closed on mobile
+      setIsOnlineUsersSidebarOpen(false)
+    } else {
+      // On desktop
+      const pathnameChanged = prevPathnameRef.current !== pathname
+      if (!hasInitializedRef.current || pathnameChanged) {
+        prevPathnameRef.current = pathname
+        hasInitializedRef.current = true
+        // Open if we're on home page or community pages, and pin it
+        const shouldOpen = shouldOpenOnlineUsersSidebarByDefault
+        setIsOnlineUsersSidebarOpen(shouldOpen)
+        setIsOnlineUsersSidebarPinned(shouldOpen)
+      }
+    }
+  }, [isMobile, shouldOpenOnlineUsersSidebarByDefault, pathname])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -49,15 +102,21 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
           setIsSidebarOpen(true)
         }
       } else if (mobile && !isMobile) {
+        // Switching to mobile - close both sidebars
         setIsSidebarPinned(false)
         setIsSidebarOpen(false)
+      } else if (!mobile && isMobile) {
+        // Switching to desktop - open main sidebar
+        setIsSidebarPinned(true)
+        setIsSidebarOpen(true)
+        // Online users sidebar will be handled by the other useEffect based on page
       }
     }
     
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
-  }, [])
+  }, [isMobile, isSidebarPinned, isSidebarOpen])
 
   useEffect(() => {
     if (typeof document === "undefined") return
@@ -160,7 +219,10 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     const coarsePointerQuery = window.matchMedia("(pointer: coarse)")
     if (!coarsePointerQuery.matches) return
 
-    const scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement | null
+    let scrollableElement = document.querySelector('[data-scrollable-content]') as HTMLElement | null
+    if (!scrollableElement) {
+      scrollableElement = document.querySelector('main[class*="overflow-y-auto"]') as HTMLElement | null
+    }
     if (!scrollableElement) return
 
     const multiplier = 1.3
@@ -217,8 +279,62 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     }
   }
 
+  const handleOnlineUsersSidebarToggle = () => {
+    const newOpenState = !isOnlineUsersSidebarOpen
+    setIsOnlineUsersSidebarOpen(newOpenState)
+    // When toggling via button, pin/unpin it
+    setIsOnlineUsersSidebarPinned(newOpenState)
+  }
+
   const handleSidebarClose = () => setIsSidebarOpen(false)
+  const handleOnlineUsersSidebarClose = () => {
+    setIsOnlineUsersSidebarOpen(false)
+    // When closing, also unpin if it was pinned
+    if (isOnlineUsersSidebarPinned) {
+      setIsOnlineUsersSidebarPinned(false)
+    }
+  }
   const handleTogglePin = () => setIsSidebarPinned(!isSidebarPinned)
+
+  const onlineUsersSidebarHoverRef = useRef(false)
+  const onlineUsersSidebarCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleOnlineUsersSidebarHoverChange = (isHovered: boolean) => {
+    if (!isMobile && !isOnlineUsersSidebarPinned) {
+      // Clear any pending close timeout whenever hover state changes
+      if (onlineUsersSidebarCloseTimeoutRef.current) {
+        clearTimeout(onlineUsersSidebarCloseTimeoutRef.current)
+        onlineUsersSidebarCloseTimeoutRef.current = null
+      }
+
+      onlineUsersSidebarHoverRef.current = isHovered
+
+      if (isHovered) {
+        // Open on hover (unpinned/floating mode)
+        if (!isOnlineUsersSidebarOpen) {
+          setIsOnlineUsersSidebarOpen(true)
+        }
+      } else {
+        // Close with a delay to allow mouse to move between trigger and sidebar
+        // Only close if we're still not hovering after the delay
+        onlineUsersSidebarCloseTimeoutRef.current = setTimeout(() => {
+          // Double-check that we're still not hovering and not pinned
+          if (!onlineUsersSidebarHoverRef.current && !isOnlineUsersSidebarPinned) {
+            setIsOnlineUsersSidebarOpen(false)
+          }
+        }, 200)
+      }
+    }
+  }
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (onlineUsersSidebarCloseTimeoutRef.current) {
+        clearTimeout(onlineUsersSidebarCloseTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleSidebarHoverChange = (isHovered: boolean) => {
     if (!isMobile && !isSidebarPinned && isHovered) {
@@ -237,14 +353,16 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     }
   )
   
-  // Calculate right margin for online users sidebar (matching w-64 like global sidebar)
-  const contentRightMargin = !isStreamPage && isHomePage && !isMobile ? '16rem' : '0'
+  // Calculate right margin for online users sidebar on desktop when pinned (not when floating/unpinned)
+  // When unpinned and opened via hover, it should hover over content without pushing it
+  const contentRightMargin = !isStreamPage && !isMobile && isOnlineUsersSidebarPinned ? '16rem' : '0'
 
   return (
     <div
       ref={fullscreenTargetRef}
-      className="min-h-dvh bg-background flex flex-col relative overflow-hidden"
+      className="h-screen bg-background flex flex-col relative overflow-hidden"
       style={{
+        height: "100dvh",
         paddingTop: "env(safe-area-inset-top, 0)",
         paddingBottom: isFullscreen && isMobile
           ? "calc(env(safe-area-inset-bottom, 0) + 64px)"
@@ -261,7 +379,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
               key={pathname}
               speed={5}
               scale={1}
-              color={isHomePage ? "#7004dc" : "#2d0354"}
+              color={pathname === '/' ? "#7004dc" : "#2d0354"}
               noiseIntensity={1.5}
               rotation={0}
             />
@@ -276,6 +394,8 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
             isSidebarOpen={isSidebarOpen}
             isMobile={isMobile}
             fullscreenTargetRef={fullscreenTargetRef}
+            onOnlineUsersSidebarToggle={handleOnlineUsersSidebarToggle}
+            isOnlineUsersSidebarOpen={isOnlineUsersSidebarOpen}
           />
           
           <GlobalSidebar
@@ -287,8 +407,14 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
             isMobile={isMobile}
           />
 
-          {/* Online Users Sidebar - Only on home page, desktop */}
-          {isHomePage && <OnlineUsersSidebar isMobile={isMobile} />}
+          {/* Online Users Sidebar - Available on all pages */}
+          <OnlineUsersSidebar
+            isMobile={isMobile}
+            isOpen={isOnlineUsersSidebarOpen}
+            isPinned={isOnlineUsersSidebarPinned}
+            onClose={handleOnlineUsersSidebarClose}
+            onHoverChange={handleOnlineUsersSidebarHoverChange}
+          />
 
           {isMobile && isSidebarOpen && (
             <div
@@ -297,11 +423,23 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
               aria-hidden="true"
             />
           )}
+          
+          {isMobile && isOnlineUsersSidebarOpen && (
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[950] transition-opacity duration-300"
+              onClick={handleOnlineUsersSidebarClose}
+              aria-hidden="true"
+            />
+          )}
         </>
       )}
 
       <main
-        className={cn(pageAreaClasses, "flex-1 relative z-10 overflow-y-auto min-h-0 flex flex-col")}
+        data-scrollable-content
+        className={cn(
+          pageAreaClasses, 
+          "flex-1 relative z-10 overflow-y-auto min-h-0 flex flex-col scrollbar-hide"
+        )}
         style={{
           marginRight: contentRightMargin,
         }}
@@ -309,7 +447,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         {isStreamPage ? (
           children
         ) : (
-          <div className="pt-2.5 pb-4 px-4 sm:px-6 lg:px-8 flex-1 flex flex-col">
+          <div className="pt-2.5 pb-4 px-4 sm:px-6 lg:px-8">
             {children}
           </div>
         )}

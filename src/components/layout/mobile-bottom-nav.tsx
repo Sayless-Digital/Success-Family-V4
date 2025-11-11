@@ -195,9 +195,9 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                     <Home className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Link href={`/profile/${userProfile?.username || user.id}`} prefetch={true}>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full p-[2px] avatar-feedback" disabled={isProfileLoading}>
-                    <Avatar className="h-full w-full border-2 border-white/20">
+                <Link href={`/profile/${userProfile?.username || user.id}`} prefetch={true} className="flex items-center">
+                  <Button variant="ghost" className="h-9 w-9 rounded-full p-0 avatar-feedback flex items-center justify-center" disabled={isProfileLoading}>
+                    <Avatar className="h-8 w-8 border-2 border-white/20" userId={user?.id}>
                       <AvatarImage 
                         src={userProfile?.profile_picture || undefined} 
                         alt={userProfile?.username || user.email || "User"} 

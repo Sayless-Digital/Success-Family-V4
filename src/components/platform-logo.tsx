@@ -70,19 +70,19 @@ export function PlatformLogo({
         className
       )}
     >
-      {/* Outer ring - thicker white ring */}
+      {/* Outer ring - thicker white ring, 90% opacity */}
       <div
         className={cn(
-          "absolute rounded-full border-white shadow-lg",
+          "absolute rounded-full border-white/90 shadow-lg",
           outerBorderWidth,
           sizeStyles.outerRing
         )}
       />
       
-      {/* Inner ring - white ring, thicker on desktop */}
+      {/* Inner ring - white ring, 70% opacity, thicker on desktop */}
       <div
         className={cn(
-          "absolute rounded-full border-white",
+          "absolute rounded-full border-white/70",
           innerBorderWidth,
           // Make inner ring slightly thicker on desktop for better visibility
           size === "xs" && "md:border-[2px]",

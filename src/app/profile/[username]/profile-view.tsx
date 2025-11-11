@@ -1613,7 +1613,7 @@ export default function ProfileView({
                     className="flex-shrink-0 avatar-feedback"
                     prefetch={true}
                   >
-                      <Avatar className="h-10 w-10 border-4 border-white/20">
+                      <Avatar className="h-10 w-10 border-4 border-white/20" userId={postAuthor?.id}>
                         <AvatarImage 
                           src={postAuthor?.profile_picture} 
                           alt={`${postAuthor?.first_name} ${postAuthor?.last_name}`} 
@@ -1758,15 +1758,15 @@ export default function ProfileView({
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Profile Header - TikTok Style */}
-        <div className="mb-6">
+        <div className="mb-6 mt-2">
           <div className="flex flex-col items-center text-center mb-6">
-            <Avatar className="h-24 w-24 border-4 border-white/20 mb-4">
+            <Avatar className="h-24 w-24 border-4 border-white/20 mb-8" userId={user.id}>
                 <AvatarImage src={user.profile_picture || ''} alt={user.username} />
               <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-3xl">
                   {user.first_name?.[0] || ''}
                   {user.last_name?.[0] || ''}
                 </AvatarFallback>
-              </Avatar>
+            </Avatar>
             
             <h1 className="text-2xl font-bold text-white mb-2">
                   {user.first_name} {user.last_name}

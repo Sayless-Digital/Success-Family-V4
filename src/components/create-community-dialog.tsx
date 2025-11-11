@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Building2, Sparkles, AlertCircle, Loader2 } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { AlertCircle, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -133,28 +133,17 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset() }}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 border border-white/20">
-              <Building2 className="h-5 w-5 text-white/80" />
-            </div>
-            <div className="flex-1">
-              <DialogTitle className="text-xl font-semibold text-white">
-                Create New Community
-              </DialogTitle>
-              <DialogDescription className="text-white/60 mt-1">
-                Build a space for your community to connect and grow
-              </DialogDescription>
-            </div>
-          </div>
+        <DialogHeader>
+          <DialogTitle className="text-xl font-semibold text-white">
+            Create New Community
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 pt-2">
+        <div className="space-y-4 pt-2">
           {/* Community Name Field */}
           <div className="space-y-2">
-            <Label htmlFor="cc-name" className="text-white/90 font-medium flex items-center gap-2">
-              <span>Community Name</span>
-              <span className="text-white/40 text-xs font-normal">(required)</span>
+            <Label htmlFor="cc-name" className="text-white/90 font-medium">
+              Community Name
             </Label>
             <Input
               id="cc-name"
@@ -168,34 +157,22 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
               className={cn(
                 "bg-white/5 border-white/20 text-white placeholder:text-white/40",
                 "focus-visible:border-white/40 focus-visible:ring-white/20",
-                "transition-colors",
                 nameLength > 0 && !isNameValid && "border-red-500/50 focus-visible:border-red-500/50"
               )}
               disabled={submitting}
               maxLength={MAX_NAME_LENGTH}
             />
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-white/50">
-                Choose a name that reflects your community's purpose
-              </p>
-              <span className={cn(
-                "text-xs transition-colors",
-                nameLength > MAX_NAME_LENGTH 
-                  ? "text-red-400" 
-                  : nameLength > MAX_NAME_LENGTH * 0.8 
-                    ? "text-white/60" 
-                    : "text-white/40"
-              )}>
+            {nameLength > 0 && (
+              <p className="text-xs text-white/40 text-right">
                 {nameLength}/{MAX_NAME_LENGTH}
-              </span>
-            </div>
+              </p>
+            )}
           </div>
 
           {/* Description Field */}
           <div className="space-y-2">
-            <Label htmlFor="cc-desc" className="text-white/90 font-medium flex items-center gap-2">
-              <span>Description</span>
-              <span className="text-white/40 text-xs font-normal">(optional)</span>
+            <Label htmlFor="cc-desc" className="text-white/90 font-medium">
+              Description <span className="text-white/40 font-normal">(optional)</span>
             </Label>
             <Textarea
               id="cc-desc"
@@ -205,32 +182,22 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
                 setError(null)
               }}
               onKeyDown={handleKeyDown}
-              placeholder="What makes your community special? Share a brief overview..."
+              placeholder="What makes your community special?"
               className={cn(
                 "bg-white/5 border-white/20 text-white placeholder:text-white/40",
                 "focus-visible:border-white/40 focus-visible:ring-white/20",
-                "transition-colors resize-none",
+                "resize-none",
                 descriptionLength > 0 && !isDescriptionValid && "border-red-500/50 focus-visible:border-red-500/50"
               )}
               rows={4}
               disabled={submitting}
               maxLength={MAX_DESCRIPTION_LENGTH}
             />
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-white/50">
-                Help others understand what your community is about
-              </p>
-              <span className={cn(
-                "text-xs transition-colors",
-                descriptionLength > MAX_DESCRIPTION_LENGTH 
-                  ? "text-red-400" 
-                  : descriptionLength > MAX_DESCRIPTION_LENGTH * 0.8 
-                    ? "text-white/60" 
-                    : "text-white/40"
-              )}>
+            {descriptionLength > 0 && (
+              <p className="text-xs text-white/40 text-right">
                 {descriptionLength}/{MAX_DESCRIPTION_LENGTH}
-              </span>
-            </div>
+              </p>
+            )}
           </div>
 
           {/* Error Message */}
@@ -238,16 +205,6 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
             <div className="flex items-start gap-2 p-3 rounded-md bg-red-500/10 border border-red-500/20">
               <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
               <p className="text-sm text-red-200 flex-1">{error}</p>
-            </div>
-          )}
-
-          {/* Helpful Tip */}
-          {!error && (
-            <div className="flex items-start gap-2 p-3 rounded-md bg-white/5 border border-white/10">
-              <Sparkles className="h-4 w-4 text-white/60 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-white/60">
-                Tip: You can customize your community settings, logo, and branding after creation.
-              </p>
             </div>
           )}
 
@@ -272,18 +229,10 @@ export function CreateCommunityDialog({ open, onOpenChange }: CreateCommunityDia
                   Creating...
                 </>
               ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Create Community
-                </>
+                "Create Community"
               )}
             </Button>
           </div>
-
-          {/* Keyboard Shortcut Hint */}
-          <p className="text-xs text-white/40 text-center">
-            Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs font-mono">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs font-mono">Enter</kbd> to create
-          </p>
         </div>
       </DialogContent>
     </Dialog>

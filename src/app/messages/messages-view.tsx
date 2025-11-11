@@ -1367,7 +1367,7 @@ export default function MessagesView({
                       )}
                     >
                       <div className="px-3 py-3 flex items-start gap-3">
-                        <Avatar className="h-11 w-11 border-4 border-white/20" isOnline={presenceMap[conversation.thread_id] || false}>
+                        <Avatar className="h-11 w-11 border-4 border-white/20" userId={otherProfile?.id} isOnline={presenceMap[conversation.thread_id] || false}>
                           <AvatarImage src={avatarImage} alt={displayName} />
                           <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
                             {initials}
@@ -1427,7 +1427,7 @@ export default function MessagesView({
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
                     )}
-                    <Avatar className="h-11 w-11 border-4 border-white/20" isOnline={isPeerOnline}>
+                    <Avatar className="h-11 w-11 border-4 border-white/20" userId={peerProfile?.id} isOnline={isPeerOnline}>
                       <AvatarImage src={peerAvatar ?? undefined} alt={peerName} />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
                         {peerInitials}
@@ -1583,6 +1583,7 @@ export default function MessagesView({
                                       const senderAvatar = isOwn ? viewer.profile_picture : peerAvatar
                                       const senderInitials = isOwn ? getInitials(viewer) : peerInitials
                                       const senderName = isOwn ? getDisplayName(viewer) : peerName
+                                      const senderId = isOwn ? viewer.id : peerProfile?.id
                                       
                                       return (
                                         <div
@@ -1608,7 +1609,7 @@ export default function MessagesView({
                                                     animationDuration: playingAudio === attachment.id ? '2s' : 'none'
                                                   }}
                                                   >
-                                                    <Avatar className="h-10 w-10 border-2 border-white/20">
+                                                    <Avatar className="h-10 w-10 border-2 border-white/20" userId={senderId}>
                                                       <AvatarImage src={senderAvatar ?? undefined} alt={senderName} />
                                                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm uppercase">
                                                         {senderInitials}

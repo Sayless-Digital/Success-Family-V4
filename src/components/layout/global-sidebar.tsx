@@ -205,7 +205,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       >
         <div className="h-full flex flex-col">
           {/* Navigation */}
-          <nav className="flex-1 p-4 pt-6 overflow-y-auto">
+          <nav className="flex-1 p-4 pt-6 overflow-y-auto scrollbar-hide">
             <ul className="space-y-2">
               {showAdminMenu ? (
                 // Admin users see only admin navigation with back to site button (only on admin routes)

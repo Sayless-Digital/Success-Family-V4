@@ -20,26 +20,34 @@ const Avatar = React.forwardRef<
     ? isOnline 
     : userId ? isUserOnline(userId) : false
 
-  return (
-    <div className={cn(
-      showOnlineIndicator ? "avatar-online-ripple" : "relative inline-block"
-    )}>
-      <AvatarPrimitive.Root
-        ref={ref}
-        className={cn(
-          "relative flex h-10 w-10 shrink-0 rounded-full transition-all duration-200 z-10",
-          "overflow-hidden",
-          showOnlineIndicator
-            ? ""
-            : "border border-white/20 hover:border-white/40",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </AvatarPrimitive.Root>
-    </div>
+  const avatarRoot = (
+    <AvatarPrimitive.Root
+      ref={ref}
+      className={cn(
+        "relative flex items-center justify-center shrink-0 rounded-full transition-all duration-200 z-10",
+        "overflow-hidden aspect-square",
+        showOnlineIndicator
+          ? ""
+          : "border border-white/20 hover:border-white/40",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </AvatarPrimitive.Root>
   )
+
+  // Only wrap in div when online indicator is needed (for ripple effect)
+  if (showOnlineIndicator) {
+    return (
+      <div className="avatar-online-ripple">
+        {avatarRoot}
+      </div>
+    )
+  }
+
+  // No wrapper needed when no online indicator - render directly
+  return avatarRoot
 })
 Avatar.displayName = AvatarPrimitive.Root.displayName
 
@@ -49,7 +57,11 @@ const AvatarImage = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AvatarPrimitive.Image
     ref={ref}
-    className={cn("aspect-square h-full w-full object-cover rounded-full", className)}
+    className={cn(
+      "absolute inset-0 h-full w-full object-cover object-center rounded-full",
+      "max-h-full max-w-full",
+      className
+    )}
     {...props}
   />
 ))
@@ -62,7 +74,7 @@ const AvatarFallback = React.forwardRef<
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground backdrop-blur-md",
+      "absolute inset-0 flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground backdrop-blur-md",
       className
     )}
     {...props}

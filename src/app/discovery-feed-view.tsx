@@ -340,7 +340,7 @@ export default function DiscoveryFeedView({
       <div className="relative w-full overflow-x-hidden overflow-y-visible">
         <div className="relative z-10 space-y-4">
           {/* User Count Display */}
-          <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2">
+          <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer">
             <div className="flex items-center justify-center gap-2">
               <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
                 <Users className="h-4 w-4 text-white/70" />
@@ -390,7 +390,7 @@ export default function DiscoveryFeedView({
     <div className="relative w-full overflow-x-hidden overflow-y-visible">
       <div className="relative z-10 space-y-4">
         {/* User Count Display */}
-        <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2">
+        <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer">
           <div className="flex items-center justify-center gap-2">
             <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
               <Users className="h-4 w-4 text-white/70" />
@@ -445,7 +445,7 @@ export default function DiscoveryFeedView({
                           onClick={(e) => e.stopPropagation()}
                           className="flex-shrink-0"
                         >
-                          <Avatar className="h-10 w-10 border-4 border-white/20">
+                          <Avatar className="h-10 w-10 border-4 border-white/20" userId={post.author.id}>
                             <AvatarImage src={post.author.profile_picture} alt={`${post.author.first_name} ${post.author.last_name}`} />
                             <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
                               {post.author.first_name[0]}{post.author.last_name[0]}
@@ -682,7 +682,7 @@ export default function DiscoveryFeedView({
                 >
                   <div className="relative mt-2 border border-white/10 bg-white/5 p-4 space-y-3 rounded-lg shadow-[0_0_30px_rgba(255,255,255,0.25)] ring-1 ring-white/20">
                     <div className="flex items-start gap-3">
-                      <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0">
+                      <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0" userId={post.author?.id}>
                         <AvatarImage
                           src={post.author?.profile_picture || ""}
                           alt={`${post.author?.first_name} ${post.author?.last_name}`}
@@ -815,7 +815,7 @@ export default function DiscoveryFeedView({
                         >
                           <div className="space-y-3">
                             <div className="flex items-start gap-3">
-                              <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0">
+                              <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0" userId={comment.author?.id}>
                                 <AvatarImage
                                   src={comment.author?.profile_picture || ""}
                                   alt={`${comment.author?.first_name} ${comment.author?.last_name}`}

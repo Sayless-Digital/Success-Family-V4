@@ -96,7 +96,7 @@ export default function CommunityMembersView({
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
                     {/* Avatar */}
-                    <Avatar className="h-16 w-16 border-4 border-white/20">
+                    <Avatar className="h-16 w-16 border-4 border-white/20" userId={member.user.id}>
                       <AvatarImage src={member.user.profile_picture} alt={`${member.user.first_name} ${member.user.last_name}`} />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xl">
                         {member.user.first_name[0]}{member.user.last_name[0]}

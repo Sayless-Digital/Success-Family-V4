@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
-import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle, LogIn, UserPlus } from "lucide-react"
+import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle, LogIn, UserPlus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -30,9 +30,11 @@ interface GlobalHeaderProps {
   isSidebarOpen: boolean
   isMobile?: boolean
   fullscreenTargetRef?: React.RefObject<HTMLDivElement | null>
+  onOnlineUsersSidebarToggle?: () => void
+  isOnlineUsersSidebarOpen?: boolean
 }
 
-export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, fullscreenTargetRef }: GlobalHeaderProps) {
+export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, fullscreenTargetRef, onOnlineUsersSidebarToggle, isOnlineUsersSidebarOpen = false }: GlobalHeaderProps) {
   const { user, userProfile, walletBalance, walletEarningsBalance, userValuePerPoint, signOut, isLoading, refreshProfile } = useAuth()
   const pathname = usePathname()
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
@@ -620,26 +622,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                   </Button>
                 </Link>
               </div>
-              <div className="hidden md:flex items-center gap-2">
-                <Link href="/messages" className="cursor-pointer">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer">
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0 avatar-feedback cursor-pointer">
-                    <Avatar className="h-8 w-8 border-4 border-white/20">
-                      <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
-                      <AvatarFallback className="text-xs">
-                        {userProfile ? userInitials : "..."}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </Link>
-              </div>
             </>
           ) : null}
 
+          {/* Fullscreen button */}
           <Button
             variant="ghost"
             size="icon"
@@ -654,7 +640,47 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             )}
           </Button>
           
-          {/* Mobile menu button - far right */}
+          {/* Online users sidebar toggle button - all pages, mobile and desktop */}
+          {onOnlineUsersSidebarToggle && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOnlineUsersSidebarToggle}
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+              aria-label={isOnlineUsersSidebarOpen ? "Close online users" : "Open online users"}
+            >
+              {isMobile && isOnlineUsersSidebarOpen ? (
+                <X className="h-4 w-4" />
+              ) : (
+                <Users className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+
+          {/* Messages button - shown when user is logged in */}
+          {user && (
+            <Link href="/messages" className="cursor-pointer">
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
+                <MessageCircle className="h-4 w-4" />
+              </Button>
+            </Link>
+          )}
+
+          {/* Profile button - shown when user is logged in, farthest right */}
+          {user && (
+            <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer flex items-center">
+              <Button variant="ghost" className="h-9 w-9 rounded-full p-0 avatar-feedback cursor-pointer flex items-center justify-center">
+                <Avatar className="h-7 w-7 border-2 border-white/20" userId={user?.id}>
+                  <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
+                  <AvatarFallback className="text-xs">
+                    {userProfile ? userInitials : "..."}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </Link>
+          )}
+          
+          {/* Mobile menu button - far right on mobile only */}
           {isMobile && (
             <Button
               variant="ghost"

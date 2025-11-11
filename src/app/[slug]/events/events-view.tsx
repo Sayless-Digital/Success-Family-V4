@@ -66,7 +66,7 @@ export default function CommunityEventsView({
   streamJoinCost,
 }: CommunityEventsViewProps) {
   const router = useRouter()
-  const { user, walletBalance, refreshWalletBalance } = useAuth()
+  const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
   const [events, setEvents] = useState(initialEvents)
   const [userRegistrations, setUserRegistrations] = useState(initialUserRegistrations)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -315,8 +315,9 @@ export default function CommunityEventsView({
       return
     }
 
-    // Check wallet balance
-    if (walletBalance === null || walletBalance < streamStartCost) {
+    // Check wallet balance (skip for admins)
+    const isAdmin = userProfile?.role === 'admin'
+    if (!isAdmin && (walletBalance === null || walletBalance < streamStartCost)) {
       toast.error(`Insufficient points. You need ${streamStartCost} points to create an event.`)
       return
     }
@@ -368,7 +369,14 @@ export default function CommunityEventsView({
         throw new Error('Failed to charge points - no transaction ID returned')
       }
 
-      toast.success(`Event created! ${streamStartCost} point(s) charged.`)
+      // Show success message (admins bypass point deduction)
+      if (isAdmin) {
+        toast.success('Event created! (No points charged for admin)')
+      } else {
+        toast.success(`Event created! ${streamStartCost} point(s) charged.`)
+        // Refresh wallet balance for non-admins (admins don't have points deducted)
+        await refreshWalletBalance()
+      }
       
       // Optimistically add the event to the list immediately (before realtime update)
       // Fetch the event with all related data
@@ -411,8 +419,7 @@ export default function CommunityEventsView({
       setEventDate(new Date())
       setEventTime(null)
       
-      // Refresh wallet balance
-      await refreshWalletBalance()
+      // Wallet balance already refreshed above for non-admins
     } catch (error: any) {
       console.error('Error creating event:', error)
       const errorMessage = error?.message || error?.error?.message || JSON.stringify(error) || 'Failed to create event'
@@ -872,7 +879,7 @@ export default function CommunityEventsView({
                   disabled={isCreating || !eventTime}
                   className="bg-white/10 text-white/80 hover:bg-white/20"
                 >
-                  {isCreating ? "Creating..." : `Create Event (${streamStartCost} points)`}
+                  {isCreating ? "Creating..." : userProfile?.role === 'admin' ? "Create Event (Free for admin)" : `Create Event (${streamStartCost} points)`}
                 </Button>
               </DialogFooter>
             </>
