@@ -19,7 +19,7 @@ async function getDomainId(domainName: string): Promise<string | null> {
   const inbound = getInboundClient()
   
   try {
-    const { data: domainsResponse, error: domainsError } = await inbound.domain.list()
+    const { data: domainsResponse, error: domainsError } = await inbound.domains.list()
     
     if (domainsError) {
       console.warn('Failed to list domains:', domainsError)
@@ -27,14 +27,29 @@ async function getDomainId(domainName: string): Promise<string | null> {
     }
 
     // Extract domains array from response
-    // Response structure: { data: DomainWithStats[], pagination, meta }
-    const domains = domainsResponse?.data || []
+    // Response structure can be: { data: DomainWithStats[] } or DomainWithStats[] directly
+    let domains: any[] = []
+    if (Array.isArray(domainsResponse)) {
+      domains = domainsResponse
+    } else if (domainsResponse?.data && Array.isArray(domainsResponse.data)) {
+      domains = domainsResponse.data
+    }
+
+    console.log(`[Inbound] Found ${domains.length} domains, looking for: ${domainName}`)
 
     // Find domain matching the domain name
     const domain = domains.find((d: any) => {
-      const dName = d.domain || d.name
-      return dName && (dName.toLowerCase() === domainName.toLowerCase())
+      const dName = d.domain || d.name || d.domainName
+      const matches = dName && (dName.toLowerCase() === domainName.toLowerCase())
+      if (matches) {
+        console.log(`[Inbound] Found domain: ${dName} with ID: ${d.id}`)
+      }
+      return matches
     })
+
+    if (!domain) {
+      console.warn(`[Inbound] Domain ${domainName} not found. Available domains:`, domains.map((d: any) => d.domain || d.name || d.domainName))
+    }
 
     return domain?.id || null
   } catch (error) {
@@ -72,7 +87,14 @@ export async function createInboundEmailAddress(
     }
 
     // First, create an endpoint for receiving emails using the SDK
-    const { data: endpointData, error: endpointError } = await inbound.endpoint.create({
+    console.log(`[Inbound] Creating endpoint for ${email} with webhook URL: ${webhookUrl}`)
+    
+    // Verify that the client has the required methods
+    if (!inbound.endpoints || typeof inbound.endpoints.create !== 'function') {
+      throw new Error('Inbound SDK client does not have endpoints.create method. Please check SDK version and initialization.')
+    }
+    
+    const { data: endpointData, error: endpointError } = await inbound.endpoints.create({
       name: `Email endpoint for ${email}`,
       type: 'webhook',
       description: `Webhook endpoint for user ${userId}`,
@@ -87,6 +109,8 @@ export async function createInboundEmailAddress(
     })
 
     if (endpointError || !endpointData) {
+      console.error('[Inbound] Endpoint creation error:', endpointError)
+      console.error('[Inbound] Endpoint data:', endpointData)
       let errorMsg: string
       const err = endpointError as unknown
       if (typeof err === 'string') {
@@ -94,16 +118,23 @@ export async function createInboundEmailAddress(
       } else if (err && typeof err === 'object' && 'toString' in err && typeof err.toString === 'function') {
         errorMsg = err.toString()
       } else {
-        errorMsg = 'Failed to create endpoint'
+        errorMsg = JSON.stringify(err) || 'Failed to create endpoint'
       }
       throw new Error(errorMsg)
     }
 
-    const endpointId = endpointData.id
+    const endpointId = endpointData.id || (endpointData as any).id
+    console.log(`[Inbound] Endpoint created with ID: ${endpointId}`)
 
     // Then, create the email address linked to the endpoint using the SDK
-    // Note: Using type assertion as Inbound SDK types may be incomplete
-    const { data: addressData, error: addressError } = await (inbound as any).address.create({
+    console.log(`[Inbound] Creating email address ${email} with domainId: ${domainId}, endpointId: ${endpointId}`)
+    
+    // Verify that the client has the required methods
+    if (!inbound.emailAddresses || typeof inbound.emailAddresses.create !== 'function') {
+      throw new Error('Inbound SDK client does not have emailAddresses.create method. Please check SDK version and initialization.')
+    }
+    
+    const { data: addressData, error: addressError } = await inbound.emailAddresses.create({
       address: email,
       domainId: domainId,
       endpointId: endpointId,
@@ -111,10 +142,13 @@ export async function createInboundEmailAddress(
     })
 
     if (addressError || !addressData) {
+      console.error('[Inbound] Address creation error:', addressError)
+      console.error('[Inbound] Address data:', addressData)
       // Clean up endpoint if address creation fails
       if (endpointId) {
         try {
-          await inbound.endpoint.delete(endpointId)
+          console.log(`[Inbound] Cleaning up endpoint: ${endpointId}`)
+          await inbound.endpoints.delete(endpointId)
         } catch (cleanupError) {
           console.error('Failed to cleanup endpoint:', cleanupError)
         }
@@ -126,12 +160,13 @@ export async function createInboundEmailAddress(
       } else if (err && typeof err === 'object' && 'toString' in err && typeof err.toString === 'function') {
         errorMsg = err.toString()
       } else {
-        errorMsg = 'Failed to create address'
+        errorMsg = JSON.stringify(err) || 'Failed to create address'
       }
       throw new Error(errorMsg)
     }
 
-    const addressId = addressData.id
+    const addressId = addressData.id || (addressData as any).id
+    console.log(`[Inbound] Email address created with ID: ${addressId}`)
 
     return {
       addressId,
@@ -152,8 +187,7 @@ export async function deleteInboundEmailAddress(addressId: string, endpointId?: 
   try {
     // Delete the address using the SDK
     if (addressId) {
-      // Note: Using type assertion as Inbound SDK types may be incomplete
-      const { error: addressError } = await (inbound as any).address.delete(addressId)
+      const { error: addressError } = await inbound.emailAddresses.delete(addressId)
       if (addressError) {
         console.error('Error deleting address:', addressError)
       }
@@ -161,7 +195,7 @@ export async function deleteInboundEmailAddress(addressId: string, endpointId?: 
 
     // Delete the endpoint using the SDK
     if (endpointId) {
-      const { error: endpointError } = await inbound.endpoint.delete(endpointId)
+      const { error: endpointError } = await inbound.endpoints.delete(endpointId)
       if (endpointError) {
         console.error('Error deleting endpoint:', endpointError)
       }
