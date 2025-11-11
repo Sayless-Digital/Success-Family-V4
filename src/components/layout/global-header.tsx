@@ -405,21 +405,21 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                   isMobile && "!ring-0 !ring-offset-0 focus:!ring-0 focus-visible:!ring-0"
                 )}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   {activeCommunity ? (
                     <CommunityLogo
                       name={activeCommunity.name}
                       logoUrl={activeCommunity.logo_url}
                       size="sm"
-                      className="border-4 border-white/20"
+                      className="border-4 border-white/20 flex-shrink-0"
                     />
                   ) : (
                     <PlatformLogo size="xs" />
                   )}
-                  <span className="font-semibold text-white text-sm truncate max-w-[140px]">
+                  <span className="font-semibold text-white text-sm truncate max-w-[140px] sm:max-w-none min-w-0">
                     {activeCommunity?.name ?? "Success Family"}
                   </span>
-                  <ChevronDown className="h-4 w-4 text-white" />
+                  <ChevronDown className="h-4 w-4 text-white flex-shrink-0" />
                 </div>
               </Button>
             </DropdownMenuTrigger>
@@ -657,20 +657,20 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             </Button>
           )}
 
-          {/* Messages button - shown when user is logged in */}
+          {/* Messages button - shown when user is logged in, desktop only */}
           {user && (
-            <Link href="/messages" className="cursor-pointer">
+            <Link href="/messages" className="cursor-pointer hidden md:flex">
               <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback">
                 <MessageCircle className="h-4 w-4" />
               </Button>
             </Link>
           )}
 
-          {/* Profile button - shown when user is logged in, farthest right */}
+          {/* Profile button - shown when user is logged in, farthest right, desktop only */}
           {user && (
-            <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer flex items-center">
-              <Button variant="ghost" className="h-9 w-9 rounded-full p-0 avatar-feedback cursor-pointer flex items-center justify-center">
-                <Avatar className="h-7 w-7 border-2 border-white/20" userId={user?.id}>
+            <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer flex items-center hidden md:flex">
+              <Button variant="ghost" className="h-10 w-10 rounded-full p-0 avatar-feedback cursor-pointer flex items-center justify-center">
+                <Avatar className="h-8 w-8 border-2 border-white/20" userId={user?.id}>
                   <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
                   <AvatarFallback className="text-xs">
                     {userProfile ? userInitials : "..."}
@@ -687,9 +687,13 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
               size="icon"
               onClick={onMenuClick}
               className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
-              aria-label="Toggle sidebar"
+              aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
             >
-              <Menu className="h-4 w-4" />
+              {isSidebarOpen ? (
+                <X className="h-4 w-4" />
+              ) : (
+                <Menu className="h-4 w-4" />
+              )}
             </Button>
           )}
         </div>

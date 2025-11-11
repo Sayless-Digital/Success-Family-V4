@@ -3,11 +3,13 @@
 import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Heart } from "lucide-react"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Heart, Coins } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Dialog } from "@/components/ui/dialog"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { X } from "lucide-react"
 import { CommunityNavigation } from "@/components/community-navigation"
 import { useTopupCheck } from "@/hooks/use-topup-check"
 import { cn } from "@/lib/utils"
@@ -155,42 +157,76 @@ export default function CommunityView({
         />
 
         {/* Community Header */}
-        <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
-          <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-              {/* Community Avatar */}
+        <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 w-full">
+          <CardContent className="p-4 sm:p-6 w-full">
+            {/* Mobile: All content centered */}
+            <div className="flex flex-col items-center justify-center sm:hidden gap-3 w-full max-w-full">
               <CommunityLogo
                 name={community.name}
                 logoUrl={community.logo_url}
-                size="2xl"
-                className="border-4 border-white/20"
+                size="xl"
+                className="border-4 border-white/20 mx-auto"
+              />
+              <div className="flex flex-col items-center gap-2 w-full">
+                <h1 className="text-xl font-bold text-white break-words leading-tight text-center w-full">{community.name}</h1>
+                {isMember && !isOwner && (
+                  <Badge className="w-fit bg-white/10 text-white/80 border-white/20 flex-shrink-0 text-xs px-1.5 py-0.5 mx-auto">
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
+                    Member
+                  </Badge>
+                )}
+              </div>
+              
+              {community.description && (
+                <p className="text-white/80 text-sm mb-2 leading-relaxed break-words overflow-wrap-anywhere text-center w-full max-w-full">
+                  {community.description}
+                </p>
+              )}
+              
+              <div className="flex items-center justify-center gap-1.5 text-white/60 flex-wrap text-xs w-full">
+                <Crown className="h-3 w-3 flex-shrink-0" />
+                <span>Created by</span>
+                <Link 
+                  href={`/profile/${community.owner.username}`}
+                  className="text-white hover:text-white/80 font-medium break-words"
+                >
+                  {community.owner.first_name} {community.owner.last_name}
+                </Link>
+              </div>
+            </div>
+
+            {/* Desktop: Side-by-side layout */}
+            <div className="hidden sm:flex flex-row gap-6">
+              <CommunityLogo
+                name={community.name}
+                logoUrl={community.logo_url}
+                size="xl"
+                className="border-4 border-white/20 flex-shrink-0"
               />
               
-              {/* Community Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-center sm:gap-3">
-                  <h1 className="text-3xl font-bold text-white truncate">{community.name}</h1>
+                <div className="flex flex-row items-center gap-2 mb-1.5">
+                  <h1 className="text-xl font-bold text-white break-words leading-tight">{community.name}</h1>
                   {isMember && !isOwner && (
-                    <Badge className="w-fit bg-white/10 text-white/80 border-white/20">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                    <Badge className="w-fit bg-white/10 text-white/80 border-white/20 flex-shrink-0 text-xs px-1.5 py-0.5">
+                      <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                       Member
                     </Badge>
                   )}
                 </div>
                 
                 {community.description && (
-                  <p className="text-white/80 text-lg mb-4 leading-relaxed">
+                  <p className="text-white/80 text-base mb-2 leading-relaxed break-words overflow-wrap-anywhere">
                     {community.description}
                   </p>
                 )}
                 
-                {/* Owner Info */}
-                <div className="flex items-center gap-2 text-white/60">
-                  <Crown className="h-4 w-4" />
+                <div className="flex items-center gap-1.5 text-white/60 flex-wrap text-xs">
+                  <Crown className="h-3 w-3 flex-shrink-0" />
                   <span>Created by</span>
                   <Link 
                     href={`/profile/${community.owner.username}`}
-                    className="text-white hover:text-white/80 font-medium"
+                    className="text-white hover:text-white/80 font-medium break-words"
                   >
                     {community.owner.first_name} {community.owner.last_name}
                   </Link>
@@ -200,48 +236,15 @@ export default function CommunityView({
           </CardContent>
         </Card>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
-            <CardContent className="p-6 text-center">
-              <Users className="h-8 w-8 text-white/70 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-white mb-1">
-                {community.members?.length || 0}
-              </div>
-              <div className="text-white/60 text-sm">Members</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
-            <CardContent className="p-6 text-center">
-              <Calendar className="h-8 w-8 text-white/70 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-white mb-1">
-                {new Date(community.created_at).toLocaleDateString('en-US', { month: 'short' })}
-              </div>
-              <div className="text-white/60 text-sm">Created</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
-            <CardContent className="p-6 text-center">
-              <MessageSquare className="h-8 w-8 text-white/70 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-white mb-1">
-                {new Date(community.updated_at).toLocaleDateString('en-US', { month: 'short' })}
-              </div>
-              <div className="text-white/60 text-sm">Last Active</div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-3">
           {!isOwner && !isMember && (
             <Button 
               onClick={() => setJoinDialogOpen(true)}
-              size="lg"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback"
+              size="default"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback text-sm sm:text-base animate-shimmer-slow"
             >
-              <Heart className="h-5 w-5 mr-2" />
+              <Heart className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
               Join Community
             </Button>
           )}
@@ -250,130 +253,212 @@ export default function CommunityView({
             <Button 
               onClick={handleLeaveCommunity}
               variant="outline"
-              size="lg"
-              className="border-white/20 text-white hover:bg-white/10 touch-feedback"
+              size="default"
+              className="border-white/20 text-white hover:bg-white/10 touch-feedback text-sm sm:text-base"
             >
               Leave Community
             </Button>
           )}
         </div>
 
-        {/* Members Section */}
-        <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Members ({community.members?.length || 0})
-            </CardTitle>
-            <CardDescription className="text-white/60">
-              Community members and their roles
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {community.members && community.members.length > 0 ? (
-              <div className="space-y-3">
-                {community.members.map((member) => (
-                  <div key={member.id} className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
-                    <div className="h-10 w-10 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm border border-white/20 shadow-lg backdrop-blur-md">
-                      {member.user.first_name[0]}{member.user.last_name[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-                        <Link 
-                          href={`/profile/${member.user.username}`}
-                          className="font-medium text-white hover:text-white/80 truncate"
-                        >
-                          {member.user.first_name} {member.user.last_name}
-                        </Link>
-                        <Badge 
-                          variant={member.role === 'owner' ? 'default' : 'secondary'}
-                          className={member.role === 'owner' ? 'bg-white/10 text-white/80 border-white/20' : 'bg-white/10 text-white/80 border-white/20'}
-                        >
-                          {member.role === 'owner' ? (
-                            <>
-                              <Crown className="h-3 w-3 mr-1" />
-                              Owner
-                            </>
-                          ) : (
-                            'Member'
-                          )}
-                        </Badge>
-                      </div>
-                      <p className="text-white/60 text-sm">
-                        Joined {new Date(member.joined_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+        {/* Stats Cards */}
+        <div className="flex w-full gap-3 overflow-x-auto pb-2 pr-4 md:grid md:grid-cols-3 md:gap-6 md:overflow-visible md:px-0">
+          <Card className="min-w-[200px] md:min-w-0 flex-shrink-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+            <CardContent className="p-4 sm:p-6 text-center">
+              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-white/70 mx-auto mb-2" />
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">
+                {community.members?.length || 0}
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <Users className="h-12 w-12 text-white/40 mx-auto mb-4" />
-                <p className="text-white/60">No members yet</p>
+              <div className="text-white/60 text-xs sm:text-sm">Members</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="min-w-[200px] md:min-w-0 flex-shrink-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+            <CardContent className="p-4 sm:p-6 text-center">
+              <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-white/70 mx-auto mb-2" />
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">
+                {new Date(community.created_at).toLocaleDateString('en-US', { month: 'short' })}
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="text-white/60 text-xs sm:text-sm">Created</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="min-w-[200px] md:min-w-0 flex-shrink-0 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+            <CardContent className="p-4 sm:p-6 text-center">
+              <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-white/70 mx-auto mb-2" />
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">
+                {new Date(community.updated_at).toLocaleDateString('en-US', { month: 'short' })}
+              </div>
+              <div className="text-white/60 text-xs sm:text-sm">Last Active</div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Join Dialog */}
       <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Heart className="h-4 w-4 text-white/80" />
-              Join {community.name}
-            </DialogTitle>
-            <DialogDescription className="text-white/60">
-              Click join to become a member of this community.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h4 className="font-medium text-white mb-2">What you'll get:</h4>
-              <ul className="space-y-1 text-sm text-white/80">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  Access to community discussions
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  Connect with like-minded members
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  Share your experiences and insights
-                </li>
-              </ul>
-            </div>
-          </div>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[400000] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Content
+            onInteractOutside={(event) => {
+              const target = event.target as HTMLElement
+              if (target?.closest('[data-sonner-toaster]')) {
+                event.preventDefault()
+              }
+            }}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className={cn(
+              "fixed z-[400001] flex flex-col border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md shadow-lg duration-200 rounded-lg",
+              "data-[state=open]:animate-in data-[state=closed]:animate-out",
+              "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+              "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+              // Mobile: full screen with fixed footer
+              "top-2 left-2 right-2 bottom-2",
+              "w-[calc(100vw-1rem)] h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)]",
+              "overflow-hidden",
+              // Desktop: centered with max-width
+              "sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto",
+              "sm:w-full sm:max-w-lg",
+              "sm:translate-x-[-50%] sm:translate-y-[-50%]",
+              "sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:min-h-0",
+              "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+              "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
+            )}
+          >
+            {/* Close Button */}
+            <DialogPrimitive.Close 
+              tabIndex={-1}
+              className="absolute right-4 top-4 rounded-sm opacity-70 text-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-white/20 data-[state=open]:text-white cursor-pointer z-10"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
 
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setJoinDialogOpen(false)}
-              disabled={isSubmitting}
-              className="border-white/20 text-white hover:bg-white/10 touch-feedback"
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleJoinCommunity} 
-              disabled={isSubmitting}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white mr-2" />
-                  Joining...
-                </>
-              ) : (
-                'Join Community'
-              )}
-            </Button>
-          </div>
-        </DialogContent>
+            {/* Scrollable Content Area */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent' }}>
+              <div className="text-center space-y-4">
+                {/* Community Logo */}
+                <div className="flex justify-center">
+                  <CommunityLogo
+                    name={community.name}
+                    logoUrl={community.logo_url}
+                    size="xl"
+                    className="border-4 border-white/20"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <DialogPrimitive.Title className="text-2xl font-bold text-white">
+                    Join {community.name}
+                  </DialogPrimitive.Title>
+                  <DialogPrimitive.Description className="text-white/70 text-base">
+                    Become a member and start engaging with the community
+                  </DialogPrimitive.Description>
+                </div>
+              </div>
+              
+              <div className="space-y-6 py-6">
+                {/* Community Info */}
+                {community.description && (
+                  <div className="text-center">
+                    <p className="text-white/80 text-sm leading-relaxed">
+                      {community.description}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Stats */}
+                <div className="flex items-center justify-center gap-6 py-4 border-y border-white/10">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">
+                      {community.members?.length || 0}
+                    </div>
+                    <div className="text-xs text-white/60 uppercase tracking-wide mt-1">
+                      Members
+                    </div>
+                  </div>
+                  <div className="w-px h-12 bg-white/10" />
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">
+                      {new Date(community.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    </div>
+                    <div className="text-xs text-white/60 uppercase tracking-wide mt-1">
+                      Created
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Benefits */}
+                <div className="space-y-3 pb-6">
+                  <h4 className="font-semibold text-white text-sm uppercase tracking-wide">What you'll get:</h4>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <MessageSquare className="h-4 w-4 text-white/70" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-white text-sm mb-1">Community Discussions</div>
+                        <div className="text-xs text-white/60">Participate in conversations and share your thoughts</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Users className="h-4 w-4 text-white/70" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-white text-sm mb-1">Connect with Members</div>
+                        <div className="text-xs text-white/60">Build relationships with like-minded people</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Star className="h-4 w-4 text-white/70" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-white text-sm mb-1">Share Your Insights</div>
+                        <div className="text-xs text-white/60">Contribute your experiences and knowledge</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                      <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Coins className="h-4 w-4 text-white/70" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-white text-sm mb-1">Earn Points</div>
+                        <div className="text-xs text-white/60">Get rewarded with points for posts and contributions</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Fixed Footer Button - Outside scroll area, stuck to bottom */}
+            <div className="flex-shrink-0 border-t border-white/10 bg-gradient-to-b from-white/10 via-white/10 to-white/10 backdrop-blur-md p-4 sm:p-6">
+              <Button 
+                onClick={handleJoinCommunity} 
+                disabled={isSubmitting}
+                size="lg"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 touch-feedback animate-shimmer-slow"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white mr-2" />
+                    Joining...
+                  </>
+                ) : (
+                  <>
+                    <Heart className="h-4 w-4 mr-2" />
+                    Join Community
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
       </Dialog>
     </div>
   )

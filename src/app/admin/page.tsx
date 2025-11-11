@@ -104,17 +104,32 @@ export default function AdminDashboard() {
           </button>
 
           <button
-            onClick={() => router.push('/admin/plans')}
+            onClick={() => router.push('/admin/revenue')}
             className="group rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-3 sm:p-4 text-left transition-all hover:bg-white/20 hover:scale-105 cursor-pointer"
           >
             <h3 className="font-semibold text-white mb-1 sm:mb-2 text-sm sm:text-base">
-              Subscription Plans
+              Platform Revenue
               <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none ml-2">
                 →
               </span>
             </h3>
             <p className="text-xs sm:text-sm text-white/80">
-              Configure subscription plans
+              View revenue breakdown and analytics
+            </p>
+          </button>
+
+          <button
+            onClick={() => router.push('/admin/withdrawals')}
+            className="group rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-3 sm:p-4 text-left transition-all hover:bg-white/20 hover:scale-105 cursor-pointer"
+          >
+            <h3 className="font-semibold text-white mb-1 sm:mb-2 text-sm sm:text-base">
+              Withdrawals
+              <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none ml-2">
+                →
+              </span>
+            </h3>
+            <p className="text-xs sm:text-sm text-white/80">
+              Manage platform withdrawals
             </p>
           </button>
 

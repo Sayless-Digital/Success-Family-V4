@@ -10,6 +10,11 @@ const TRANSACTION_PAGE_SIZE = 20
 async function getWalletData(userId: string) {
   const supabase = await createServerSupabaseClient()
 
+  // Ensure wallet exists for user (creates if missing)
+  await supabase.rpc('ensure_wallet_exists', {
+    p_user_id: userId,
+  })
+
   // Release any matured earnings before loading balances
   await supabase.rpc('process_matured_earnings', {
     p_user_id: userId,

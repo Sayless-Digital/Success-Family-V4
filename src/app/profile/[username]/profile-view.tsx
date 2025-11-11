@@ -1763,7 +1763,7 @@ export default function ProfileView({
         {/* Profile Header - TikTok Style */}
         <div className="mb-6 mt-2">
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="mb-4">
+            <div className="mb-2">
               <Avatar className="h-24 w-24 border-4 border-white/20" userId={user.id}>
                   <AvatarImage src={user.profile_picture || ''} alt={user.username} />
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-3xl">
@@ -1773,7 +1773,7 @@ export default function ProfileView({
               </Avatar>
             </div>
             
-            <h1 className="text-2xl font-bold text-white mb-2">
+            <h1 className="text-2xl font-bold text-white mb-1">
                   {user.first_name} {user.last_name}
             </h1>
             

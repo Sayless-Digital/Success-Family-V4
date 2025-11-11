@@ -188,27 +188,22 @@ export async function ensureThread(
   let thread: DirectMessageThread | null = (existing.data as DirectMessageThread) ?? null
   let isNew = false
 
-  // Use upsert with conflict resolution to prevent race conditions
+  // Insert new thread if it doesn't exist (handle race conditions)
   if (!thread) {
-    const upserted = await client
+    const inserted = await client
       .from("dm_threads")
-      .upsert(
-        {
-          user_a_id: userAId,
-          user_b_id: userBId,
-          initiated_by: viewerId,
-        },
-        {
-          onConflict: "user_a_id,user_b_id",
-          ignoreDuplicates: false,
-        }
-      )
+      .insert({
+        user_a_id: userAId,
+        user_b_id: userBId,
+        initiated_by: viewerId,
+      })
       .select("*")
       .single()
 
-    if (upserted.error) {
-      // If upsert failed due to unique constraint, try to fetch again
-      if (upserted.error.code === "23505") {
+    if (inserted.error) {
+      // If insert failed due to unique constraint violation (race condition),
+      // another request created the thread - fetch it
+      if (inserted.error.code === "23505") {
         const retry = await client
           .from("dm_threads")
           .select("*")
@@ -223,10 +218,10 @@ export async function ensureThread(
         thread = retry.data as DirectMessageThread
         isNew = false
       } else {
-        throw upserted.error
+        throw inserted.error
       }
     } else {
-      thread = upserted.data as DirectMessageThread
+      thread = inserted.data as DirectMessageThread
       isNew = true
     }
   }

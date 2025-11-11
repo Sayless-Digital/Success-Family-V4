@@ -181,6 +181,27 @@ export interface Payout {
   locked_points: number
 }
 
+export type PlatformWithdrawalStatus = 'pending' | 'processing' | 'completed' | 'cancelled' | 'failed'
+
+export interface PlatformWithdrawal {
+  id: string
+  bank_account_id: string
+  amount_ttd: number
+  status: PlatformWithdrawalStatus
+  requested_by: string
+  processed_by?: string
+  requested_at: string
+  processed_at?: string
+  notes?: string
+  metadata?: Record<string, unknown>
+  created_at: string
+  updated_at: string
+  // Joined fields
+  bank_account?: BankAccount
+  requested_by_user?: User
+  processed_by_user?: User
+}
+
 // Post system types
 export type MediaType = 'image' | 'video' | 'document' | 'audio'
 
