@@ -48,11 +48,6 @@ export function OnlineStatusProvider({ children }: { children: React.ReactNode }
       const state = channel.presenceState<{ userId: string }>()
       const onlineIds = new Set<string>()
       
-      // Debug: Log presence state structure
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[OnlineStatusProvider] Presence state:', state)
-      }
-      
       Object.values(state).forEach((presences) => {
         if (Array.isArray(presences)) {
           presences.forEach((presence) => {
@@ -62,10 +57,6 @@ export function OnlineStatusProvider({ children }: { children: React.ReactNode }
           })
         }
       })
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[OnlineStatusProvider] Online user IDs:', Array.from(onlineIds))
-      }
       
       setOnlineUserIds(onlineIds)
     }

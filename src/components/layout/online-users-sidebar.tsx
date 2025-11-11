@@ -79,15 +79,6 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
   useEffect(() => {
     const currentUserId = user?.id
     
-    // Debug: Log filtering info
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[OnlineUsersSidebar] All users:', allUsers.length)
-      console.log('[OnlineUsersSidebar] Online user IDs:', Array.from(onlineUserIds))
-      console.log('[OnlineUsersSidebar] Current user ID:', currentUserId)
-      console.log('[OnlineUsersSidebar] Current user in allUsers:', allUsers.some(u => u.id === currentUserId))
-      console.log('[OnlineUsersSidebar] Current user in onlineUserIds:', currentUserId ? onlineUserIds.has(currentUserId) : false)
-    }
-    
     // Get all users (including current user)
     let allUsersList = [...allUsers]
     
@@ -154,19 +145,7 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
     finalList.push(...sortedOnlineUsers)
     finalList.push(...sortedOfflineUsers)
     
-    // Store divider index for rendering
-    const dividerIndex = sortedOnlineUsers.length
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[OnlineUsersSidebar] Online users:', sortedOnlineUsers.length)
-      console.log('[OnlineUsersSidebar] Offline users:', sortedOfflineUsers.length)
-      console.log('[OnlineUsersSidebar] Divider index:', dividerIndex)
-      console.log('[OnlineUsersSidebar] Total online users:', onlineUserIds.size)
-    }
-    
     setFilteredUsers(finalList)
-    // Store divider index in a way we can access it during render
-    // We'll use the fact that offline users start after online users
   }, [searchQuery, allUsers, onlineUserIds, user?.id, userProfile])
   
   // Calculate online user count (including current user if they're online)

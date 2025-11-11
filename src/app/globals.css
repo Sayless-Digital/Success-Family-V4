@@ -273,6 +273,32 @@
     border-radius: inherit;
   }
   
+  .animate-shimmer-slow {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .animate-shimmer-slow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: linear-gradient(
+      110deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0) 45%,
+      rgba(255, 255, 255, 0.3) 50%,
+      rgba(255, 255, 255, 0) 55%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 8s linear infinite;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+  
   /* Boost button animations */
   @keyframes boost-pulse {
     0% {
@@ -558,6 +584,91 @@
   .avatar-feedback:active {
     transform: scale(0.88);
     opacity: 0.6;
+  }
+
+  /* Enforce square aspect ratio for avatars - prevents stretching in flex/grid layouts */
+  /* Margin is outside the box model and doesn't affect width/height calculations */
+  .avatar-enforce-square {
+    aspect-ratio: 1 / 1 !important;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    align-self: flex-start !important;
+    box-sizing: border-box !important;
+    /* Don't override margin - let Tailwind classes like mb-8 work normally */
+  }
+
+  /* Ensure Radix Avatar root maintains square ratio with maximum specificity */
+  [data-radix-avatar-root].avatar-enforce-square {
+    aspect-ratio: 1 / 1 !important;
+  }
+
+  /* Force square dimensions when both width and height classes are present */
+  /* Dimensions exclude margin - margin is outside the box model with border-box */
+  [data-radix-avatar-root].avatar-enforce-square.h-24.w-24 {
+    width: 6rem !important;
+    height: 6rem !important;
+    min-width: 6rem !important;
+    max-width: 6rem !important;
+    min-height: 6rem !important;
+    max-height: 6rem !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
+    /* Margin is preserved but doesn't affect the square dimensions */
+  }
+
+  [data-radix-avatar-root].avatar-enforce-square.h-10.w-10 {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    min-width: 2.5rem !important;
+    max-width: 2.5rem !important;
+    min-height: 2.5rem !important;
+    max-height: 2.5rem !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
+    /* Margin is preserved but doesn't affect the square dimensions */
+  }
+
+  /* Ensure border doesn't break the square shape */
+  [data-radix-avatar-root].avatar-enforce-square[class*="border"] {
+    box-sizing: border-box !important;
+  }
+
+  /* Prevent inner content from stretching the avatar */
+  [data-radix-avatar-root].avatar-enforce-square > * {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+  }
+
+  /* Additional fallback for any avatar with explicit dimensions - but inline styles should override */
+  /* Important: width/height are the total box size (including border, excluding margin) */
+  .avatar-enforce-square[class*="h-24"][class*="w-24"]:not([style*="width"]):not([style*="height"]),
+  .avatar-enforce-square.h-24.w-24:not([style*="width"]):not([style*="height"]) {
+    width: 96px !important;
+    height: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    min-height: 96px !important;
+    max-height: 96px !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
+    /* Margin classes (like mb-8) are applied separately and don't affect these dimensions */
+  }
+
+  /* Ensure border-radius creates perfect circle, especially with borders */
+  [data-radix-avatar-root].avatar-enforce-square.rounded-full,
+  .avatar-enforce-square.rounded-full {
+    border-radius: 50% !important;
+  }
+
+  /* Critical: When inline styles set width/height, ensure they override everything */
+  /* Margin is NEVER included in width/height - it's always outside the box model */
+  [data-radix-avatar-root][style*="width"][style*="height"].avatar-enforce-square,
+  [data-radix-avatar-root][style*="width"].avatar-enforce-square[style*="height"] {
+    /* Inline styles already set width/height - just ensure aspect ratio is maintained */
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
+    /* Margin (mb-8, etc.) is outside and doesn't affect these dimensions */
   }
 
   /* Optimize slider performance for mobile */

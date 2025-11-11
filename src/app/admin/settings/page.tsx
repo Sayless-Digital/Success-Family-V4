@@ -18,6 +18,8 @@ async function getSettings() {
     storage_monthly_cost_per_gb: 4,
     payout_minimum_ttd: 100,
     mandatory_topup_ttd: 50,
+    referral_bonus_points: 20,
+    referral_max_topups: 3,
   }
 }
 
@@ -48,6 +50,8 @@ export default async function AdminSettingsPage() {
     const storageMonthlyCost = Number(formData.get('storage_monthly_cost_per_gb'))
     const payoutMinimum = Number(formData.get('payout_minimum_ttd'))
     const mandatoryTopup = Number(formData.get('mandatory_topup_ttd'))
+    const referralBonusPoints = Number(formData.get('referral_bonus_points'))
+    const referralMaxTopups = Number(formData.get('referral_max_topups'))
 
     if (!Number.isFinite(buyPrice) || buyPrice <= 0) return
     if (!Number.isFinite(userValue) || userValue <= 0) return
@@ -57,6 +61,8 @@ export default async function AdminSettingsPage() {
     if (!Number.isFinite(storageMonthlyCost) || storageMonthlyCost < 0) return
     if (!Number.isFinite(payoutMinimum) || payoutMinimum <= 0) return
     if (!Number.isFinite(mandatoryTopup) || mandatoryTopup <= 0) return
+    if (!Number.isFinite(referralBonusPoints) || referralBonusPoints < 0) return
+    if (!Number.isFinite(referralMaxTopups) || referralMaxTopups < 1) return
 
     await supabase
       .from('platform_settings')
@@ -70,6 +76,8 @@ export default async function AdminSettingsPage() {
         storage_monthly_cost_per_gb: Math.floor(storageMonthlyCost),
         payout_minimum_ttd: payoutMinimum,
         mandatory_topup_ttd: mandatoryTopup,
+        referral_bonus_points: Math.floor(referralBonusPoints),
+        referral_max_topups: Math.floor(referralMaxTopups),
       })
   }
 
@@ -151,6 +159,38 @@ export default async function AdminSettingsPage() {
             />
             <p className="text-white/60 text-xs">
               Users must top up at least this amount every month. Reminders are scheduled automatically.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white/90">Referral Program</h3>
+          <div className="space-y-2">
+            <Label htmlFor="referral_bonus_points" className="text-white/80">Referral Bonus Points</Label>
+            <Input
+              id="referral_bonus_points"
+              name="referral_bonus_points"
+              type="number"
+              step="1"
+              min="0"
+              defaultValue={settings.referral_bonus_points ?? 20}
+            />
+            <p className="text-white/60 text-xs">
+              Points awarded to the referrer when a referred user tops up.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="referral_max_topups" className="text-white/80">Maximum Top-Ups for Bonus</Label>
+            <Input
+              id="referral_max_topups"
+              name="referral_max_topups"
+              type="number"
+              step="1"
+              min="1"
+              defaultValue={settings.referral_max_topups ?? 3}
+            />
+            <p className="text-white/60 text-xs">
+              Maximum number of top-ups per referral that generate bonus points for the referrer.
             </p>
           </div>
         </div>

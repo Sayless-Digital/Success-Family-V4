@@ -88,7 +88,10 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error("[api/dm/threads][POST]", error)
-    return errorResponse("Failed to open conversation", 500)
+    const errorMessage = error instanceof Error ? error.message : "Failed to open conversation"
+    const statusCode = errorMessage.includes("not found") ? 404 : 
+                      errorMessage.includes("Unauthorized") || errorMessage.includes("unauthorized") ? 401 : 500
+    return errorResponse(errorMessage, statusCode)
   }
 }
 

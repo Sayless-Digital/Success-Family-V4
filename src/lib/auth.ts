@@ -6,6 +6,7 @@ export interface SignUpData {
   password: string
   firstName: string
   lastName: string
+  referredByUserId?: string
 }
 
 export interface SignInData {
@@ -36,6 +37,7 @@ export async function signUp(data: SignUpData): Promise<AuthResult> {
         data: {
           first_name: data.firstName,
           last_name: data.lastName,
+          referred_by_user_id: data.referredByUserId || null,
         },
       },
     })

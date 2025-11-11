@@ -39,7 +39,8 @@ export function canUserInteractWithThread(
   participant: DirectMessageParticipant | null | undefined,
 ): boolean {
   if (!participant) return false
-  return participant.status === "active"
+  // Allow messaging for all statuses except blocked (message requests are removed)
+  return participant.status !== "blocked"
 }
 
 export function buildDmMediaStoragePath(userId: string, extension?: string) {

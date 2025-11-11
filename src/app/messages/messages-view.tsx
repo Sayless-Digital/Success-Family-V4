@@ -140,7 +140,6 @@ export default function MessagesView({
   const [mobileView, setMobileView] = useState<"list" | "conversation">("list")
   const [isClient, setIsClient] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
-  const [acceptingRequest, setAcceptingRequest] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
   const [audioProgress, setAudioProgress] = useState<Record<string, { current: number; duration: number }>>({})
@@ -928,104 +927,6 @@ export default function MessagesView({
     })
   }, [])
 
-  const handleAcceptRequest = useCallback(async () => {
-    if (acceptingRequest) return
-
-    let normalizedThreadId = selectedThreadId?.trim() ?? ""
-
-    if (!normalizedThreadId) {
-      const fallbackThreadId =
-        selectedConversation?.thread_id?.trim() ??
-        conversationsRef.current[0]?.thread_id?.trim() ??
-        displayedConversations[0]?.thread_id?.trim() ??
-        initialThreadId?.trim() ??
-        ""
-
-      if (!fallbackThreadId) {
-        toast.error("Select a conversation before accepting the request.")
-        return
-      }
-
-      normalizedThreadId = fallbackThreadId
-      if (fallbackThreadId !== selectedThreadId) {
-        await handleSelectConversation(fallbackThreadId)
-      }
-    }
-
-    try {
-      setAcceptingRequest(true)
-
-      if (!normalizedThreadId) {
-        toast.error("Select a conversation before accepting the request.")
-        setAcceptingRequest(false)
-        return
-      }
-
-      const response = await fetch(`/api/dm/threads/${normalizedThreadId}/accept`, {
-        method: "POST",
-      })
-
-      const payload = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        const message =
-          typeof payload?.error === "string" ? payload.error : "Failed to accept the message request."
-        throw new Error(message)
-      }
-
-      const conversationData = (payload?.conversation ?? null) as ConversationListItem | null
-      const participantData = (payload?.participant ?? null) as DirectMessageParticipant | null
-      const threadData = (payload?.thread ?? null) as DirectMessageThread | null
-
-      const applyUpdate = (list: ConversationListItem[]) => {
-        if (list.length === 0 && conversationData) {
-          return [conversationData]
-        }
-
-        const index = list.findIndex((item) => item.thread_id === normalizedThreadId)
-
-        if (index === -1) {
-          if (conversationData) {
-            return [...list, conversationData]
-          }
-          return list
-        }
-
-        const existing = list[index]
-        const merged =
-          conversationData
-            ? {
-                ...existing,
-                ...conversationData,
-                other_user_profile: conversationData.other_user_profile ?? existing.other_user_profile ?? null,
-              }
-            : {
-                ...existing,
-                participant_status: participantData?.status ?? "active",
-                request_required: false,
-                request_resolved_at:
-                  threadData?.request_resolved_at ?? existing.request_resolved_at ?? new Date().toISOString(),
-              }
-
-        const next = [...list]
-        next[index] = merged
-        return next
-      }
-
-      setConversations((prev) => applyUpdate(prev))
-      setDisplayedConversations((prev) => applyUpdate(prev))
-      setSelectedThreadId(normalizedThreadId)
-
-      toast.success("Message request accepted. You can now chat.")
-    } catch (error) {
-      const fallback = "Unable to accept the message request."
-      const message = error instanceof Error ? error.message || fallback : fallback
-      toast.error(message)
-    } finally {
-      setAcceptingRequest(false)
-    }
-  }, [acceptingRequest, displayedConversations, handleSelectConversation, initialThreadId, selectedConversation, selectedThreadId])
-
   const handleSendMessage = useCallback(async () => {
     let normalizedThreadId = selectedThreadId?.trim() ?? ""
     if (!normalizedThreadId) {
@@ -1299,8 +1200,8 @@ export default function MessagesView({
   const peerInitials = getInitials(peerProfile)
   const peerAvatar = peerProfile?.profile_picture ?? null
   const isPeerOnline = selectedThreadId ? presenceMap[selectedThreadId] ?? false : false
-  const composerDisabled = selectedConversation?.participant_status !== "active"
-  const isPendingRequest = selectedConversation?.participant_status === "pending"
+  // Only disable composer if participant is blocked
+  const composerDisabled = selectedConversation?.participant_status === "blocked"
 
   const conversationsToRender = displayedConversations
 
@@ -1376,9 +1277,6 @@ export default function MessagesView({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-white/80 font-medium truncate">{displayName}</p>
-                            {conversation.request_required && conversation.participant_status === "pending" && (
-                              <Badge className="bg-white/10 text-white/70 border-white/20">Request</Badge>
-                            )}
                             {typingForConversation && (
                               <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-100">Typing</Badge>
                             )}
@@ -1436,9 +1334,6 @@ export default function MessagesView({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h2 className="text-white/90 font-semibold text-sm sm:text-base truncate">{peerName}</h2>
-                        {selectedConversation.request_required && selectedConversation.participant_status === "pending" && (
-                          <Badge className="bg-amber-500/20 border border-amber-400/30 text-amber-100">Awaiting approval</Badge>
-                        )}
                       </div>
                       <p className="text-xs text-white/50" suppressHydrationWarning>
                         {isPeerOnline ? "Online now" : `Last active ${formatRelativeTime(selectedConversation.other_last_seen_at ?? selectedConversation.updated_at)}`}
@@ -1752,23 +1647,11 @@ export default function MessagesView({
                   </div>
                   <Separator className="bg-white/10" />
                   <div className="p-3 sm:p-4 space-y-3">
-                    {selectedConversation.participant_status !== "active" && (
-                      <div className="bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white/70 text-sm space-y-3">
+                    {selectedConversation.participant_status === "blocked" && (
+                      <div className="bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white/70 text-sm">
                         <div>
-                          Message request pending. You'll be able to chat once both of you follow each other or the request is accepted.
+                          You cannot send messages in this conversation.
                         </div>
-                        {isPendingRequest && (
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              onClick={handleAcceptRequest}
-                              disabled={acceptingRequest}
-                              className="rounded-full bg-white text-black hover:bg-white/90 px-4 py-2 text-sm font-semibold"
-                            >
-                              {acceptingRequest ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accept request"}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     )}
                     {attachments.length > 0 && (
@@ -1841,9 +1724,9 @@ export default function MessagesView({
                         value={composerValue}
                         onChange={(event) => handleComposerChange(event.target.value)}
                         placeholder={
-                          selectedConversation.participant_status === "active"
-                            ? "Type a message"
-                            : "Waiting for request approval…"
+                          selectedConversation.participant_status === "blocked"
+                            ? "Cannot send messages"
+                            : "Type a message"
                         }
                         className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[24px]"
                         rows={1}
@@ -1874,7 +1757,7 @@ export default function MessagesView({
                 <div className="space-y-2">
                   <h3 className="text-white/90 text-lg font-semibold">Your inbox is ready</h3>
                   <p className="text-white/50 text-sm max-w-sm mx-auto">
-                    Start a conversation by following someone or accepting a message request. Messages appear here instantly with realtime updates.
+                    Start a conversation by messaging someone. Messages appear here instantly with realtime updates.
                   </p>
                 </div>
               </div>

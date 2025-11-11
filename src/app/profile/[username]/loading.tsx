@@ -1,12 +1,5 @@
-import { LoadingSpinner } from "@/components/loading-spinner"
+import { ProfilePageSkeleton } from "@/components/skeletons/profile-page-skeleton"
 
 export default function ProfileLoading() {
-  return (
-    <div className="relative w-full overflow-x-hidden flex-1 flex items-center justify-center">
-      <div className="relative z-10 flex flex-col items-center gap-4">
-        <LoadingSpinner />
-        <p className="text-white/60 text-sm">Loading profile...</p>
-      </div>
-    </div>
-  )
+  return <ProfilePageSkeleton />
 }

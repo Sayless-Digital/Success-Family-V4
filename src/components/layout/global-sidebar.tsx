@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -28,6 +28,7 @@ const baseNavigationItems = [
 // User menu items (shown when authenticated)
 const userMenuItems = [
   { icon: User, label: "Profile", href: "#", isDynamic: true }, // Dynamic - will be set based on username
+  { icon: Gift, label: "Referrals", href: "/referrals" },
   { icon: Settings, label: "Account", href: "/account" },
   { icon: HardDrive, label: "Storage", href: "/storage" },
 ]

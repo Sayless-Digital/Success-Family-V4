@@ -16,8 +16,9 @@ import type { CheckedState } from "@radix-ui/react-checkbox"
 import { Checkbox } from "@/components/ui/checkbox"
 import { signIn, signUp } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff } from "lucide-react"
+import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X } from "lucide-react"
 import { toast } from "sonner"
+import { supabase } from "@/lib/supabase"
 
 interface AuthDialogProps {
   open: boolean
@@ -49,7 +50,26 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     lastName: "",
     email: "",
     password: "",
+    referredByUserId: "" as string | undefined,
   })
+  const [referralSearch, setReferralSearch] = React.useState("")
+  const [referralUsers, setReferralUsers] = React.useState<Array<{
+    id: string
+    username: string
+    first_name: string
+    last_name: string
+    email: string
+    profile_picture?: string
+  }>>([])
+  const [showReferralDropdown, setShowReferralDropdown] = React.useState(false)
+  const [selectedReferrer, setSelectedReferrer] = React.useState<{
+    id: string
+    username: string
+    first_name: string
+    last_name: string
+  } | null>(null)
+  const referralSearchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  const referralDropdownRef = React.useRef<HTMLDivElement>(null)
 
   // Restore cursor position after password visibility toggle
   React.useEffect(() => {
@@ -106,6 +126,123 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       setShowSignUpPassword(false)
     }
   }, [open, defaultTab])
+
+  // Search for referral users
+  const searchReferralUser = React.useCallback(async (query: string) => {
+    if (!query || query.length < 2) {
+      setReferralUsers([])
+      setShowReferralDropdown(false)
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, username, first_name, last_name, email, profile_picture')
+        .or(`username.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`)
+        .limit(10)
+
+      if (error) throw error
+      setReferralUsers(data || [])
+      setShowReferralDropdown(true)
+    } catch (error) {
+      console.error('Error searching users:', error)
+      setReferralUsers([])
+    }
+  }, [])
+
+  // Auto-detect referral from URL parameter on mount and when dialog opens
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!open || activeTab !== 'signup') return
+    
+    const urlParams = new URLSearchParams(window.location.search)
+    const refCode = urlParams.get('ref')
+    
+    if (refCode && !selectedReferrer && !hasAutoSelectedRef.current) {
+      // Search for user by username
+      setReferralSearch(refCode)
+      searchReferralUser(refCode)
+    }
+  }, [open, activeTab, searchReferralUser, selectedReferrer])
+
+  // Handle referral search with debounce
+  React.useEffect(() => {
+    if (referralSearchTimeoutRef.current) {
+      clearTimeout(referralSearchTimeoutRef.current)
+    }
+
+    if (referralSearch.length >= 2 && !selectedReferrer) {
+      referralSearchTimeoutRef.current = setTimeout(() => {
+        searchReferralUser(referralSearch)
+      }, 300)
+    } else if (referralSearch.length < 2) {
+      setReferralUsers([])
+      setShowReferralDropdown(false)
+    }
+
+    return () => {
+      if (referralSearchTimeoutRef.current) {
+        clearTimeout(referralSearchTimeoutRef.current)
+      }
+    }
+  }, [referralSearch, selectedReferrer, searchReferralUser])
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (referralDropdownRef.current && !referralDropdownRef.current.contains(event.target as Node)) {
+        setShowReferralDropdown(false)
+      }
+    }
+
+    if (showReferralDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showReferralDropdown])
+
+  // Auto-select user if URL ref matches exactly (only once when dialog opens)
+  const hasAutoSelectedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (selectedReferrer || hasAutoSelectedRef.current) return // Don't auto-select if already selected or already tried
+    
+    const urlParams = new URLSearchParams(window.location.search)
+    const refCode = urlParams.get('ref')
+    
+    if (refCode && referralUsers.length === 1 && referralUsers[0].username.toLowerCase() === refCode.toLowerCase()) {
+      handleSelectReferrer(referralUsers[0])
+      hasAutoSelectedRef.current = true
+    }
+  }, [referralUsers, selectedReferrer])
+
+  // Reset auto-select flag when dialog closes
+  React.useEffect(() => {
+    if (!open) {
+      hasAutoSelectedRef.current = false
+    }
+  }, [open])
+
+  const handleSelectReferrer = (user: {
+    id: string
+    username: string
+    first_name: string
+    last_name: string
+  }) => {
+    setSelectedReferrer(user)
+    setSignUpData(prev => ({ ...prev, referredByUserId: user.id }))
+    setReferralSearch(`${user.first_name} ${user.last_name} (@${user.username})`)
+    setShowReferralDropdown(false)
+  }
+
+  const handleClearReferrer = () => {
+    setSelectedReferrer(null)
+    setSignUpData(prev => ({ ...prev, referredByUserId: undefined }))
+    setReferralSearch("")
+    setReferralUsers([])
+    setShowReferralDropdown(false)
+  }
 
   React.useEffect(() => {
     if (typeof window === "undefined") {
@@ -198,6 +335,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       password: signUpData.password,
       firstName: signUpData.firstName,
       lastName: signUpData.lastName,
+      referredByUserId: signUpData.referredByUserId,
     })
 
     setIsLoading(false)
@@ -213,7 +351,10 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
 
   const handleCloseSuccessScreen = () => {
     setShowSignUpSuccess(false)
-    setSignUpData({ firstName: "", lastName: "", email: "", password: "" })
+    setSignUpData({ firstName: "", lastName: "", email: "", password: "", referredByUserId: undefined })
+    setSelectedReferrer(null)
+    setReferralSearch("")
+    setReferralUsers([])
     onOpenChange(false)
   }
 
@@ -474,6 +615,86 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Password must be at least 6 characters
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="signup-referral">Referred By (Optional)</Label>
+                <div className="relative" ref={referralDropdownRef}>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+                    <Input
+                      id="signup-referral"
+                      type="text"
+                      placeholder="Search for user by username, name, or email..."
+                      value={referralSearch}
+                      onChange={(e) => {
+                        setReferralSearch(e.target.value)
+                        if (selectedReferrer) {
+                          setSelectedReferrer(null)
+                          setSignUpData(prev => ({ ...prev, referredByUserId: undefined }))
+                        }
+                      }}
+                      onFocus={() => {
+                        if (referralSearch.length >= 2 && referralUsers.length > 0) {
+                          setShowReferralDropdown(true)
+                        }
+                      }}
+                      disabled={isLoading}
+                      className="pl-10 pr-10"
+                    />
+                    {selectedReferrer && (
+                      <button
+                        type="button"
+                        onClick={handleClearReferrer}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                        disabled={isLoading}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {showReferralDropdown && referralUsers.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-md border border-white/20 bg-white/5 backdrop-blur-md shadow-lg">
+                      {referralUsers.map((user) => (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => handleSelectReferrer(user)}
+                          className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-3"
+                        >
+                          {user.profile_picture ? (
+                            <img
+                              src={user.profile_picture}
+                              alt={user.username}
+                              className="h-8 w-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-semibold">
+                              {user.first_name[0]}{user.last_name[0]}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">
+                              {user.first_name} {user.last_name}
+                            </div>
+                            <div className="text-xs text-white/60 truncate">
+                              @{user.username}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {selectedReferrer && (
+                  <p className="text-xs text-white/60 flex items-center gap-1">
+                    <UserIcon className="h-3 w-3" />
+                    {selectedReferrer.first_name} will earn bonus points when you top up!
+                  </p>
+                )}
+                <p className="text-xs text-white/40">
+                  Optional: Search for the person who referred you
                 </p>
               </div>
 

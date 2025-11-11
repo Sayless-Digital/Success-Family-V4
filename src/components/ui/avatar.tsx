@@ -20,17 +20,39 @@ const Avatar = React.forwardRef<
     ? isOnline 
     : userId ? isUserOnline(userId) : false
 
+  // Extract size from className to enforce square dimensions via inline styles
+  const classStr = className || ''
+  let explicitSize: number | undefined
+  
+  if (classStr.includes('h-24') && classStr.includes('w-24')) {
+    explicitSize = 96 // 6rem = 96px
+  } else if (classStr.includes('h-10') && classStr.includes('w-10')) {
+    explicitSize = 40 // 2.5rem = 40px
+  }
+
   const avatarRoot = (
     <AvatarPrimitive.Root
       ref={ref}
       className={cn(
-        "relative flex items-center justify-center shrink-0 rounded-full transition-all duration-200 z-10",
-        "overflow-hidden aspect-square",
+        "relative inline-block align-middle shrink-0 rounded-full transition-all duration-200 z-10",
+        "overflow-hidden box-border avatar-enforce-square",
         showOnlineIndicator
           ? ""
           : "border border-white/20 hover:border-white/40",
         className
       )}
+      style={{
+        aspectRatio: "1 / 1",
+        ...(explicitSize ? {
+          width: `${explicitSize}px`,
+          height: `${explicitSize}px`,
+          minWidth: `${explicitSize}px`,
+          maxWidth: `${explicitSize}px`,
+          minHeight: `${explicitSize}px`,
+          maxHeight: `${explicitSize}px`,
+        } : {}),
+        ...props.style,
+      }}
       {...props}
     >
       {children}
@@ -59,7 +81,6 @@ const AvatarImage = React.forwardRef<
     ref={ref}
     className={cn(
       "absolute inset-0 h-full w-full object-cover object-center rounded-full",
-      "max-h-full max-w-full",
       className
     )}
     {...props}

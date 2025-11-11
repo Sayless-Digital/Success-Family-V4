@@ -340,7 +340,7 @@ export default function DiscoveryFeedView({
       <div className="relative w-full overflow-x-hidden overflow-y-visible">
         <div className="relative z-10 space-y-4">
           {/* User Count Display */}
-          <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer">
+          <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer-slow">
             <div className="flex items-center justify-center gap-2">
               <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
                 <Users className="h-4 w-4 text-white/70" />
@@ -390,7 +390,7 @@ export default function DiscoveryFeedView({
     <div className="relative w-full overflow-x-hidden overflow-y-visible">
       <div className="relative z-10 space-y-4">
         {/* User Count Display */}
-        <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer">
+        <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer-slow">
           <div className="flex items-center justify-center gap-2">
             <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
               <Users className="h-4 w-4 text-white/70" />

@@ -42,6 +42,8 @@ export interface EnsureThreadResult {
   isNew: boolean
 }
 
+// DEPRECATED: Message requests are no longer used
+// Keeping interface for backwards compatibility
 export interface AcceptMessageRequestResult {
   thread: DirectMessageThread
   participant: DirectMessageParticipant
@@ -342,8 +344,9 @@ export async function appendMessage(
     throw new Error("Not a participant in this thread")
   }
 
-  if (participant.data.status !== "active") {
-    throw new Error("Conversation request must be accepted before sending messages")
+  // Allow messaging for all statuses except blocked
+  if (participant.data.status === "blocked") {
+    throw new Error("You cannot send messages in this conversation")
   }
 
   const attachments = input.attachments ?? []
@@ -457,193 +460,32 @@ export async function getThreadById(
   return data ? (data as DirectMessageThread) : null
 }
 
+// DEPRECATED: Message requests are no longer used - participants are always created as active
+// Keeping function for backwards compatibility but it's a no-op
 export async function acceptMessageRequest(
   supabase: TypedSupabaseClient,
   threadId: string,
   userId: string,
 ): Promise<AcceptMessageRequestResult> {
-  const normalizedThreadId = threadId.trim()
-  if (!normalizedThreadId) {
-    throw new Error("Thread ID is required")
-  }
-
-  const client = supabase as SupabaseClient<any>
-
-  const participantQuery = await client
-    .from("dm_participants")
-    .select("*")
-    .eq("thread_id", normalizedThreadId)
-    .eq("user_id", userId)
-    .maybeSingle<ParticipantRow>()
-
-  if (participantQuery.error) {
-    throw participantQuery.error
-  }
-
-  const participantRow = participantQuery.data
-
-  if (!participantRow) {
-    throw new Error("You do not have access to this conversation")
-  }
-
-  if (participantRow.status === "blocked") {
-    throw new Error("This conversation cannot be accepted")
-  }
-
-  const nowIso = new Date().toISOString()
-
-  let updatedParticipant = participantRow
-
-  let participantUpdateError: PostgrestError | null = null
-
-  if (participantRow.status !== "active") {
-    const participantUpdate = await client
-      .from("dm_participants")
-      .update({
-        status: "active",
-        last_seen_at: nowIso,
-        last_read_at: nowIso,
-      } satisfies ParticipantUpdate)
-      .eq("id", participantRow.id)
-      .select("*")
-      .single<ParticipantRow>()
-
-    if (participantUpdate.error) {
-      participantUpdateError = participantUpdate.error
-    } else if (participantUpdate.data) {
-      updatedParticipant = participantUpdate.data
-    }
-  }
-
-  if (participantUpdateError) {
-    throw participantUpdateError
-  }
-
-  const existingThreadQuery = await client
-    .from("dm_threads")
-    .select("*")
-    .eq("id", normalizedThreadId)
-    .maybeSingle<ThreadRow>()
-
-  if (existingThreadQuery.error) {
-    throw existingThreadQuery.error
-  }
-
-  let currentThread = existingThreadQuery.data ?? null
-
-  let threadRow: ThreadRow | null = null
-  const shouldResolveRequest =
-    participantRow.status !== "active" ||
-    (currentThread?.request_required ?? true) ||
-    (currentThread?.request_resolved_at ?? null) === null
-
-  if (shouldResolveRequest) {
-    const threadUpdate = await client
-      .from("dm_threads")
-      .update({
-        request_required: false,
-        request_resolved_at: nowIso,
-      } satisfies ThreadUpdate)
-      .eq("id", normalizedThreadId)
-      .select("*")
-      .maybeSingle<ThreadRow>()
-
-    if (threadUpdate.error) {
-      console.error("[chat.acceptMessageRequest] Failed to update thread metadata", threadUpdate.error)
-    } else {
-      threadRow = threadUpdate.data
-    }
-  }
-
-  const finalThread = threadRow ?? currentThread
-
-  const summaryQuery = await client
-    .from("dm_conversation_summaries")
-    .select("*")
-    .eq("thread_id", normalizedThreadId)
-    .eq("user_id", userId)
-    .maybeSingle<ConversationSummaryRow>()
-
-  if (summaryQuery.error) {
-    throw summaryQuery.error
-  }
-
-  let conversation: ConversationListItem | null = null
-
-  if (summaryQuery.data) {
-    const summary = summaryQuery.data as DirectMessageConversationSummary
-
-    let otherProfile: ConversationListItem["other_user_profile"] = null
-
-    if (summary.other_user_id) {
-      const profileQuery = await client
-        .from("users")
-        .select("id, username, first_name, last_name, profile_picture")
-        .eq("id", summary.other_user_id)
-        .maybeSingle<UserRow>()
-
-      if (profileQuery.error) {
-        throw profileQuery.error
-      }
-
-      if (profileQuery.data) {
-        otherProfile = {
-          id: profileQuery.data.id,
-          username: profileQuery.data.username,
-          first_name: profileQuery.data.first_name,
-          last_name: profileQuery.data.last_name,
-          profile_picture: profileQuery.data.profile_picture,
-        }
-      }
-    }
-
-    conversation = {
-      ...summary,
-      other_user_profile: otherProfile,
-    }
-  }
-
-  if (!finalThread) {
+  // Message requests are no longer used - all participants are active by default
+  // This function is kept for backwards compatibility but does nothing
+  const thread = await getThreadById(supabase, threadId)
+  if (!thread) {
     throw new Error("Conversation not found")
   }
 
-  if (!conversation) {
-    const otherUserId = finalThread.user_a_id === userId ? finalThread.user_b_id : finalThread.user_a_id
-    conversation = {
-      thread_id: finalThread.id,
-      user_a_id: finalThread.user_a_id,
-      user_b_id: finalThread.user_b_id,
-      initiated_by: finalThread.initiated_by,
-      request_required: finalThread.request_required ?? false,
-      request_resolved_at: finalThread.request_resolved_at,
-      last_message_at: finalThread.last_message_at,
-      last_message_preview: finalThread.last_message_preview,
-      last_message_sender_id: finalThread.last_message_sender_id,
-      updated_at: finalThread.updated_at,
-      user_id: userId,
-      participant_status: (updatedParticipant.status as DMParticipantStatus) ?? "active",
-      last_read_at: updatedParticipant.last_read_at ?? null,
-      last_seen_at: updatedParticipant.last_seen_at ?? null,
-      muted_at: updatedParticipant.muted_at ?? null,
-      other_user_id: otherUserId,
-      other_participant_status: null,
-      other_last_read_at: null,
-      other_last_seen_at: null,
-      other_muted_at: null,
-      other_user_profile: null,
-    }
-  } else {
-    conversation = {
-      ...conversation,
-      request_required: false,
-      request_resolved_at: conversation.request_resolved_at ?? finalThread.request_resolved_at ?? nowIso,
-      participant_status: (updatedParticipant.status as DMParticipantStatus) ?? conversation.participant_status,
-    }
+  const participants = await loadThreadParticipants(supabase, threadId)
+  const participant = participants.find((p) => p.user_id === userId)
+  if (!participant) {
+    throw new Error("You do not have access to this conversation")
   }
 
+  const summaries = await getConversationSummaries(supabase, userId, { limit: 1 })
+  const conversation = summaries.find((s) => s.thread_id === threadId) ?? null
+
   return {
-    thread: finalThread as DirectMessageThread,
-    participant: updatedParticipant as DirectMessageParticipant,
+    thread,
+    participant,
     conversation,
   }
 }

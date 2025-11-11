@@ -283,14 +283,17 @@ export default function ProfileView({
         body: JSON.stringify({ peerUserId: user.id }),
       })
       if (!response.ok) {
-        throw new Error("Failed to start conversation")
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData?.error || "Failed to start conversation"
+        throw new Error(errorMessage)
       }
       const data = await response.json()
       const threadId = data?.thread?.id ?? data?.threadId
       router.push(threadId ? `/messages?thread=${threadId}` : "/messages")
     } catch (error) {
-      console.error(error)
-      toast.error("Unable to start a conversation right now.")
+      console.error("Error starting conversation:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unable to start a conversation right now."
+      toast.error(errorMessage)
     } finally {
       setIsMessageLoading(false)
     }
@@ -310,11 +313,11 @@ export default function ProfileView({
   }, [followStatus])
 
   const followButtonClasses = React.useMemo(() => {
-    const base = "h-10 px-6 rounded-full border border-white/30 transition-all text-sm font-medium"
-    const active = followStatus?.isFollowing
-      ? " bg-white text-black hover:bg-white/90"
-      : " bg-white/10 text-white/80 hover:bg-white/20"
-    return `${base}${active}`
+    const base = "h-10 px-6 rounded-full border bg-white/10 backdrop-blur-md transition-all text-sm font-medium"
+    if (followStatus?.isFollowing) {
+      return `${base} border-white/30 bg-white/20 text-white hover:bg-white/25 hover:border-white/40`
+    }
+    return `${base} border-white/20 text-white/80 hover:bg-white/15 hover:border-white/30`
   }, [followStatus])
 
   const handleSaveToggle = async (postId: string) => {
@@ -1760,13 +1763,15 @@ export default function ProfileView({
         {/* Profile Header - TikTok Style */}
         <div className="mb-6 mt-2">
           <div className="flex flex-col items-center text-center mb-6">
-            <Avatar className="h-24 w-24 border-4 border-white/20 mb-8" userId={user.id}>
-                <AvatarImage src={user.profile_picture || ''} alt={user.username} />
-              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-3xl">
-                  {user.first_name?.[0] || ''}
-                  {user.last_name?.[0] || ''}
-                </AvatarFallback>
-            </Avatar>
+            <div className="mb-4">
+              <Avatar className="h-24 w-24 border-4 border-white/20" userId={user.id}>
+                  <AvatarImage src={user.profile_picture || ''} alt={user.username} />
+                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-3xl">
+                    {user.first_name?.[0] || ''}
+                    {user.last_name?.[0] || ''}
+                  </AvatarFallback>
+              </Avatar>
+            </div>
             
             <h1 className="text-2xl font-bold text-white mb-2">
                   {user.first_name} {user.last_name}
@@ -1803,7 +1808,7 @@ export default function ProfileView({
                 <Button
                   onClick={handleMessage}
                   disabled={isMessageLoading}
-                  className="h-10 px-6 rounded-full bg-white text-black hover:bg-white/90 text-sm font-medium"
+                  className="h-10 px-6 rounded-full border border-white/20 bg-white/10 backdrop-blur-md text-white/80 hover:bg-white/15 hover:border-white/30 text-sm font-medium transition-all"
                 >
                   {isMessageLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

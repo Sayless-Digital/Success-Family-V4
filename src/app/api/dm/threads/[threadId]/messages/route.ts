@@ -93,7 +93,7 @@ export async function POST(
     const current = participants.find((participant) => participant.user_id === user.id)
 
     if (!canUserInteractWithThread(current)) {
-      return errorResponse("Conversation request must be accepted before sending messages", 403)
+      return errorResponse("You cannot send messages in this conversation", 403)
     }
 
     const body = await request.json().catch(() => null)
@@ -160,7 +160,7 @@ export async function POST(
         return errorResponse(normalized, 401)
       }
 
-      if (lower.includes("accepted before sending")) {
+      if (lower.includes("cannot send messages")) {
         return errorResponse(normalized, 403)
       }
 
