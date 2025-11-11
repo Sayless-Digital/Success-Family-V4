@@ -53,6 +53,11 @@ export default function EmailsPage() {
       const data = await response.json()
       if (data.email) {
         setUserEmail(data.email)
+        // If email exists but Inbound is not configured, automatically sync it
+        if (!data.isConfigured) {
+          console.log("Email exists but Inbound not configured, syncing...")
+          setupEmail()
+        }
       } else {
         // If no email exists, set it up
         setupEmail()
@@ -73,8 +78,12 @@ export default function EmailsPage() {
       }
       if (data.warning) {
         toast.warning(data.warning, {
-          description: "You may need to configure the domain in Inbound manually",
+          description: "You may need to verify the domain in Inbound first",
         })
+      } else if (data.message && data.message.includes("synced")) {
+        toast.success("Email address synced with Inbound successfully")
+      } else if (data.message && data.message.includes("created")) {
+        toast.success("Email address created successfully")
       }
     } catch (error) {
       console.error("Error setting up email:", error)
