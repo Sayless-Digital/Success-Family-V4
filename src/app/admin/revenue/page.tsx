@@ -70,23 +70,43 @@ export default function RevenuePage() {
       }
 
       const valuePerPoint = settings.user_value_per_point || 0
+      const buyPricePerPoint = settings.buy_price_per_point || 0
 
-      // 1. Revenue from points purchases (amount_ttd from top_up transactions)
-      // The entire amount paid by users is platform revenue (no fee structure)
+      // 1. Revenue from points purchases - calculate platform fee for each top-up
+      // Platform fee = amount paid - (points credited * user_value_per_point)
+      // This is the platform's cut upfront when users buy points
       const { data: topUpRevenue, error: topUpError } = await supabase
         .from('transactions')
-        .select('amount_ttd')
+        .select('amount_ttd, points_delta')
         .eq('type', 'top_up')
         .not('amount_ttd', 'is', null)
+        .not('points_delta', 'is', null)
         .eq('status', 'verified')
 
       if (topUpError) throw topUpError
 
+      // Calculate platform revenue for each transaction
+      // Since points = amount_ttd / buy_price_per_point, the platform's revenue is:
+      // Platform revenue = (points_delta * buy_price_per_point) - (points_delta * user_value_per_point)
+      // Which simplifies to: points_delta * (buy_price_per_point - user_value_per_point)
+      // This is the margin/profit per point
       const pointsPurchases = (topUpRevenue || [])
-        .reduce((sum, tx) => sum + (Number(tx.amount_ttd) || 0), 0)
+        .reduce((sum, tx) => {
+          const amountPaid = Number(tx.amount_ttd) || 0
+          const pointsCredited = Number(tx.points_delta) || 0
+          
+          // Platform revenue = margin per point * number of points
+          // Margin per point = buy_price_per_point - user_value_per_point
+          // This represents the platform's profit on each point sold
+          const marginPerPoint = buyPricePerPoint - valuePerPoint
+          const platformRevenue = pointsCredited * marginPerPoint
+          
+          return sum + Math.max(0, platformRevenue) // Ensure non-negative
+        }, 0)
 
-      // 2. Revenue from voice notes (point_spend with recipient_user_id = NULL and points_delta = -1)
-      // Voice notes cost 1 point each, so we count transactions with -1 point delta
+      // 2. Points consumption from voice notes (point_spend with recipient_user_id = NULL and points_delta = -1)
+      // This is NOT revenue - it's consumption of already-purchased points
+      // We show this for analytics but don't count it as revenue
       const { data: voiceNoteTxs, error: voiceNoteError } = await supabase
         .from('transactions')
         .select('points_delta')
@@ -98,10 +118,10 @@ export default function RevenuePage() {
       if (voiceNoteError) throw voiceNoteError
 
       const voiceNotesCount = (voiceNoteTxs || []).length
-      const voiceNotes = voiceNotesCount * valuePerPoint
+      const voiceNotesValue = voiceNotesCount * valuePerPoint
 
-      // 3. Revenue from events (stream creation - point_spend with recipient_user_id = NULL and points_delta < -1)
-      // Stream creation costs more than 1 point, so we filter for point_spend with NULL recipient and negative delta != -1
+      // 3. Points consumption from events (stream creation - point_spend with recipient_user_id = NULL and points_delta < -1)
+      // This is NOT revenue - it's consumption of already-purchased points
       const { data: eventTxs, error: eventError } = await supabase
         .from('transactions')
         .select('points_delta')
@@ -113,17 +133,16 @@ export default function RevenuePage() {
 
       if (eventError) throw eventError
 
-      const eventsRevenue = (eventTxs || [])
+      const eventsValue = (eventTxs || [])
         .reduce((sum, tx) => sum + (Math.abs(Number(tx.points_delta)) * valuePerPoint), 0)
 
-      // 4. Revenue from storage (we'll identify these as point_spend with NULL recipient that aren't voice notes or events)
-      // For now, we'll calculate total platform revenue from all point_spend with NULL recipient
-      // and subtract voice notes and events to get storage (or we can query storage billing separately)
-      // Actually, storage billing goes through the same point_spend flow, so we'll include it in events for now
-      // TODO: Add metadata/context field to distinguish storage billing from event creation
+      // 4. Points consumption from storage (we'll identify these separately when we can)
+      // For now, storage billing is included in events consumption
+      const storageValue = 0 // TODO: Calculate separately when we can distinguish storage billing
 
-      // Total platform revenue
-      const totalPlatformRevenue = pointsPurchases + voiceNotes + eventsRevenue
+      // Total platform revenue is ONLY from points purchases
+      // Point spends are consumption, not revenue (points were already paid for)
+      const totalPlatformRevenue = pointsPurchases
 
       // 5. User earnings (from wallet_earnings_ledger)
       const { data: earnings, error: earningsError } = await supabase
@@ -136,9 +155,9 @@ export default function RevenuePage() {
       const totalUserEarnings = (earnings || [])
         .reduce((sum, entry) => sum + (Number(entry.amount_ttd) || 0), 0)
 
-      // Available for withdrawal = platform revenue - user earnings (what's owed to users)
-      // Actually, available for withdrawal should be: platform revenue that hasn't been withdrawn yet
-      // For now, we'll show total platform revenue as available (minus any withdrawals we track)
+      // Available for withdrawal = Platform profit (revenue - user earnings) - already withdrawn
+      // Platform profit = Total revenue - User earnings (what we owe to users)
+      // Available for withdrawal = Platform profit - Completed withdrawals
       const { data: withdrawals, error: withdrawalsError } = await supabase
         .from('platform_withdrawals')
         .select('amount_ttd, status')
@@ -153,13 +172,17 @@ export default function RevenuePage() {
         .filter(w => w.status === 'completed')
         .reduce((sum, w) => sum + (Number(w.amount_ttd) || 0), 0)
 
-      const availableForWithdrawal = totalPlatformRevenue - totalWithdrawn
+      // Platform profit = Revenue - User Earnings
+      const platformProfit = totalPlatformRevenue - totalUserEarnings
+      
+      // Available for withdrawal = Profit - Already withdrawn
+      const availableForWithdrawal = platformProfit - totalWithdrawn
 
       setStats({
         pointsPurchases,
-        voiceNotes,
-        events: eventsRevenue,
-        storage: 0, // TODO: Calculate separately when we can distinguish storage billing
+        voiceNotes: voiceNotesValue,
+        events: eventsValue,
+        storage: storageValue,
         totalPlatformRevenue,
         totalUserEarnings,
         availableForWithdrawal: Math.max(0, availableForWithdrawal),
@@ -255,10 +278,10 @@ export default function RevenuePage() {
               </div>
             </div>
 
-            {/* Revenue Breakdown by Source */}
+            {/* Revenue Breakdown */}
             <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 sm:p-6 shadow-lg">
               <h2 className="text-lg sm:text-xl font-semibold text-white mb-4">
-                Revenue Breakdown by Source
+                Revenue & Points Consumption
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="rounded-lg bg-white/5 p-4">
@@ -268,9 +291,7 @@ export default function RevenuePage() {
                   </div>
                   <p className="text-2xl font-bold text-white">{formatCurrency(stats.pointsPurchases)}</p>
                   <p className="text-xs text-white/60 mt-1">
-                    {stats.totalPlatformRevenue > 0
-                      ? `${((stats.pointsPurchases / stats.totalPlatformRevenue) * 100).toFixed(1)}% of revenue`
-                      : '0% of revenue'}
+                    Actual revenue (100% of revenue)
                   </p>
                 </div>
 
@@ -281,9 +302,7 @@ export default function RevenuePage() {
                   </div>
                   <p className="text-2xl font-bold text-white">{formatCurrency(stats.voiceNotes)}</p>
                   <p className="text-xs text-white/60 mt-1">
-                    {stats.totalPlatformRevenue > 0
-                      ? `${((stats.voiceNotes / stats.totalPlatformRevenue) * 100).toFixed(1)}% of revenue`
-                      : '0% of revenue'}
+                    Points consumed (not revenue)
                   </p>
                 </div>
 
@@ -294,9 +313,7 @@ export default function RevenuePage() {
                   </div>
                   <p className="text-2xl font-bold text-white">{formatCurrency(stats.events)}</p>
                   <p className="text-xs text-white/60 mt-1">
-                    {stats.totalPlatformRevenue > 0
-                      ? `${((stats.events / stats.totalPlatformRevenue) * 100).toFixed(1)}% of revenue`
-                      : '0% of revenue'}
+                    Points consumed (not revenue)
                   </p>
                 </div>
 
@@ -307,9 +324,7 @@ export default function RevenuePage() {
                   </div>
                   <p className="text-2xl font-bold text-white">{formatCurrency(stats.storage)}</p>
                   <p className="text-xs text-white/60 mt-1">
-                    {stats.totalPlatformRevenue > 0
-                      ? `${((stats.storage / stats.totalPlatformRevenue) * 100).toFixed(1)}% of revenue`
-                      : '0% of revenue'}
+                    Points consumed (not revenue)
                   </p>
                 </div>
               </div>

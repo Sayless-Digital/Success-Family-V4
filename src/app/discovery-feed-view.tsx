@@ -62,7 +62,7 @@ export default function DiscoveryFeedView({
   currentUserCount,
   userGoal
 }: DiscoveryFeedViewProps) {
-  const { user, walletBalance, refreshWalletBalance } = useAuth()
+  const { user, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const [activeTab, setActiveTab] = useState<TabValue>("trending")
   const [posts, setPosts] = useState(initialPosts)
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
@@ -130,7 +130,9 @@ export default function DiscoveryFeedView({
       return
     }
 
-    if (walletBalance === null || walletBalance < 1) {
+    // Check combined balance (wallet + earnings)
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (availableBalance < 1) {
       toast.error("Insufficient points to boost. Please top up your wallet.")
       return
     }

@@ -15,12 +15,25 @@ interface CommunityNavigationProps {
 
 /**
  * Shared navigation component for all community pages
- * Displays tabs for Home, Feed, Events, Recordings (if owner/member), Members, Settings (if owner/member)
+ * Displays tabs for Home, Feed, Events, Recordings (if owner/member), Members, Settings (if owner only)
  */
 export function CommunityNavigation({ slug, isOwner = false, isMember = false }: CommunityNavigationProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { needsTopup } = useTopupCheck()
+  
+  // Track if we've confirmed ownership to prevent flash
+  // Use useLayoutEffect to update synchronously before paint to prevent visual flash
+  const [showSettings, setShowSettings] = React.useState(() => {
+    // Initialize based on prop, but only if explicitly true
+    return isOwner === true
+  })
+  
+  React.useLayoutEffect(() => {
+    // Update synchronously before browser paints to prevent flash
+    // Only show if isOwner is explicitly true
+    setShowSettings(isOwner === true)
+  }, [isOwner])
   
   // Determine active tab based on pathname
   const getActiveTab = React.useMemo(() => {
@@ -43,8 +56,9 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
   }
 
   return (
-    <Tabs value={getActiveTab} className="w-full">
-        <TabsList className="w-full">
+    <div className="w-full overflow-x-auto scrollbar-hide scroll-smooth">
+      <Tabs value={getActiveTab}>
+        <TabsList className="w-max min-w-full">
           <TabsTrigger value="home" asChild>
             <Link href={`/${slug}`} className="flex items-center gap-2 touch-feedback" prefetch={true}>
               <Home className="h-4 w-4" />
@@ -110,7 +124,7 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
               Members
             </Link>
           </TabsTrigger>
-          {(isOwner || isMember) && (
+          {showSettings && (
             <TabsTrigger value="settings" asChild disabled={needsTopup}>
               <Link 
                 href={needsTopup ? '#' : `/${slug}/settings`} 
@@ -125,5 +139,6 @@ export function CommunityNavigation({ slug, isOwner = false, isMember = false }:
           )}
         </TabsList>
       </Tabs>
+    </div>
   )
 }

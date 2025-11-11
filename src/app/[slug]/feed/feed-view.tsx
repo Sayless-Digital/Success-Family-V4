@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { FileText, Pin, Crown, Bookmark, MoreVertical, Edit, Trash2 } from "lucide-react"
+import { FileText, Pin, Crown, Bookmark, MoreVertical, Edit, Trash2, TrendingUp } from "lucide-react"
 import { CommunityNavigation } from "@/components/community-navigation"
 import { TopUpGuard } from "@/components/topup-guard"
 import {
@@ -67,7 +67,7 @@ export default function FeedView({
   initialRelativeTimes = {}
 }: FeedViewProps) {
   const router = useRouter()
-  const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
+  const { user, userProfile, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   
   // Optimistically determine membership immediately (before async check)
   const isMemberOptimistic = React.useMemo(() => {
@@ -1149,7 +1149,9 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
       return
     }
 
-    if (!wasBoosted && (walletBalance === null || walletBalance < 1)) {
+    // Check combined balance (wallet + earnings)
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (!wasBoosted && availableBalance < 1) {
       toast.error("You need at least 1 point to boost a post")
       return
     }
@@ -1476,7 +1478,8 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
     // Check wallet balance (skip for admins)
     const isAdmin = userProfile?.role === 'admin'
-    if (!isAdmin && (walletBalance === null || walletBalance < 1)) {
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (!isAdmin && availableBalance < 1) {
       toast.error("You need at least 1 point to add a voice note")
       setEditingShowVoiceRecorder(null)
       return
@@ -2241,6 +2244,17 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                   </div>
                 ) : (
                   <>
+                    {/* Tags - Above Content (except new creator tag) */}
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                      {(post as any).is_trending && (
+                        <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
+                          <TrendingUp className="h-3 w-3 mr-1" />
+                          Trending
+                        </Badge>
+                      )}
+                      {/* Add other tags here except new creator tag */}
+                    </div>
+
                     {/* Content Preview */}
                     <p className="text-white/80 text-base whitespace-pre-wrap break-words">
                       {post.content}

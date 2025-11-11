@@ -104,14 +104,19 @@ export default function CommunitySettingsPage() {
     fetchCommunity()
   }, [slug, syncCommunityState])
 
-  // Redirect if not authenticated or not owner
+  // Redirect if not authenticated or not owner - check early to prevent loading
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) return // Wait for auth to load
+    
+    if (!user) {
       router.push(`/${slug}`)
+      return
     }
-    if (community && user && community.owner_id !== user.id) {
+    
+    if (community && community.owner_id !== user.id) {
       toast.error("Only community owners can access settings")
       router.push(`/${slug}`)
+      return
     }
   }, [user, authLoading, community, slug, router])
 
@@ -298,6 +303,11 @@ export default function CommunitySettingsPage() {
   if (!user || !community) return null
 
   const isOwner = community.owner_id === user.id
+  
+  // Early return if not owner - prevent any rendering
+  if (!isOwner) {
+    return null
+  }
 
   return (
     <TopUpGuard communitySlug={slug}>

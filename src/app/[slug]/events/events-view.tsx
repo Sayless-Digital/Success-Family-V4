@@ -50,6 +50,7 @@ interface CommunityEventsViewProps {
     }
   }>
   isOwner: boolean
+  isMember: boolean
   currentUserId?: string
   userRegistrations: string[]
   streamStartCost: number
@@ -60,13 +61,14 @@ export default function CommunityEventsView({
   community,
   events: initialEvents,
   isOwner,
+  isMember,
   currentUserId,
   userRegistrations: initialUserRegistrations,
   streamStartCost,
   streamJoinCost,
 }: CommunityEventsViewProps) {
   const router = useRouter()
-  const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
+  const { user, userProfile, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const [events, setEvents] = useState(initialEvents)
   const [userRegistrations, setUserRegistrations] = useState(initialUserRegistrations)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -472,8 +474,9 @@ export default function CommunityEventsView({
       return
     }
 
-    // Check wallet balance
-    if (walletBalance === null || walletBalance < streamJoinCost) {
+    // Check combined balance (wallet + earnings)
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (availableBalance < streamJoinCost) {
       toast.error(`Insufficient points. You need ${streamJoinCost} point(s) to join this event.`)
       return
     }
@@ -523,8 +526,9 @@ export default function CommunityEventsView({
       return
     }
 
-    // Check wallet balance
-    if (walletBalance === null || walletBalance < streamJoinCost) {
+    // Check combined balance (wallet + earnings)
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (availableBalance < streamJoinCost) {
       toast.error(`Insufficient points. You need ${streamJoinCost} point(s) to join this event.`)
       return
     }
@@ -682,7 +686,7 @@ export default function CommunityEventsView({
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={isOwner} 
-          isMember={false} 
+          isMember={isMember} 
         />
 
         {isOwner && (

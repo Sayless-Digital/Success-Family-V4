@@ -69,7 +69,7 @@ export default function ProfileView({
   savedPostsHasMore: initialSavedPostsHasMore,
   communities,
 }: ProfileViewProps) {
-  const { user: currentUser, userProfile, walletBalance } = useAuth()
+  const { user: currentUser, userProfile, walletBalance, walletEarningsBalance } = useAuth()
   const isOwnProfile = currentUser?.id === user.id
   const router = useRouter()
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({})
@@ -490,8 +490,9 @@ export default function ProfileView({
       return
     }
 
-    // Check wallet balance before boosting
-    if (!wasBoosted && (walletBalance === null || walletBalance < 1)) {
+    // Check combined balance (wallet + earnings) before boosting
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (!wasBoosted && availableBalance < 1) {
       toast.error("You need at least 1 point to boost a post")
       return
     }
@@ -1664,6 +1665,17 @@ export default function ProfileView({
                     </div>
                   </div>
                   
+                  {/* Tags - Above Content (except new creator tag) */}
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    {(post as any).is_trending && (
+                      <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        Trending
+                      </Badge>
+                    )}
+                    {/* Add other tags here except new creator tag */}
+                  </div>
+
                   {/* Content */}
                   <p className="text-white/80 text-base mb-3">
                     {post.content}

@@ -49,7 +49,7 @@ export function InlinePostComposer({
   onPostCreated,
 }: InlinePostComposerProps) {
   const router = useRouter()
-  const { user, userProfile, walletBalance, refreshWalletBalance } = useAuth()
+  const { user, userProfile, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const resolvedMode = mode ?? "post"
   const resolvedAllowImages = allowImages ?? resolvedMode === "post"
   const resolvedAllowVoiceNote = allowVoiceNote ?? resolvedMode !== "reply"
@@ -199,7 +199,9 @@ export function InlinePostComposer({
 
     // Check wallet balance (skip for admins)
     const isAdmin = userProfile?.role === 'admin'
-    if (!isAdmin && (walletBalance === null || walletBalance < 1)) {
+    // Check combined balance (wallet + earnings)
+    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+    if (!isAdmin && availableBalance < 1) {
       toast.error("You need at least 1 point to add a voice note")
       setShowVoiceRecorder(false)
       return
@@ -843,7 +845,8 @@ export function InlinePostComposer({
                   type="button"
                   onClick={() => {
                     const isAdmin = userProfile?.role === 'admin'
-                    if (!isAdmin && (walletBalance === null || walletBalance < 1)) {
+                    const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+                    if (!isAdmin && availableBalance < 1) {
                       toast.error("You need at least 1 point to record a voice note")
                       return
                     }

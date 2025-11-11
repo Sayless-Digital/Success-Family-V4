@@ -37,13 +37,25 @@ export default async function CommunityEventsPage({ params }: CommunityEventsPag
       .select('stream_start_cost, stream_join_cost')
       .eq('id', 1)
       .maybeSingle(),
-    // Get user
-    supabase.auth.getUser()
+    // Get user and membership status
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { user: null, isMember: false }
+      
+      const { data: membership } = await supabase
+        .from('community_members')
+        .select('id')
+        .eq('community_id', community.id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      
+      return { user, isMember: !!membership }
+    })()
   ])
 
   const { data: events, error: eventsError } = eventsResult
   const { data: settings } = settingsResult
-  const { data: { user } } = userResult
+  const { user, isMember } = userResult
 
   if (eventsError) {
     console.error('Error fetching events:', eventsError)
@@ -102,6 +114,7 @@ export default async function CommunityEventsPage({ params }: CommunityEventsPag
         community={community}
         events={eventsWithCounts || []}
         isOwner={isOwner}
+        isMember={isMember}
         currentUserId={user?.id}
         userRegistrations={userRegistrations}
         streamStartCost={settings?.stream_start_cost || 1}
