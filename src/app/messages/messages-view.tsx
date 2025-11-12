@@ -1616,12 +1616,12 @@ export default function MessagesView({
                           <div key={message.id} className={cn("flex gap-1.5 sm:gap-2 group", isOwn ? "justify-end" : "justify-start")}>
                             <div
                               className={cn(
-                                "rounded-2xl border backdrop-blur-sm relative",
+                                "rounded-2xl backdrop-blur-sm relative",
                                 "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
                                 isImageOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
                                 isOwn
-                                  ? "bg-gradient-to-br from-black/40 to-black/60 border-white/[0.08] text-white"
-                                  : "bg-gradient-to-br from-white/15 to-white/8 border-white/[0.08] text-white",
+                                  ? "bg-gradient-to-br from-black/40 to-black/60 text-white"
+                                  : "bg-gradient-to-br from-white/15 to-white/8 text-white",
                                 isDeleting && "opacity-50",
                                 isMobile && isOwn && !isDeleting && "select-none"
                               )}
@@ -1840,7 +1840,7 @@ export default function MessagesView({
                       
                       {typingActive && (
                         <div className="flex gap-1.5 sm:gap-2 justify-start">
-                          <div className="rounded-2xl border bg-white/10 border-white/20 text-white/85 backdrop-blur-sm px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1">
+                          <div className="rounded-2xl bg-white/10 text-white/85 backdrop-blur-sm px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1">
                             <style dangerouslySetInnerHTML={{
                               __html: `
                                 @keyframes typing-dot-bounce {
