@@ -223,86 +223,128 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true
     let authInitialized = false
     let isProcessingAuthChange = false
+    const MAX_INITIALIZATION_TIME = 15000 // 15 seconds max for initialization
+
+    // CRITICAL: Global timeout to prevent infinite loading loops
+    // If initialization takes too long, force it to complete
+    const globalTimeout = setTimeout(() => {
+      if (!authInitialized && isMounted) {
+        console.warn("Auth initialization exceeded maximum time - forcing completion")
+        authInitialized = true
+        setIsLoading(false)
+        // If we have a user but no profile after timeout, invalidate the session
+        if (userRef.current && !userProfileRef.current) {
+          console.warn("User exists but profile fetch failed - invalidating session")
+          clearAuthState()
+          userRef.current = null
+          userProfileRef.current = null
+          // Sign out to clear potentially corrupted session
+          supabase.auth.signOut().catch(err => {
+            console.error("Error signing out stuck session:", err)
+          })
+        }
+      }
+    }, MAX_INITIALIZATION_TIME)
 
     // Get initial session with simplified timeout protection
     const initializeAuth = async () => {
       try {
-        // Get session with a reasonable timeout (3 seconds)
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 3000)
+        // Get session with a reasonable timeout (5 seconds)
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
+          setTimeout(() => resolve({ data: { session: null }, error: null }), 5000)
+        })
         
-        try {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-          clearTimeout(timeoutId)
-          
-          if (!isMounted || authInitialized) return
-          
-          if (sessionError) {
-            console.warn("Session fetch error:", sessionError)
-            clearAuthState()
-            userRef.current = null
-            userProfileRef.current = null
-            authInitialized = true
-            setIsLoading(false)
-            return
-          }
-
-          if (session?.user) {
-            // Validate session with getUser() - simpler without race condition timeouts
-            const { data: { user }, error: userError } = await supabase.auth.getUser()
-            
-            if (!isMounted || authInitialized) return
-            
-            if (userError || !user) {
-              console.warn("Session validation failed:", userError?.message || "No user")
-              clearAuthState()
-              userRef.current = null
-              userProfileRef.current = null
-              authInitialized = true
-              setIsLoading(false)
-              return
-            }
-            
-            // Session is valid - set user
-            setUser(user)
-            userRef.current = user
-            
-            // Fetch profile with retry logic
-            const profile = await fetchProfileWithRetry(user.id, 3, 10000)
-            
-            if (!isMounted || authInitialized) return
-            
-            if (profile) {
-              setUserProfile(profile)
-              userProfileRef.current = profile
-              setProfileError(false)
-            } else {
-              console.warn("Failed to fetch user profile after retries")
-              setProfileError(true)
-            }
-          } else {
-            // No session
-            clearAuthState()
-            userRef.current = null
-            userProfileRef.current = null
-          }
-        } catch (abortError) {
-          // Timeout or abort - treat as no session
-          if (!isMounted) return
-          console.warn("Auth initialization timeout")
+        const { data: { session }, error: sessionError } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as any
+        
+        if (!isMounted || authInitialized) {
+          clearTimeout(globalTimeout)
+          return
+        }
+        
+        if (sessionError || !session?.user) {
+          console.warn("Session fetch error or no session:", sessionError)
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
+          authInitialized = true
+          clearTimeout(globalTimeout)
+          setIsLoading(false)
+          return
+        }
+
+        // Validate session with getUser() - with timeout
+        const userPromise = supabase.auth.getUser()
+        const userTimeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
+          setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), 5000)
+        })
+        
+        const { data: { user }, error: userError } = await Promise.race([
+          userPromise,
+          userTimeoutPromise
+        ]) as any
+        
+        if (!isMounted || authInitialized) {
+          clearTimeout(globalTimeout)
+          return
+        }
+        
+        if (userError || !user) {
+          console.warn("Session validation failed:", userError?.message || "No user")
+          clearAuthState()
+          userRef.current = null
+          userProfileRef.current = null
+          authInitialized = true
+          clearTimeout(globalTimeout)
+          setIsLoading(false)
+          return
+        }
+        
+        // Session is valid - set user
+        setUser(user)
+        userRef.current = user
+        
+        // Fetch profile with retry logic (but with shorter timeout)
+        const profile = await fetchProfileWithRetry(user.id, 2, 8000)
+        
+        if (!isMounted || authInitialized) {
+          clearTimeout(globalTimeout)
+          return
+        }
+        
+        if (profile) {
+          setUserProfile(profile)
+          userProfileRef.current = profile
+          setProfileError(false)
+        } else {
+          console.warn("Failed to fetch user profile after retries - invalidating session")
+          setProfileError(true)
+          // CRITICAL: If profile fetch fails, invalidate the session
+          // This prevents users from being stuck with a user but no profile
+          clearAuthState()
+          userRef.current = null
+          userProfileRef.current = null
+          // Sign out to clear potentially corrupted session
+          supabase.auth.signOut().catch(err => {
+            console.error("Error signing out after profile fetch failure:", err)
+          })
         }
       } catch (error) {
         console.error("Error initializing auth:", error)
-        if (!isMounted || authInitialized) return
+        if (!isMounted || authInitialized) {
+          clearTimeout(globalTimeout)
+          return
+        }
         clearAuthState()
         userRef.current = null
         userProfileRef.current = null
       } finally {
         if (isMounted && !authInitialized) {
           authInitialized = true
+          clearTimeout(globalTimeout)
           setIsLoading(false)
         }
       }
@@ -369,8 +411,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             
             // Always try to fetch profile (it might have been updated)
-            // Use retry logic with reasonable timeout
-            const profile = await fetchProfileWithRetry(session.user.id, 3, 10000)
+            // Use retry logic with shorter timeout to prevent long hangs
+            const profile = await fetchProfileWithRetry(session.user.id, 2, 8000)
             
             if (!isMounted) return
             
@@ -388,8 +430,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               authStateChangeResolversRef.current.forEach(resolve => resolve(true))
               authStateChangeResolversRef.current.clear()
             } else {
-              // Profile fetch failed - but don't sign out automatically
-              // This could be a temporary network issue
+              // Profile fetch failed
               console.warn("Failed to fetch user profile in auth state change")
               setProfileError(true)
               
@@ -397,11 +438,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // This ensures the UI doesn't get stuck in loading state
               setIsLoading(false)
               
-              // For SIGNED_IN events, notify waiters with false to indicate failure
-              // This allows the dialog to show an error instead of timing out
+              // CRITICAL: If profile fetch fails during SIGNED_IN, invalidate session after a delay
+              // This prevents users from being stuck with a user but no profile
               if (event === 'SIGNED_IN') {
+                // Give it one more chance after a short delay, then invalidate if still failed
+                setTimeout(async () => {
+                  if (!isMounted) return
+                  
+                  // Check if profile was loaded in the meantime
+                  if (userProfileRef.current) {
+                    return // Profile was loaded, no need to invalidate
+                  }
+                  
+                  // Try one more time with a quick fetch
+                  try {
+                    const retryProfile = await fetchProfileWithRetry(session.user.id, 1, 5000)
+                    if (retryProfile) {
+                      setUserProfile(retryProfile)
+                      userProfileRef.current = retryProfile
+                      setProfileError(false)
+                      authStateChangeResolversRef.current.forEach(resolve => resolve(true))
+                      authStateChangeResolversRef.current.clear()
+                      return
+                    }
+                  } catch (err) {
+                    console.warn("Retry profile fetch failed:", err)
+                  }
+                  
+                  // Still no profile - invalidate session to prevent stuck state
+                  console.warn("Profile fetch failed after retry - invalidating session to prevent stuck state")
+                  clearAuthState()
+                  userRef.current = null
+                  userProfileRef.current = null
+                  setIsLoading(false)
+                  
+                  // Sign out to clear potentially corrupted session
+                  supabase.auth.signOut().catch(err => {
+                    console.error("Error signing out after profile fetch failure:", err)
+                  })
+                  
+                  // Notify waiters of failure
+                  authStateChangeResolversRef.current.forEach(resolve => resolve(false))
+                  authStateChangeResolversRef.current.clear()
+                }, 3000) // Wait 3 seconds before invalidating
+                
                 // Notify waiters that profile fetch failed
-                // This is important for sign-in flows where we need to know if it succeeded
                 authStateChangeResolversRef.current.forEach(resolve => resolve(false))
                 authStateChangeResolversRef.current.clear()
               }
@@ -620,6 +701,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return () => clearTimeout(timer)
     }
   }, [isLoading, refreshPlatformSettings])
+
+  // CRITICAL: Periodic check for stuck states (user exists but profile is null for too long)
+  // This detects and fixes stuck loading loops where the user is authenticated but profile fetch keeps failing
+  React.useEffect(() => {
+    if (isLoading) return // Don't check while loading
+    
+    // Only check if we have a user but no profile
+    if (!user || userProfile) return
+    
+    // Track when the stuck state started
+    let stuckStateStartTime = Date.now()
+    const MAX_STUCK_TIME = 30000 // 30 seconds - if stuck for this long, invalidate session
+    
+    // Check periodically if still stuck
+    const checkInterval = setInterval(() => {
+      // If we now have a profile, exit (effect will re-run and clear interval)
+      if (userProfileRef.current) {
+        clearInterval(checkInterval)
+        return
+      }
+      
+      // If we don't have a user anymore, exit (effect will re-run and clear interval)
+      if (!userRef.current) {
+        clearInterval(checkInterval)
+        return
+      }
+      
+      // Check how long we've been stuck
+      const stuckDuration = Date.now() - stuckStateStartTime
+      
+      if (stuckDuration > MAX_STUCK_TIME) {
+        // We've been stuck for too long - invalidate the session
+        console.warn(`Stuck state detected: user exists but no profile for ${Math.round(stuckDuration / 1000)}s - invalidating session`)
+        
+        // Clear the interval first
+        clearInterval(checkInterval)
+        
+        // Clear state
+        clearAuthState()
+        userRef.current = null
+        userProfileRef.current = null
+        setIsLoading(false)
+        
+        // Sign out to clear potentially corrupted session
+        supabase.auth.signOut().catch(err => {
+          console.error("Error signing out stuck session:", err)
+        })
+      }
+    }, 5000) // Check every 5 seconds
+    
+    return () => {
+      clearInterval(checkInterval)
+    }
+  }, [user, userProfile, isLoading, clearAuthState])
 
   const value = {
     user,
