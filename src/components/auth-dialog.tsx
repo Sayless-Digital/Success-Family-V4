@@ -304,8 +304,8 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       if (result.success) {
         // CRITICAL: Wait for realtime auth state change to complete before closing dialog
         // This ensures the session is properly persisted and auth state is updated
-        // Especially important on mobile where network delays can cause issues
-        const authStateUpdated = await waitForAuthStateChange(15000) // 15 second timeout
+        // Increased timeout to 20 seconds to account for slower networks
+        const authStateUpdated = await waitForAuthStateChange(20000) // 20 second timeout
         
         if (authStateUpdated) {
           // Auth state successfully updated - close dialog
@@ -316,9 +316,26 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
           }
           toast.success("Welcome back! Signed in successfully!")
         } else {
-          // Auth state didn't update in time - show error but keep dialog open
-          setError("Sign in successful but session not updated. Please try refreshing the page.")
-          console.error("Auth state change timeout - session may not be persisted")
+          // Auth state didn't update in time - try one more time with a shorter wait
+          // Sometimes the auth state change is just delayed
+          console.warn("Auth state change timeout, retrying once...")
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // Check one more time if auth state is now valid
+          const retryCheck = await waitForAuthStateChange(5000)
+          
+          if (retryCheck) {
+            // Success on retry - close dialog
+            onOpenChange(false)
+            if (!rememberMe) {
+              setSignInData({ email: "", password: "" })
+            }
+            toast.success("Welcome back! Signed in successfully!")
+          } else {
+            // Still failed - show error but suggest refresh
+            setError("Sign in successful but session not updated. Please try refreshing the page.")
+            console.error("Auth state change timeout after retry - session may not be persisted")
+          }
         }
       } else {
         setError(result.error?.message || "Failed to sign in")

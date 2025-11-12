@@ -63,7 +63,7 @@ export async function signUp(data: SignUpData): Promise<AuthResult> {
 
 /**
  * Sign in an existing user with email and password
- * Uses cache busting to ensure fresh auth state
+ * Ensures session is properly persisted and validated before returning success
  */
 export async function signIn(data: SignInData): Promise<AuthResult> {
   try {
@@ -79,13 +79,48 @@ export async function signIn(data: SignInData): Promise<AuthResult> {
       }
     }
 
-    // CRITICAL: Immediately refresh session to ensure it's persisted
-    // This is especially important on mobile where session persistence can be unreliable
-    try {
-      await supabase.auth.getSession()
-    } catch (sessionError) {
-      console.warn("Session refresh after sign-in failed:", sessionError)
-      // Don't fail the sign-in if session refresh fails - the session should still be valid
+    if (!authData.user) {
+      return {
+        success: false,
+        error: { message: 'Sign in succeeded but no user data was returned' },
+      }
+    }
+
+    // CRITICAL: Wait for session to be properly persisted and validated
+    // This ensures cookies are set and session is available for subsequent requests
+    let sessionValidated = false
+    const maxAttempts = 5
+    const delayMs = 200
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // Get session to ensure it's persisted
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (!sessionError && session?.user?.id === authData.user.id) {
+          // Validate session by checking user
+          const { data: { user }, error: userError } = await supabase.auth.getUser()
+          
+          if (!userError && user?.id === authData.user.id) {
+            sessionValidated = true
+            break
+          }
+        }
+      } catch (sessionError) {
+        // Continue to next attempt
+        console.warn(`Session validation attempt ${attempt} failed:`, sessionError)
+      }
+
+      // Wait before next attempt (except on last attempt)
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, delayMs * attempt))
+      }
+    }
+
+    if (!sessionValidated) {
+      console.warn("Session validation failed after multiple attempts, but sign-in may still succeed")
+      // Don't fail the sign-in - the session might still be valid, just not immediately available
+      // The auth state change listener will handle the session update
     }
 
     return {

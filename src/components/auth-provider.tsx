@@ -118,31 +118,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Wait for auth state change to complete (used by auth dialog)
   // This waits for the next SIGNED_IN event to complete (profile loaded)
-  const waitForAuthStateChange = React.useCallback((timeout = 15000): Promise<boolean> => {
+  // Improved to handle cases where user is already signed in and signs in again
+  const waitForAuthStateChange = React.useCallback((timeout = 20000): Promise<boolean> => {
     return new Promise((resolve) => {
       // Store initial state to detect changes
       const initialUser = userRef.current
       const initialProfile = userProfileRef.current
+      const initialUserId = initialUser?.id
       
-      // If we're already authenticated with profile, wait a bit to see if a new sign-in happens
-      // Otherwise, wait for the next auth state change
-      const timeoutId = setTimeout(() => {
-        authStateChangeResolversRef.current.delete(resolver)
-        // Check if state changed from initial state
-        const currentUser = userRef.current
-        const currentProfile = userProfileRef.current
-        const hasChanged = currentUser !== initialUser || currentProfile !== initialProfile
-        // Resolve true if we have a user and profile (either new or existing)
-        resolve(hasChanged && currentUser !== null && currentProfile !== null)
-      }, timeout)
-
+      // Track if we've seen a successful auth state change
+      let resolved = false
+      let pollInterval: NodeJS.Timeout | null = null
+      let timeoutId: NodeJS.Timeout | null = null
+      
+      // Cleanup function
+      const cleanup = () => {
+        if (pollInterval) {
+          clearInterval(pollInterval)
+          pollInterval = null
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+      }
+      
+      // Resolver function that can be called by auth state change listener
       const resolver = (value: boolean) => {
-        clearTimeout(timeoutId)
+        if (resolved) return
+        
+        resolved = true
+        cleanup()
         authStateChangeResolversRef.current.delete(resolver)
         resolve(value)
       }
-
+      
+      // Add resolver to set so auth state change listener can call it
       authStateChangeResolversRef.current.add(resolver)
+      
+      // Poll for state changes more aggressively (every 500ms)
+      // This helps catch state changes that might not trigger the resolver
+      pollInterval = setInterval(() => {
+        if (resolved) {
+          cleanup()
+          return
+        }
+        
+        const currentUser = userRef.current
+        const currentProfile = userProfileRef.current
+        const currentUserId = currentUser?.id
+        
+        // Check if we have a valid authenticated state
+        // Either: new user signed in, or existing user's profile was loaded
+        const hasValidAuth = currentUser !== null && currentProfile !== null
+        
+        // If user changed, or profile was loaded (was null, now has value), consider it successful
+        const userChanged = currentUserId !== initialUserId
+        const profileWasNull = initialProfile === null
+        const profileNowLoaded = currentProfile !== null
+        
+        // Success if: user changed, or profile was just loaded (was null, now has value)
+        if (hasValidAuth && (userChanged || (profileWasNull && profileNowLoaded))) {
+          resolved = true
+          cleanup()
+          authStateChangeResolversRef.current.delete(resolver)
+          resolve(true)
+        }
+      }, 500)
+      
+      // Fallback timeout
+      timeoutId = setTimeout(() => {
+        if (resolved) return
+        
+        resolved = true
+        cleanup()
+        authStateChangeResolversRef.current.delete(resolver)
+        
+        // Final check: do we have valid auth state?
+        const currentUser = userRef.current
+        const currentProfile = userProfileRef.current
+        const hasValidAuth = currentUser !== null && currentProfile !== null
+        
+        // If we have valid auth, consider it successful even if we didn't detect a change
+        // This handles the case where sign-in completed but state didn't change (already signed in)
+        if (hasValidAuth) {
+          resolve(true)
+        } else {
+          resolve(false)
+        }
+      }, timeout)
     })
   }, [])
 
@@ -288,18 +352,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Only update if user actually changed to prevent unnecessary re-renders
             const currentUserId = userRef.current?.id
             const newUserId = session.user.id
+            const isNewSignIn = currentUserId !== newUserId
 
-            if (currentUserId !== newUserId) {
+            if (isNewSignIn) {
               // User changed - set user immediately
               setUser(session.user)
               userRef.current = session.user
               // CRITICAL: Set loading to true when new user signs in to show loading state
               setIsLoading(true)
+            } else if (event === 'SIGNED_IN') {
+              // Same user but SIGNED_IN event - ensure user state is set
+              // This handles re-sign-ins or session refreshes
+              setUser(session.user)
+              userRef.current = session.user
+              setIsLoading(true)
             }
             
             // Always try to fetch profile (it might have been updated)
-            // Use shorter timeout on mobile for faster response
-            const profile = await fetchProfileWithRetry(session.user.id)
+            // Use retry logic with reasonable timeout
+            const profile = await fetchProfileWithRetry(session.user.id, 3, 10000)
             
             if (!isMounted) return
             
@@ -307,28 +378,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUserProfile(profile)
               userProfileRef.current = profile
               setProfileError(false)
+              
+              // CRITICAL: Always clear loading state after successful profile fetch
+              setIsLoading(false)
+              
+              // CRITICAL: Always notify waiters on successful profile load
+              // This ensures sign-in dialogs can close even if it's the same user
+              // The waitForAuthStateChange polling will also detect this, but this is faster
+              authStateChangeResolversRef.current.forEach(resolve => resolve(true))
+              authStateChangeResolversRef.current.clear()
             } else {
               // Profile fetch failed - but don't sign out automatically
               // This could be a temporary network issue
               console.warn("Failed to fetch user profile in auth state change")
               setProfileError(true)
               
-              // Only clear user state if this is a SIGNED_IN event and we have no profile
-              // This handles the case where a user signs in but their profile doesn't exist yet
-              if (event === 'SIGNED_IN' && !userProfileRef.current) {
-                console.warn("New sign-in but profile not found - keeping user but showing error")
-                // Don't auto-sign-out - let the user retry or handle it manually
+              // CRITICAL: Still clear loading state even on failure
+              // This ensures the UI doesn't get stuck in loading state
+              setIsLoading(false)
+              
+              // For SIGNED_IN events, notify waiters with false to indicate failure
+              // This allows the dialog to show an error instead of timing out
+              if (event === 'SIGNED_IN') {
+                // Notify waiters that profile fetch failed
+                // This is important for sign-in flows where we need to know if it succeeded
+                authStateChangeResolversRef.current.forEach(resolve => resolve(false))
+                authStateChangeResolversRef.current.clear()
               }
             }
-            
-            // CRITICAL: Always clear loading state after profile fetch completes (success or failure)
-            // This ensures the UI doesn't get stuck in loading state, especially on mobile
-            setIsLoading(false)
-            
-            // Notify waiters that auth state change is complete
-            const isAuthenticated = profile !== null
-            authStateChangeResolversRef.current.forEach(resolve => resolve(isAuthenticated))
-            authStateChangeResolversRef.current.clear()
           }
         } finally {
           isProcessingAuthChange = false
