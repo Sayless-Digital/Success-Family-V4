@@ -19,7 +19,6 @@ import { cn } from "@/lib/utils"
 import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/components/auth-provider"
 
 interface AuthDialogProps {
   open: boolean
@@ -30,7 +29,6 @@ interface AuthDialogProps {
 const REMEMBER_ME_STORAGE_KEY = "sf-auth-remember-v1"
 
 export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDialogProps) {
-  const { waitForAuthStateChange } = useAuth()
   const [activeTab, setActiveTab] = React.useState(defaultTab)
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -301,42 +299,23 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
         password: signInData.password,
       })
 
-      if (result.success) {
-        // CRITICAL: Wait for realtime auth state change to complete before closing dialog
-        // This ensures the session is properly persisted and auth state is updated
-        // Increased timeout to 20 seconds to account for slower networks
-        const authStateUpdated = await waitForAuthStateChange(20000) // 20 second timeout
+      if (result.success && result.user) {
+        // ✅ TRUST SUPABASE: signInWithPassword returns session immediately on success
+        // The session is already valid and persisted in cookies via @supabase/ssr
+        // onAuthStateChange will update UI state in the background automatically
         
-        if (authStateUpdated) {
-          // Auth state successfully updated - close dialog
-          onOpenChange(false)
-          // Reset form
-          if (!rememberMe) {
-            setSignInData({ email: "", password: "" })
-          }
-          toast.success("Welcome back! Signed in successfully!")
-        } else {
-          // Auth state didn't update in time - try one more time with a shorter wait
-          // Sometimes the auth state change is just delayed
-          console.warn("Auth state change timeout, retrying once...")
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          
-          // Check one more time if auth state is now valid
-          const retryCheck = await waitForAuthStateChange(5000)
-          
-          if (retryCheck) {
-            // Success on retry - close dialog
-            onOpenChange(false)
-            if (!rememberMe) {
-              setSignInData({ email: "", password: "" })
-            }
-            toast.success("Welcome back! Signed in successfully!")
-          } else {
-            // Still failed - show error but suggest refresh
-            setError("Sign in successful but session not updated. Please try refreshing the page.")
-            console.error("Auth state change timeout after retry - session may not be persisted")
-          }
+        // Close dialog immediately - no need to wait for state changes
+        onOpenChange(false)
+        
+        // Reset form
+        if (!rememberMe) {
+          setSignInData({ email: "", password: "" })
         }
+        
+        // Small delay to ensure smooth UI transition
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        toast.success("Welcome back! Signed in successfully!")
       } else {
         setError(result.error?.message || "Failed to sign in")
       }
