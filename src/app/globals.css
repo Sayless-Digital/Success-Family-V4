@@ -254,6 +254,24 @@
       background-position: 200% center;
     }
   }
+
+  @keyframes shimmer-rotate {
+    0% {
+      transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+    100% {
+      transform: translateX(100%) translateY(100%) rotate(45deg);
+    }
+  }
+
+  @keyframes arrow-bounce {
+    0%, 100% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(4px);
+    }
+  }
   
   @keyframes shimmer-opacity {
     0% {

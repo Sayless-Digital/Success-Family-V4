@@ -16,6 +16,7 @@ import { TopUpAmount } from "@/components/ui/topup-amount"
 import { CopyField } from "@/components/ui/copy-field"
 import { WalletSuccessToast } from "@/components/wallet-success-toast"
 import { BonusCountdown } from "@/components/bonus-countdown"
+import { ReceiptUpload } from "@/components/receipt-upload"
 import { cn } from "@/lib/utils"
 
 type WalletSnapshot = {
@@ -579,104 +580,129 @@ export function WalletView({
             <DialogTrigger asChild>
               <Button className="mt-4 bg-white/10 text-white/80 hover:bg-white/20 touch-feedback">Top Up</Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Top Up Wallet</DialogTitle>
-                <DialogDescription>Upload your receipt and select the bank account used to add points to your wallet.</DialogDescription>
-              </DialogHeader>
-              <form action={onSubmitAction} className="space-y-4">
-                {(() => {
-                  const isBonusValid = topupBonusEnabled && topupBonusPoints > 0
-                  const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
-                  const isExpired = expirationTime ? new Date() >= expirationTime : false
-                  const isTodayOnly = expirationTime && expirationTime.toDateString() === new Date().toDateString()
-                  
-                  if (!isBonusValid || isExpired) return null
-                  
-                  return (
-                    <div className="rounded-lg bg-white/10 border border-white/20 p-4 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Gift className="h-5 w-5 text-white/80" />
-                        <div className="text-sm font-semibold text-white/90">Top-Up Bonus!</div>
-                        {isTodayOnly && (
-                          <span className="text-xs font-medium text-white/80 bg-white/10 px-2 py-0.5 rounded">Today Only</span>
+            <DialogContent className="sm:max-w-lg [&>div]:flex [&>div]:flex-col [&>div]:p-0 [&>div]:h-full">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6">
+                <DialogHeader className="space-y-2">
+                  <DialogTitle className="text-2xl font-bold">Top Up Wallet</DialogTitle>
+                  <DialogDescription className="text-white/70">
+                    Upload your receipt and select the bank account used to add points to your wallet.
+                  </DialogDescription>
+                </DialogHeader>
+                <form action={onSubmitAction} id="topup-form" className="space-y-5 pt-2 pb-6">
+                  {(() => {
+                    const isBonusValid = topupBonusEnabled && topupBonusPoints > 0
+                    const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                    const isExpired = expirationTime ? new Date() >= expirationTime : false
+                    const isTodayOnly = expirationTime && expirationTime.toDateString() === new Date().toDateString()
+                    
+                    if (!isBonusValid || isExpired) return null
+                    
+                    return (
+                      <div className="rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/20 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Gift className="h-5 w-5 text-white/80" />
+                            <div className="text-sm font-semibold text-white/90">Top-Up Bonus!</div>
+                          </div>
+                          {isTodayOnly && (
+                            <span className="text-xs font-semibold text-white/90 bg-white/15 px-2.5 py-1 rounded-full border border-white/20">
+                              Today Only
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-white">
+                            +{topupBonusPoints.toLocaleString()} <span className="text-lg font-medium text-white/80">bonus points</span>
+                          </div>
+                        </div>
+                        {expirationTime && (
+                          <>
+                            <BonusCountdown endTime={topupBonusEndTime!} />
+                            <div className="text-center">
+                              <p className="text-xs text-white/50">
+                                Expires: {expirationTime.toLocaleString(undefined, { 
+                                  month: 'short', 
+                                  day: 'numeric', 
+                                  year: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
+                          </>
                         )}
                       </div>
-                      <div className="text-sm text-white/80">
-                        Get <span className="font-semibold text-white">{topupBonusPoints.toLocaleString()} bonus points</span> on your top-up!
-                      </div>
-                      {expirationTime && (
-                        <>
-                          <BonusCountdown endTime={topupBonusEndTime!} />
-                          <div className="text-xs text-white/60">
-                            Expires: {expirationTime.toLocaleString(undefined, { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })}
+                    )
+                  })()}
+                  <div className="space-y-2">
+                    <Label htmlFor="points" className="text-white/90 font-medium">
+                      Points
+                    </Label>
+                    <TopUpAmount 
+                      buyPricePerPoint={Number(buyPricePerPoint ?? 1)} 
+                      minAmount={mandatoryTopupTtd}
+                      showBonus={(() => {
+                        const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                        const isExpired = expirationTime ? new Date() >= expirationTime : false
+                        return topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+                      })()}
+                      bonusPoints={topupBonusPoints}
+                      bonusEndTime={topupBonusEndTime}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-white/90 font-medium">Bank Account</Label>
+                    {singleBank ? (
+                      <>
+                        <input type="hidden" name="bank_account_id" value={singleBank.id} />
+                        <div className="rounded-lg bg-white/10 border border-white/20 p-4 space-y-3">
+                          <div className="text-white/90 text-sm font-semibold mb-3">{singleBank.bank_name}</div>
+                          <div className="space-y-3">
+                            <CopyField label="Account Name" value={singleBank.account_name || ''} />
+                            <CopyField label="Account Number" value={singleBank.account_number || ''} />
+                            <CopyField label="Account Type" value={singleBank.account_type || ''} />
                           </div>
-                        </>
-                      )}
-                    </div>
-                  )
-                })()}
-                <div className="space-y-2">
-                  <Label htmlFor="points" className="text-white/80">
-                    Points
-                  </Label>
-                  <TopUpAmount 
-                    buyPricePerPoint={Number(buyPricePerPoint ?? 1)} 
-                    minAmount={mandatoryTopupTtd}
-                    showBonus={(() => {
-                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
-                      const isExpired = expirationTime ? new Date() >= expirationTime : false
-                      return topupBonusEnabled && topupBonusPoints > 0 && !isExpired
-                    })()}
-                    bonusPoints={topupBonusPoints}
-                    bonusEndTime={topupBonusEndTime}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-white/80">Bank Account</Label>
-                  {singleBank ? (
-                    <>
-                      <input type="hidden" name="bank_account_id" value={singleBank.id} />
-                      <div className="rounded-md bg-white/10 p-3 space-y-2">
-                        <div className="text-white/80 text-sm mb-1">{singleBank.bank_name}</div>
-                        <CopyField label="Account Name" value={singleBank.account_name} />
-                        <CopyField label="Account Number" value={singleBank.account_number} />
-                        <CopyField label="Account Type" value={singleBank.account_type} />
-                      </div>
-                    </>
-                  ) : (
-                    <Select name="bank_account_id" required>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {banks.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.bank_name} — {b.account_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="file" className="text-white/80">
-                    Receipt File
-                  </Label>
-                  <Input id="file" name="file" type="file" accept="image/*,application/pdf" required />
-                </div>
-                <DialogFooter className="w-full">
-                  <Button type="submit" className="w-full bg-white/10 text-white/80 hover:bg-white/20 touch-feedback">
-                    Submit
+                        </div>
+                      </>
+                    ) : (
+                      <Select name="bank_account_id" required>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {banks.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.bank_name} — {b.account_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="file" className="text-white/90 font-medium">
+                      Receipt File
+                    </Label>
+                    <ReceiptUpload
+                      id="file"
+                      name="file"
+                      accept="image/*,application/pdf"
+                      required
+                    />
+                  </div>
+                </form>
+              </div>
+              <div className="border-t border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md py-4 sm:py-6">
+                <div className="px-6">
+                  <Button 
+                    type="submit" 
+                    form="topup-form"
+                    className="w-full bg-white/15 text-white hover:bg-white/25 h-11 text-base font-semibold"
+                  >
+                    Top Up
                   </Button>
-                </DialogFooter>
-              </form>
+                </div>
+              </div>
             </DialogContent>
           </Dialog>
         </div>

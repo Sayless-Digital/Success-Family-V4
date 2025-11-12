@@ -105,6 +105,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const userProfileRef = React.useRef<User | null>(null)
   const authStateChangeResolversRef = React.useRef<Set<(value: boolean) => void>>(new Set())
   const stuckStateStartTimeRef = React.useRef<number | null>(null)
+  const initializationCompleteRef = React.useRef(false)
+  const initializationCompleteTimeRef = React.useRef<number | null>(null)
 
   // Update refs when state changes
   React.useEffect(() => {
@@ -174,10 +176,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let authInitialized = false
     const MAX_INITIALIZATION_TIME = 10000
 
+    // Mark initialization as not complete
+    initializationCompleteRef.current = false
+
     const globalTimeout = setTimeout(() => {
       if (!authInitialized && isMounted) {
         console.warn("Auth initialization timeout - forcing completion")
         authInitialized = true
+        initializationCompleteRef.current = true
+        initializationCompleteTimeRef.current = Date.now()
         setIsLoading(false)
       }
     }, MAX_INITIALIZATION_TIME)
@@ -201,10 +208,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         if (sessionError || !session?.user) {
+          // No session found - clear state and show as signed out
+          // Note: If middleware refreshes session after this, TOKEN_REFRESHED event will be ignored
+          // during initialization but will be processed after initialization completes
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
           authInitialized = true
+          initializationCompleteRef.current = true
+          initializationCompleteTimeRef.current = Date.now()
           clearTimeout(globalTimeout)
           setIsLoading(false)
           return
@@ -227,15 +239,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         if (userError || !user) {
+          // Invalid session - clear state but don't show as signed out until initialization completes
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
           authInitialized = true
+          initializationCompleteRef.current = true
+          initializationCompleteTimeRef.current = Date.now()
           clearTimeout(globalTimeout)
           setIsLoading(false)
           return
         }
-        
+
         // Session is valid - set user
         setUser(user)
         userRef.current = user
@@ -272,6 +287,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         if (isMounted && !authInitialized) {
           authInitialized = true
+          initializationCompleteRef.current = true
+          initializationCompleteTimeRef.current = Date.now()
           clearTimeout(globalTimeout)
           setIsLoading(false)
         }
@@ -280,16 +297,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth()
 
-    // Listen for auth state changes
+    // Listen for auth state changes - but ignore events until initialization completes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!isMounted) return
 
-        // Wait for initialization to complete (except for SIGNED_IN events)
-        if (!authInitialized && event !== 'SIGNED_IN') {
+        // CRITICAL: Ignore all auth state change events during initialization
+        // This prevents TOKEN_REFRESHED events from middleware from causing flashes
+        // Only allow explicit SIGNED_OUT events during initialization to handle sign-outs
+        if (!initializationCompleteRef.current) {
+          // During initialization, only process explicit sign-outs
+          if (event === 'SIGNED_OUT') {
+            clearAuthState()
+            userRef.current = null
+            userProfileRef.current = null
+            setIsLoading(false)
+            stuckStateStartTimeRef.current = null
+            authStateChangeResolversRef.current.forEach(resolve => resolve(false))
+            authStateChangeResolversRef.current.clear()
+          }
+          // Ignore all other events (TOKEN_REFRESHED, SIGNED_IN, etc.) until initialization completes
           return
         }
 
+        // After initialization, process all events normally
         try {
           if (event === 'SIGNED_OUT' || !session?.user) {
             clearAuthState()
@@ -308,41 +339,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const currentUserId = userRef.current?.id
             const newUserId = session.user.id
             const isNewSignIn = currentUserId !== newUserId
+            const initCompleteTime = initializationCompleteTimeRef.current
+            const timeSinceInit = initCompleteTime ? Date.now() - initCompleteTime : Infinity
+            const isRecentInit = timeSinceInit < 200 // Within 200ms of initialization
 
-            if (isNewSignIn || event === 'SIGNED_IN') {
+            // If this is a TOKEN_REFRESHED event right after initialization and we have no user,
+            // it's likely the middleware refreshed the session - treat it as a new sign-in
+            if (event === 'TOKEN_REFRESHED' && !currentUserId && isRecentInit) {
+              // This is likely a session refresh from middleware right after initialization
+              // Treat it as a new sign-in to avoid flash
               setUser(session.user)
               userRef.current = session.user
               setIsLoading(true)
-            }
-            
-            // Fetch profile
-            const profile = await fetchProfileWithRetry(session.user.id, 2, 8000)
-            
-            if (!isMounted) return
-            
-            if (profile) {
-              setUserProfile(profile)
-              userProfileRef.current = profile
-              setProfileError(false)
-              setIsLoading(false)
-              stuckStateStartTimeRef.current = null
               
-              // Notify waiters
-              authStateChangeResolversRef.current.forEach(resolve => resolve(true))
-              authStateChangeResolversRef.current.clear()
-            } else {
-              console.warn("Failed to fetch user profile in auth state change")
-              setProfileError(true)
-              setIsLoading(false)
+              // Fetch profile
+              const profile = await fetchProfileWithRetry(session.user.id, 2, 8000)
               
-              // Track stuck state start time
-              if (!stuckStateStartTimeRef.current) {
-                stuckStateStartTimeRef.current = Date.now()
+              if (!isMounted) return
+              
+              if (profile) {
+                setUserProfile(profile)
+                userProfileRef.current = profile
+                setProfileError(false)
+                setIsLoading(false)
+                stuckStateStartTimeRef.current = null
+                
+                // Notify waiters
+                authStateChangeResolversRef.current.forEach(resolve => resolve(true))
+                authStateChangeResolversRef.current.clear()
+              } else {
+                console.warn("Failed to fetch user profile in auth state change")
+                setProfileError(true)
+                setIsLoading(false)
+                
+                // Track stuck state start time
+                if (!stuckStateStartTimeRef.current) {
+                  stuckStateStartTimeRef.current = Date.now()
+                }
+                
+                // Notify waiters of failure
+                authStateChangeResolversRef.current.forEach(resolve => resolve(false))
+                authStateChangeResolversRef.current.clear()
               }
+            } else if (isNewSignIn || event === 'SIGNED_IN') {
+              // New sign-in or explicit SIGNED_IN event
+              setUser(session.user)
+              userRef.current = session.user
+              setIsLoading(true)
               
-              // Notify waiters of failure
-              authStateChangeResolversRef.current.forEach(resolve => resolve(false))
-              authStateChangeResolversRef.current.clear()
+              // Fetch profile for new sign-ins
+              const profile = await fetchProfileWithRetry(session.user.id, 2, 8000)
+              
+              if (!isMounted) return
+              
+              if (profile) {
+                setUserProfile(profile)
+                userProfileRef.current = profile
+                setProfileError(false)
+                setIsLoading(false)
+                stuckStateStartTimeRef.current = null
+                
+                // Notify waiters
+                authStateChangeResolversRef.current.forEach(resolve => resolve(true))
+                authStateChangeResolversRef.current.clear()
+              } else {
+                console.warn("Failed to fetch user profile in auth state change")
+                setProfileError(true)
+                setIsLoading(false)
+                
+                // Track stuck state start time
+                if (!stuckStateStartTimeRef.current) {
+                  stuckStateStartTimeRef.current = Date.now()
+                }
+                
+                // Notify waiters of failure
+                authStateChangeResolversRef.current.forEach(resolve => resolve(false))
+                authStateChangeResolversRef.current.clear()
+              }
+            } else if (event === 'TOKEN_REFRESHED' && currentUserId === newUserId) {
+              // Token refreshed but user is the same - just update the user object silently
+              // Don't change loading state or re-fetch profile if we already have it
+              setUser(session.user)
+              userRef.current = session.user
             }
           }
         } catch (error) {

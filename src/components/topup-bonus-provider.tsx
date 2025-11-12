@@ -63,6 +63,13 @@ export function TopUpBonusProvider() {
       if (settings.topup_bonus_end_time) {
         const expirationTime = new Date(settings.topup_bonus_end_time)
         const now = new Date()
+        console.log('[TopUpBonus] Time check:', {
+          now: now.toISOString(),
+          expiration: expirationTime.toISOString(),
+          nowLocal: now.toString(),
+          expirationLocal: expirationTime.toString(),
+          isExpired: now >= expirationTime
+        })
         if (now >= expirationTime) {
           console.log('[TopUpBonus] Bonus expired:', expirationTime)
           setShowDialog(false)

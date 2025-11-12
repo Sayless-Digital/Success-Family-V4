@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { env } from './src/lib/env'
 
 export async function middleware(request: NextRequest) {
+  // Create response object once - this will be updated with cookies as needed
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -17,13 +18,15 @@ export async function middleware(request: NextRequest) {
             return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-            supabaseResponse = NextResponse.next({
-              request,
+            // Update request cookies (for subsequent reads in this middleware)
+            cookiesToSet.forEach(({ name, value }) => {
+              request.cookies.set(name, value)
             })
-            cookiesToSet.forEach(({ name, value, options }) =>
+            // Update response cookies (to persist session)
+            // CRITICAL: Update existing response, don't create a new one
+            cookiesToSet.forEach(({ name, value, options }) => {
               supabaseResponse.cookies.set(name, value, options)
-            )
+            })
           },
         },
       }
@@ -34,11 +37,27 @@ export async function middleware(request: NextRequest) {
     // issues with users being randomly logged out.
 
     // IMPORTANT: DO NOT REMOVE auth.getUser()
-    // Add timeout to prevent middleware from blocking indefinitely
-    const userPromise = supabase.auth.getUser()
-    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 5000))
-    
-    await Promise.race([userPromise, timeoutPromise])
+    // This call refreshes the session and updates cookies via setAll callback
+    // The setAll callback is invoked during getUser() when cookies need updating
+    // We must await getUser() to ensure session refresh completes
+    try {
+      // Await getUser() with a timeout to prevent middleware from hanging
+      // Use Promise.race to ensure we don't block navigation forever
+      const getUserPromise = supabase.auth.getUser()
+      const timeoutPromise = new Promise<{ data: { user: null }, error: { message: string } }>((resolve) => {
+        setTimeout(() => resolve({ 
+          data: { user: null }, 
+          error: { message: 'Timeout' } 
+        }), 8000) // 8 second timeout - enough for session refresh
+      })
+      
+      await Promise.race([getUserPromise, timeoutPromise])
+    } catch (error) {
+      // Log error but don't block navigation
+      // Cookies may have been set via setAll callback before timeout/error
+      // Navigation should continue even if session refresh didn't complete
+      console.warn('Middleware: getUser() error (non-blocking):', error)
+    }
 
     // Add cache-busting headers for HTML pages
     const pathname = request.nextUrl.pathname
@@ -57,7 +76,7 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   } catch (error) {
     console.error('Middleware error:', error)
-    // Return response even on error to prevent blocking
+    // Return response even on error to prevent blocking navigation
     return supabaseResponse
   }
 }

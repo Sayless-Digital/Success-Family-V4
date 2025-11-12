@@ -3,7 +3,6 @@
 import * as React from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { BonusCountdown } from '@/components/bonus-countdown'
 
 interface TopUpAmountProps {
   id?: string
@@ -82,30 +81,9 @@ export function TopUpAmount({
         )}
       </div>
       {showBonus && bonusPoints > 0 && (
-        <>
-          <div className="text-xs text-white/60">
-            You'll receive {points.toLocaleString()} + {bonusPoints.toLocaleString()} = <span className="font-medium text-white/80">{(points + bonusPoints).toLocaleString()} total points</span>
-          </div>
-          {bonusEndTime && (() => {
-            const expirationTime = new Date(bonusEndTime)
-            const isTodayOnly = expirationTime.toDateString() === new Date().toDateString()
-            return (
-              <>
-                <BonusCountdown endTime={bonusEndTime} />
-                <div className="text-xs text-white/60">
-                  {isTodayOnly && <span className="font-medium text-white/80">Today Only</span>} 
-                  {isTodayOnly && ' - '}
-                  Expires: {expirationTime.toLocaleString(undefined, { 
-                    month: 'short', 
-                    day: 'numeric', 
-                    hour: 'numeric',
-                    minute: '2-digit'
-                  })}
-                </div>
-              </>
-            )
-          })()}
-        </>
+        <div className="text-xs text-white/60">
+          You'll receive {points.toLocaleString()} + {bonusPoints.toLocaleString()} = <span className="font-medium text-white/80">{(points + bonusPoints).toLocaleString()} total points</span>
+        </div>
       )}
     </div>
   )
