@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { requireAuth } from '@/lib/auth-server'
 import { env } from '@/lib/env'
 import { StreamClient } from '@stream-io/node-sdk'
 
@@ -8,37 +8,11 @@ export async function POST(request: NextRequest) {
   try {
     console.log('Stream call API: Starting request')
     
-    let supabase
-    try {
-      supabase = await createServerSupabaseClient()
-      console.log('Stream call API: Supabase client created')
-    } catch (error: any) {
-      console.error('Stream call API: Failed to create Supabase client:', error)
-      return NextResponse.json(
-        { error: 'Failed to initialize server: ' + (error.message || 'Unknown error') },
-        { status: 500 }
-      )
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) {
+      return authResult
     }
-    
-    const {
-      data: { user },
-      error: authError
-    } = await supabase.auth.getUser()
-
-    if (authError) {
-      console.error('Stream call API: Auth error:', authError)
-      return NextResponse.json(
-        { error: 'Authentication error' },
-        { status: 401 }
-      )
-    }
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const { user, supabase } = authResult
 
     let body
     try {

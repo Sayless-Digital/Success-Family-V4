@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { requireAuth } from '@/lib/auth-server'
 import { env } from '@/lib/env'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: NextRequest) {
   try {
     console.log('[Recording API] Request received')
-    const supabase = await createServerSupabaseClient()
     
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      console.error('[Recording API] Auth error:', authError)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) {
+      return authResult
     }
+    const { user, supabase } = authResult
 
     console.log('[Recording API] User authenticated:', user.id)
     const body = await request.json()

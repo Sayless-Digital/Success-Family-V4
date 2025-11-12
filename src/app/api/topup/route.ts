@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { requireAuth } from '@/lib/auth-server'
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) {
+      return authResult
     }
+    const { user, supabase } = authResult
 
     const body = await req.json().catch(() => ({}))
     const amount = Number(body?.amount)
@@ -29,8 +25,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ result: data })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Unexpected error' }, { status: 500 })
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : 'Unexpected error'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
 

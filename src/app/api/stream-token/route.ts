@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { requireAuth } from '@/lib/auth-server'
 import { env } from '@/lib/env'
 
 // Generate Stream JWT token
@@ -31,32 +31,28 @@ function generateStreamToken(userId: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) {
+      return authResult
     }
+    const { user } = authResult
 
     // Generate Stream token
     const token = generateStreamToken(user.id)
 
     return NextResponse.json({ token })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to generate token'
     console.error('Error generating Stream token:', error)
-    console.error('Error stack:', error.stack)
+    if (error instanceof Error) {
+      console.error('Error stack:', error.stack)
+    }
     console.error('Environment check:', {
       hasApiKey: !!env.GETSTREAM_API_KEY,
       hasApiSecret: !!env.GETSTREAM_API_SECRET,
     })
     return NextResponse.json(
-      { error: error.message || 'Failed to generate token' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

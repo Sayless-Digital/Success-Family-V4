@@ -244,6 +244,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     setShowReferralDropdown(false)
   }
 
+  // Load remembered email on mount (SECURITY: Never store passwords)
   React.useEffect(() => {
     if (typeof window === "undefined") {
       return
@@ -252,21 +253,27 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     try {
       const saved = window.localStorage.getItem(REMEMBER_ME_STORAGE_KEY)
       if (saved) {
-        const parsed = JSON.parse(saved) as { email?: string; password?: string }
-        setRememberMe(true)
-        setSignInData((current) => ({
-          ...current,
-          email: parsed.email ?? "",
-          password: parsed.password ?? "",
-        }))
+        const parsed = JSON.parse(saved) as { email?: string }
+        if (parsed.email) {
+          setRememberMe(true)
+          setSignInData((current) => ({
+            ...current,
+            email: parsed.email ?? "",
+            // Never restore password - security best practice
+            password: "",
+          }))
+        }
       }
     } catch (storageError) {
-      console.error("Failed to load remembered credentials:", storageError)
+      console.error("Failed to load remembered email:", storageError)
+      // Clear corrupted data
+      window.localStorage.removeItem(REMEMBER_ME_STORAGE_KEY)
     } finally {
       rememberLoadedRef.current = true
     }
   }, [])
 
+  // Save email only when remember me is enabled (SECURITY: Never store passwords)
   React.useEffect(() => {
     if (!rememberLoadedRef.current || typeof window === "undefined") {
       return
@@ -277,16 +284,21 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       return
     }
 
+    // Only save email if it's not empty
+    if (!signInData.email.trim()) {
+      return
+    }
+
     try {
+      // SECURITY: Only store email, never password
       const payload = JSON.stringify({
         email: signInData.email,
-        password: signInData.password,
       })
       window.localStorage.setItem(REMEMBER_ME_STORAGE_KEY, payload)
     } catch (storageError) {
-      console.error("Failed to persist remembered credentials:", storageError)
+      console.error("Failed to persist remembered email:", storageError)
     }
-  }, [rememberMe, signInData.email, signInData.password])
+  }, [rememberMe, signInData.email])
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -307,9 +319,12 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
         // Close dialog immediately - no need to wait for state changes
         onOpenChange(false)
         
-        // Reset form
+        // Reset form - clear password but keep email if remember me is enabled
         if (!rememberMe) {
           setSignInData({ email: "", password: "" })
+        } else {
+          // Clear password but keep email
+          setSignInData((prev) => ({ ...prev, password: "" }))
         }
         
         // Small delay to ensure smooth UI transition

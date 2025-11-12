@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-
+import type { User } from '@supabase/supabase-js'
 
 export interface SignUpData {
   email: string
@@ -21,7 +21,7 @@ export interface AuthError {
 export interface AuthResult {
   success: boolean
   error?: AuthError
-  user?: any
+  user?: User | null
 }
 
 /**

@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { requireAuth } from '@/lib/auth-server'
 import { env } from '@/lib/env'
 import { StreamClient } from '@stream-io/node-sdk'
 
 export async function GET(request: NextRequest) {
   try {
     console.log('[Recordings API] Request received')
-    const supabase = await createServerSupabaseClient()
     
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      console.error('[Recordings API] Auth error:', authError)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) {
+      return authResult
     }
+    const { user } = authResult
 
     console.log('[Recordings API] User authenticated:', user.id)
     
@@ -59,10 +57,11 @@ export async function GET(request: NextRequest) {
       success: true,
       recordings: recordingsResponse.recordings || [],
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
     console.error('[Recordings API] Error:', error)
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: errorMessage },
       { status: 500 }
     )
   }
