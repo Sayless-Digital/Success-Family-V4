@@ -181,7 +181,7 @@ BEGIN
   INSERT INTO public.transactions (user_id, type, points_delta, recipient_user_id, created_at)
   VALUES 
     (p_user_id, 'point_spend', -1, v_post_author_id, NOW()),
-    (v_post_author_id, 'point_refund', 1, NOW());
+    (v_post_author_id, 'point_refund', 1, p_user_id, NOW());
 
   -- Send boost reward message if configured
   IF v_boost_reward_message IS NOT NULL AND trim(v_boost_reward_message) != '' THEN
