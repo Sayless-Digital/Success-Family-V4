@@ -476,50 +476,47 @@ export default function ProfileView({
 
     const wasBoosted = post.user_has_boosted
     const previousBoostCount = post.boost_count || 0
-    const canUnboost = post.can_unboost
 
-    // Prevent boosting own posts (but allow unboosting if already boosted)
-    if (!wasBoosted && postAuthorId === currentUser.id) {
-      toast.error("You cannot boost your own post")
+    // Boosts are now irreversible - prevent unboosting
+    if (wasBoosted) {
+      toast.error("Boosts are permanent and cannot be reversed")
       return
     }
 
-    // If trying to unboost, check if allowed
-    if (wasBoosted && !canUnboost) {
-      toast.error("You can only unboost within 1 minute of boosting")
+    // Prevent boosting own posts
+    if (postAuthorId === currentUser.id) {
+      toast.error("You cannot boost your own post")
       return
     }
 
     // Check combined balance (wallet + earnings) before boosting
     const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
-    if (!wasBoosted && availableBalance < 1) {
+    if (availableBalance < 1) {
       toast.error("You need at least 1 point to boost a post")
       return
     }
 
-    // Fire confetti immediately for boost (not unboost)
-    if (!wasBoosted) {
-      fireGoldConfetti(event.currentTarget as HTMLElement)
-      
-      // Add boost animation
-      setAnimatingBoosts(prev => new Set(prev).add(postId))
-      setTimeout(() => {
-        setAnimatingBoosts(prev => {
-          const next = new Set(prev)
-          next.delete(postId)
-          return next
-        })
-      }, 600)
-    }
+    // Fire confetti immediately for boost
+    fireGoldConfetti(event.currentTarget as HTMLElement)
+    
+    // Add boost animation
+    setAnimatingBoosts(prev => new Set(prev).add(postId))
+    setTimeout(() => {
+      setAnimatingBoosts(prev => {
+        const next = new Set(prev)
+        next.delete(postId)
+        return next
+      })
+    }, 600)
 
     // Helper function to update a post in a list
     const updatePostInList = (p: typeof post) => {
       if (p.id === postId) {
         return {
           ...p,
-          user_has_boosted: !wasBoosted,
-          boost_count: wasBoosted ? previousBoostCount - 1 : previousBoostCount + 1,
-          can_unboost: !wasBoosted ? true : false
+          user_has_boosted: true,
+          boost_count: previousBoostCount + 1,
+          can_unboost: false
         }
       }
       return p
@@ -529,41 +526,31 @@ export default function ProfileView({
     setPosts(prevPosts => prevPosts.map(updatePostInList))
     setSavedPosts(prevPosts => prevPosts.map(updatePostInList))
     
-    // For boostedPosts, add when boosting or remove when unboosting (like savedPosts)
-    if (!wasBoosted) {
-      // Boosting - add to boostedPosts if not already there (prevent duplicates)
-      setBoostedPosts((prev) => {
-        // Check if already exists - if so, just update it
-        const existingIndex = prev.findIndex(p => p.id === postId)
-        if (existingIndex >= 0) {
-          // Already exists, update it
-          return prev.map((p, idx) => idx === existingIndex ? { ...post, user_has_boosted: true, boost_count: previousBoostCount + 1, can_unboost: true } : p)
-        }
-        // Not exists, add it
-        return [{ ...post, user_has_boosted: true, boost_count: previousBoostCount + 1, can_unboost: true }, ...prev]
-      })
-    } else {
-      // Unboosting - remove from boostedPosts (remove all duplicates just in case)
-      setBoostedPosts((prev) => prev.filter(p => p.id !== postId))
-    }
+    // For boostedPosts, add when boosting
+    setBoostedPosts((prev) => {
+      // Check if already exists - if so, just update it
+      const existingIndex = prev.findIndex(p => p.id === postId)
+      if (existingIndex >= 0) {
+        // Already exists, update it
+        return prev.map((p, idx) => idx === existingIndex ? { ...post, user_has_boosted: true, boost_count: previousBoostCount + 1, can_unboost: false } : p)
+      }
+      // Not exists, add it
+      return [{ ...post, user_has_boosted: true, boost_count: previousBoostCount + 1, can_unboost: false }, ...prev]
+    })
     
     // For gotBoostedPosts - handle based on whether this is the profile user's post
     const isProfileUsersPost = post.author_id === user.id
+    const newCount = previousBoostCount + 1
     
     if (isProfileUsersPost) {
-      const newCount = wasBoosted ? previousBoostCount - 1 : previousBoostCount + 1
-      
-      if (newCount === 0) {
-        // Remove from gotBoostedPosts when count reaches 0
-        setGotBoostedPosts((prev) => prev.filter(p => p.id !== postId))
-      } else if (previousBoostCount === 0 && !wasBoosted) {
+      if (previousBoostCount === 0) {
         // Add to gotBoostedPosts when going from 0 to 1 (first boost)
         setGotBoostedPosts((prev) => {
           const existingIndex = prev.findIndex(p => p.id === postId)
           if (existingIndex >= 0) {
-            return prev.map((p, idx) => idx === existingIndex ? { ...post, boost_count: newCount, user_has_boosted: true, can_unboost: true } : p)
+            return prev.map((p, idx) => idx === existingIndex ? { ...post, boost_count: newCount, user_has_boosted: true, can_unboost: false } : p)
           }
-          return [...prev, { ...post, boost_count: newCount, user_has_boosted: true, can_unboost: true }]
+          return [...prev, { ...post, boost_count: newCount, user_has_boosted: true, can_unboost: false }]
         })
       } else {
         // Just update the count
@@ -577,21 +564,14 @@ export default function ProfileView({
     setBoostingPosts(prev => new Set(prev).add(postId))
 
     try {
-      // Use separate functions for boost/unboost
-      const rpcFunction = wasBoosted ? 'unboost_post' : 'boost_post'
-      const { data, error } = await supabase.rpc(rpcFunction, {
+      const { data, error } = await supabase.rpc('boost_post', {
         p_post_id: postId,
         p_user_id: currentUser.id
       })
 
       if (error) throw error
 
-      // Show success message
-      if (wasBoosted) {
-        toast.error("💔 Boost removed... They'll miss your support")
-      } else {
-        toast.success("🚀 Creator boosted! You made their day!")
-      }
+      toast.success("🚀 Creator boosted! You made their day!")
     } catch (error: any) {
       console.error('Error toggling boost:', error)
       
@@ -602,7 +582,7 @@ export default function ProfileView({
             ...p,
             user_has_boosted: wasBoosted,
             boost_count: previousBoostCount,
-            can_unboost: canUnboost
+            can_unboost: false
           }
         }
         return p
@@ -611,46 +591,27 @@ export default function ProfileView({
       setPosts(prevPosts => prevPosts.map(revertPost))
       setSavedPosts(prevPosts => prevPosts.map(revertPost))
       
-      // Revert boostedPosts list
-      if (!wasBoosted) {
-        // Was boosting but failed - remove from boostedPosts
-        setBoostedPosts((prev) => prev.filter(p => p.id !== postId))
-      } else {
-        // Was unboosting but failed - add back to boostedPosts
-        setBoostedPosts((prev) => {
-          if (prev.find(p => p.id === postId)) return prev // Already there
-          return [{ ...post, user_has_boosted: true, boost_count: previousBoostCount, can_unboost: canUnboost }, ...prev]
-        })
-      }
+      // Revert boostedPosts list - remove if boost failed
+      setBoostedPosts((prev) => prev.filter(p => p.id !== postId))
       
       // Revert gotBoostedPosts list if it's the profile user's post
       const isProfileUsersPost = post.author_id === user.id
-      if (isProfileUsersPost) {
-        const newCount = wasBoosted ? previousBoostCount - 1 : previousBoostCount + 1
-        
-        if (!wasBoosted && previousBoostCount === 0) {
-          // Was adding to gotBoostedPosts (first boost) but failed - remove it
-          setGotBoostedPosts((prev) => prev.filter(p => p.id !== postId))
-        } else if (wasBoosted && previousBoostCount === 1) {
-          // Was removing from gotBoostedPosts (last boost removed) but failed - add it back
-          setGotBoostedPosts((prev) => {
-            if (prev.find(p => p.id === postId)) return prev
-            return [...prev, { ...post, boost_count: previousBoostCount, user_has_boosted: wasBoosted, can_unboost: canUnboost }]
-          })
-        } else {
-          // Just revert the count
-          setGotBoostedPosts(prevPosts => prevPosts.map(revertPost))
-        }
+      if (isProfileUsersPost && previousBoostCount === 0) {
+        // Was adding to gotBoostedPosts (first boost) but failed - remove it
+        setGotBoostedPosts((prev) => prev.filter(p => p.id !== postId))
       } else {
-        // Not profile user's post, just revert if it exists
+        // Just revert the count
         setGotBoostedPosts(prevPosts => prevPosts.map(revertPost))
       }
       
       // Show user-friendly error message
-      if (error?.message?.includes('balance')) {
+      const errorMessage = error?.message || ''
+      if (errorMessage.includes('balance') || errorMessage.includes('insufficient')) {
         toast.error("Insufficient points to boost this post")
+      } else if (errorMessage.includes('cannot be reversed') || errorMessage.includes('irreversible')) {
+        toast.error("Boosts are permanent and cannot be reversed")
       } else {
-        toast.error(error?.message || 'Failed to boost post. Please try again.')
+        toast.error(errorMessage || 'Failed to boost post. Please try again.')
       }
     } finally {
       setBoostingPosts(prev => {
@@ -1665,7 +1626,7 @@ export default function ProfileView({
                     </div>
                   </div>
                   
-                  {/* Tags - Above Content (except new creator tag) */}
+                  {/* Tags - Below Header, Above Content */}
                   <div className="flex items-center gap-2 mb-3 flex-wrap">
                     {(post as any).is_trending && (
                       <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
@@ -1673,7 +1634,12 @@ export default function ProfileView({
                         Trending
                       </Badge>
                     )}
-                    {/* Add other tags here except new creator tag */}
+                    {post.boost_reward_message && (
+                      <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
+                        <Crown className="h-3 w-3 mr-1" />
+                        Reward
+                      </Badge>
+                    )}
                   </div>
 
                   {/* Content */}
@@ -1706,7 +1672,7 @@ export default function ProfileView({
                         e.stopPropagation()
                         handleBoostToggle(post.id, post.author_id, e)
                       }}
-                      disabled={!currentUser || boostingPosts.has(post.id)}
+                      disabled={!currentUser || boostingPosts.has(post.id) || post.user_has_boosted}
                       className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed touch-feedback ${
                         post.user_has_boosted
                           ? 'bg-yellow-400/10 border-yellow-400/40'

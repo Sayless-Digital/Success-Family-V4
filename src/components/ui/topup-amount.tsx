@@ -92,14 +92,14 @@ export function TopUpAmount({
         >
           <Minus className="h-4 w-4" />
         </Button>
-        <Input
-          id={id}
-          type="number"
-          step={1}
-          min={minPoints}
-          required
-          value={pointsValue}
-          onChange={(e) => setPointsValue(e.target.value)}
+      <Input
+        id={id}
+        type="number"
+        step={1}
+        min={minPoints}
+        required
+        value={pointsValue}
+        onChange={(e) => setPointsValue(e.target.value)}
           className="flex-1 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
         />
         <Button
@@ -132,8 +132,8 @@ export function TopUpAmount({
               } : undefined}
               onClick={() => handlePreset(p)}
             >
-              {p} pts
-            </Button>
+            {p} pts
+          </Button>
           )
         })}
       </div>

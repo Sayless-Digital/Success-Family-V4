@@ -708,18 +708,24 @@ export function EditPostDialog({
         open={showBoostRewardsDialog}
         onOpenChange={setShowBoostRewardsDialog}
         requiresBoost={
-          editingMediaId?.startsWith('new-')
-            ? mediaFiles[parseInt(editingMediaId.replace('new-', ''))]?.requiresBoost || false
-            : existingMedia.find(m => m.id === editingMediaId)?.requiresBoost || false
+          editingMediaId
+            ? editingMediaId.startsWith('new-')
+              ? mediaFiles[parseInt(editingMediaId.replace('new-', ''))]?.requiresBoost || false
+              : existingMedia.find(m => m.id === editingMediaId)?.requiresBoost || false
+            : undefined
         }
-        onRequiresBoostChange={(requiresBoost) => {
-          if (editingMediaId?.startsWith('new-')) {
-            const index = parseInt(editingMediaId.replace('new-', ''))
-            setMediaFiles(prev => prev.map((m, i) => i === index ? { ...m, requiresBoost } : m))
-          } else if (editingMediaId) {
-            setExistingMedia(prev => prev.map(m => m.id === editingMediaId ? { ...m, requiresBoost } : m))
-          }
-        }}
+        onRequiresBoostChange={
+          editingMediaId
+            ? (requiresBoost) => {
+                if (editingMediaId.startsWith('new-')) {
+                  const index = parseInt(editingMediaId.replace('new-', ''))
+                  setMediaFiles(prev => prev.map((m, i) => i === index ? { ...m, requiresBoost } : m))
+                } else {
+                  setExistingMedia(prev => prev.map(m => m.id === editingMediaId ? { ...m, requiresBoost } : m))
+                }
+              }
+            : undefined
+        }
         boostRewardMessage={boostRewardMessage}
         onBoostRewardMessageChange={setBoostRewardMessage}
         mediaType={editingMediaId ? "audio" : undefined}

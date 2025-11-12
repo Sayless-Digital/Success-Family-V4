@@ -944,7 +944,6 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
           // Get user's boost status if authenticated
           let userHasBoosted = false
-          let canUnboost = false
           if (user) {
             const { data: userBoostedData } = await supabase
               .rpc('user_boosted_post', {
@@ -952,23 +951,13 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                 p_user_id: user.id
               })
             userHasBoosted = userBoostedData || false
-
-            // Check if user can unboost (within 1 minute)
-            if (userHasBoosted) {
-              const { data: canUnboostData } = await supabase
-                .rpc('can_unboost_post', {
-                  p_post_id: post.id,
-                  p_user_id: user.id
-                })
-              canUnboost = canUnboostData || false
-            }
           }
 
           return {
             ...post,
             boost_count: boostCountData || 0,
             user_has_boosted: userHasBoosted,
-            can_unboost: canUnboost
+            can_unboost: false  // Boosts are now irreversible
           }
         })
       )
@@ -1142,16 +1131,16 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
     const wasBoosted = boostedPostIds.has(postId)
     const previousBoostCount = boostSubject.boost_count ?? 0
-    const canUnboost = boostSubject.can_unboost ?? false
 
-    if (wasBoosted && !canUnboost) {
-      toast.error("You can only unboost within 1 minute of boosting")
+    // Boosts are now irreversible - prevent unboosting
+    if (wasBoosted) {
+      toast.error("Boosts are permanent and cannot be reversed")
       return
     }
 
     // Check combined balance (wallet + earnings)
     const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
-    if (!wasBoosted && availableBalance < 1) {
+    if (availableBalance < 1) {
       toast.error("You need at least 1 point to boost a post")
       return
     }
@@ -1168,8 +1157,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
       }, 600)
     }
 
-    const nextBoostCount = wasBoosted ? Math.max(previousBoostCount - 1, 0) : previousBoostCount + 1
-    const nextCanUnboost = wasBoosted ? false : true
+    const nextBoostCount = previousBoostCount + 1
 
     if (isRootPost) {
       setPosts((prevPosts) =>
@@ -1177,9 +1165,9 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
         p.id === postId
           ? {
               ...p,
-              user_has_boosted: !wasBoosted,
+              user_has_boosted: true,
                 boost_count: nextBoostCount,
-                can_unboost: nextCanUnboost,
+                can_unboost: false,
               }
             : p,
         ),
@@ -1197,8 +1185,8 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                   ? {
                       ...reply,
                       boost_count: nextBoostCount,
-                      user_has_boosted: !wasBoosted,
-                      can_unboost: nextCanUnboost,
+                      user_has_boosted: true,
+                      can_unboost: false,
                     }
                   : reply,
               ),
@@ -1209,8 +1197,8 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
           return {
             ...comment,
             boost_count: nextBoostCount,
-            user_has_boosted: !wasBoosted,
-            can_unboost: nextCanUnboost,
+            user_has_boosted: true,
+            can_unboost: false,
           }
         })
 
@@ -1223,30 +1211,21 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
     setBoostedPostIds((prev) => {
       const next = new Set(prev)
-      if (wasBoosted) {
-        next.delete(postId)
-      } else {
-        next.add(postId)
-      }
+      next.add(postId)
       return next
     })
 
     setBoostingPosts((prev) => new Set(prev).add(postId))
 
     try {
-      const rpcFunction = wasBoosted ? "unboost_post" : "boost_post"
-      const { error } = await supabase.rpc(rpcFunction, {
+      const { error } = await supabase.rpc("boost_post", {
         p_post_id: postId,
         p_user_id: user.id,
       })
 
       if (error) throw error
 
-      if (wasBoosted) {
-        toast.error("💔 Boost removed... They'll miss your support")
-      } else {
-        toast.success("🚀 Creator boosted! You made their day!")
-      }
+      toast.success("🚀 Creator boosted! You made their day!")
     } catch (error: any) {
       console.error("Error toggling boost:", error)
 
@@ -1258,7 +1237,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                 ...p,
                 user_has_boosted: wasBoosted,
                 boost_count: previousBoostCount,
-                  can_unboost: canUnboost,
+                  can_unboost: false,
                 }
               : p,
           ),
@@ -1277,7 +1256,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                         ...reply,
                         boost_count: previousBoostCount,
                         user_has_boosted: wasBoosted,
-                        can_unboost: canUnboost,
+                        can_unboost: false,
                       }
                     : reply,
                 ),
@@ -1289,7 +1268,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
               ...comment,
               boost_count: previousBoostCount,
               user_has_boosted: wasBoosted,
-              can_unboost: canUnboost,
+              can_unboost: false,
             }
           })
 
@@ -1304,8 +1283,6 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
         const next = new Set(prev)
         if (wasBoosted) {
           next.add(postId)
-        } else {
-          next.delete(postId)
         }
         return next
       })
@@ -1317,8 +1294,8 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
         toast.error("You cannot boost your own post")
       } else if (errorMessage.includes("already boosted")) {
         toast.error("You have already boosted this post")
-      } else if (errorMessage.includes("Cannot unboost after")) {
-        toast.error("You can only unboost within 1 minute of boosting")
+      } else if (errorMessage.includes("cannot be reversed") || errorMessage.includes("irreversible")) {
+        toast.error("Boosts are permanent and cannot be reversed")
       } else if (errorMessage) {
         toast.error(`Error: ${errorMessage}`)
       } else {
@@ -2010,6 +1987,22 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                   )}
                 </div>
                 
+                {/* Tags - Below Header, Above Content */}
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  {(post as any).is_trending && (
+                    <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                      Trending
+                    </Badge>
+                  )}
+                  {post.boost_reward_message && (
+                    <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
+                      <Crown className="h-3 w-3 mr-1" />
+                      Reward
+                    </Badge>
+                  )}
+                </div>
+                
                 {/* Content - Edit Mode or View Mode */}
                 {editingPostId === post.id ? (
                   <div className="space-y-4">
@@ -2245,17 +2238,6 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                   </div>
                 ) : (
                   <>
-                    {/* Tags - Above Content (except new creator tag) */}
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      {(post as any).is_trending && (
-                        <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
-                      {/* Add other tags here except new creator tag */}
-                    </div>
-
                     {/* Content Preview */}
                     <p className="text-white/80 text-base whitespace-pre-wrap break-words">
                       {post.content}
@@ -2290,7 +2272,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                           e.stopPropagation()
                           handleBoostToggle(post.id, post.author_id, e)
                         }}
-                        disabled={!user || boostingPosts.has(post.id)}
+                        disabled={!user || boostingPosts.has(post.id) || post.user_has_boosted}
                         className={`group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                           post.user_has_boosted
                             ? "bg-yellow-400/10 border-yellow-400/40"

@@ -172,21 +172,26 @@ export default function DiscoveryFeedView({
     setBoostingPosts(prev => new Set(prev).add(postId))
     setAnimatingBoosts(prev => new Set(prev).add(postId))
     
+    // Boosts are now irreversible - prevent unboosting
+    if (wasBoosted) {
+      toast.error("Boosts are permanent and cannot be reversed")
+      return
+    }
+
     setPosts(prevPosts =>
       prevPosts.map(p => {
         if (p.id !== postId) return p
         return {
           ...p,
-          user_has_boosted: !wasBoosted,
-          boost_count: wasBoosted ? previousBoostCount - 1 : previousBoostCount + 1,
-          can_unboost: !wasBoosted
+          user_has_boosted: true,
+          boost_count: previousBoostCount + 1,
+          can_unboost: false
         }
       })
     )
 
     try {
-      const rpcFunction = wasBoosted ? 'unboost_post' : 'boost_post'
-      const { data, error } = await supabase.rpc(rpcFunction, {
+      const { data, error } = await supabase.rpc('boost_post', {
         p_post_id: postId,
         p_user_id: user.id
       })
@@ -196,18 +201,13 @@ export default function DiscoveryFeedView({
       // Refresh wallet balance
       await refreshWalletBalance()
 
-      // Show success message
-      if (wasBoosted) {
-        toast.error("💔 Boost removed... They'll miss your support")
-      } else {
-        toast.success("🚀 Creator boosted! You made their day!")
-        // Confetti effect
-        confetti({
-          particleCount: 50,
-          spread: 70,
-          origin: { y: 0.6 }
-        })
-      }
+      toast.success("🚀 Creator boosted! You made their day!")
+      // Confetti effect
+      confetti({
+        particleCount: 50,
+        spread: 70,
+        origin: { y: 0.6 }
+      })
     } catch (error: any) {
       console.error('Error toggling boost:', error)
       
@@ -219,12 +219,17 @@ export default function DiscoveryFeedView({
             ...p,
             user_has_boosted: wasBoosted,
             boost_count: previousBoostCount,
-            can_unboost: wasBoosted
+            can_unboost: false
           }
         })
       )
       
-      toast.error(error?.message || "Failed to boost post. Please try again.")
+      const errorMessage = error?.message || ''
+      if (errorMessage.includes('cannot be reversed') || errorMessage.includes('irreversible')) {
+        toast.error("Boosts are permanent and cannot be reversed")
+      } else {
+        toast.error(errorMessage || "Failed to boost post. Please try again.")
+      }
     } finally {
       setBoostingPosts(prev => {
         const next = new Set(prev)
@@ -699,24 +704,6 @@ export default function DiscoveryFeedView({
                               <span className="text-white/80 text-sm font-medium">
                                 {post.author.first_name} {post.author.last_name}
                               </span>
-                              {post.is_low_visibility && (
-                                <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20 text-xs">
-                                  <Sparkles className="h-3 w-3 mr-1" />
-                                  <span>New Creator</span>
-                                </Badge>
-                              )}
-                              {(post.recent_boosts ?? 0) > 0 && (
-                                <Badge variant="outline" className="bg-orange-500/20 text-orange-200 border-orange-500/30 text-xs">
-                                  <Flame className="h-3 w-3 mr-1" />
-                                  Trending
-                                </Badge>
-                              )}
-                              {post.is_near_payout && (
-                                <Badge variant="outline" className="bg-emerald-500/20 text-emerald-200 border-emerald-500/30 text-xs">
-                                  <Target className="h-3 w-3 mr-1" />
-                                  Near Payout
-                                </Badge>
-                              )}
                             </div>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <span className="text-white/40 text-xs" suppressHydrationWarning>
@@ -792,6 +779,34 @@ export default function DiscoveryFeedView({
                         </div>
                       </div>
 
+                      {/* Tags - Below Header, Above Content */}
+                      <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        {post.is_low_visibility && (
+                          <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20 text-xs">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            <span>New Creator</span>
+                          </Badge>
+                        )}
+                        {(post.recent_boosts ?? 0) > 0 && (
+                          <Badge variant="outline" className="bg-orange-500/20 text-orange-200 border-orange-500/30 text-xs">
+                            <Flame className="h-3 w-3 mr-1" />
+                            Trending
+                          </Badge>
+                        )}
+                        {post.is_near_payout && (
+                          <Badge variant="outline" className="bg-emerald-500/20 text-emerald-200 border-emerald-500/30 text-xs">
+                            <Target className="h-3 w-3 mr-1" />
+                            Near Payout
+                          </Badge>
+                        )}
+                        {post.boost_reward_message && (
+                          <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20 text-xs">
+                            <Crown className="h-3 w-3 mr-1" />
+                            Reward
+                          </Badge>
+                        )}
+                      </div>
+
                       {/* Content - Edit Mode or View Mode */}
                       {editingPostId === post.id ? (
                         <div className="mb-3 space-y-3">
@@ -851,7 +866,7 @@ export default function DiscoveryFeedView({
                           <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => handleBoostToggle(post.id, post.author_id, e)}
-                          disabled={!user || boostingPosts.has(post.id)}
+                          disabled={!user || boostingPosts.has(post.id) || post.user_has_boosted}
                           className={cn(
                             "group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                             post.user_has_boosted
@@ -1062,7 +1077,7 @@ export default function DiscoveryFeedView({
                           e.stopPropagation()
                           handleBoostToggle(post.id, post.author_id, e)
                         }}
-                        disabled={!user || boostingPosts.has(post.id)}
+                        disabled={!user || boostingPosts.has(post.id) || post.user_has_boosted}
                         className={cn(
                           "group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                           post.user_has_boosted
