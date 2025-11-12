@@ -67,17 +67,9 @@ export async function signUp(data: SignUpData): Promise<AuthResult> {
  */
 export async function signIn(data: SignInData): Promise<AuthResult> {
   try {
-    // CRITICAL: Add cache busting timestamp to ensure fresh auth request
-    // This prevents stale cached responses on mobile
-    const cacheBuster = `_t=${Date.now()}`
-    
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
-      options: {
-        // Ensure session is persisted
-        shouldCreateUser: false,
-      },
     })
 
     if (error) {
