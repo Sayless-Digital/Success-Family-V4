@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Coins, Wallet as WalletIcon, Eye, X } from "lucide-react"
+import { Coins, Wallet as WalletIcon, Eye, X, Gift } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TopUpAmount } from "@/components/ui/topup-amount"
 import { CopyField } from "@/components/ui/copy-field"
 import { WalletSuccessToast } from "@/components/wallet-success-toast"
+import { BonusCountdown } from "@/components/bonus-countdown"
 import { cn } from "@/lib/utils"
 
 type WalletSnapshot = {
@@ -186,6 +187,10 @@ export function WalletView({
   userValuePerPoint,
   payoutMinimumTtd,
   mandatoryTopupTtd,
+  topupBonusEnabled,
+  topupBonusPoints,
+  topupBonusEndTime,
+  hasCompletedFirstTopup,
   onSubmitAction,
 }: {
   initialWallet: WalletSnapshot | null
@@ -198,6 +203,10 @@ export function WalletView({
   userValuePerPoint: number
   payoutMinimumTtd: number
   mandatoryTopupTtd: number
+  topupBonusEnabled: boolean
+  topupBonusPoints: number
+  topupBonusEndTime: string | null
+  hasCompletedFirstTopup: boolean
   onSubmitAction: (formData: FormData) => void
 }) {
   const {
@@ -576,11 +585,58 @@ export function WalletView({
                 <DialogDescription>Upload your receipt and select the bank account used to add points to your wallet.</DialogDescription>
               </DialogHeader>
               <form action={onSubmitAction} className="space-y-4">
+                {(() => {
+                  const isBonusValid = topupBonusEnabled && topupBonusPoints > 0
+                  const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                  const isExpired = expirationTime ? new Date() >= expirationTime : false
+                  const isTodayOnly = expirationTime && expirationTime.toDateString() === new Date().toDateString()
+                  
+                  if (!isBonusValid || isExpired) return null
+                  
+                  return (
+                    <div className="rounded-lg bg-white/10 border border-white/20 p-4 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Gift className="h-5 w-5 text-white/80" />
+                        <div className="text-sm font-semibold text-white/90">Top-Up Bonus!</div>
+                        {isTodayOnly && (
+                          <span className="text-xs font-medium text-white/80 bg-white/10 px-2 py-0.5 rounded">Today Only</span>
+                        )}
+                      </div>
+                      <div className="text-sm text-white/80">
+                        Get <span className="font-semibold text-white">{topupBonusPoints.toLocaleString()} bonus points</span> on your top-up!
+                      </div>
+                      {expirationTime && (
+                        <>
+                          <BonusCountdown endTime={topupBonusEndTime!} />
+                          <div className="text-xs text-white/60">
+                            Expires: {expirationTime.toLocaleString(undefined, { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )
+                })()}
                 <div className="space-y-2">
                   <Label htmlFor="points" className="text-white/80">
                     Points
                   </Label>
-                  <TopUpAmount buyPricePerPoint={Number(buyPricePerPoint ?? 1)} minAmount={mandatoryTopupTtd} />
+                  <TopUpAmount 
+                    buyPricePerPoint={Number(buyPricePerPoint ?? 1)} 
+                    minAmount={mandatoryTopupTtd}
+                    showBonus={(() => {
+                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                      const isExpired = expirationTime ? new Date() >= expirationTime : false
+                      return topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+                    })()}
+                    bonusPoints={topupBonusPoints}
+                    bonusEndTime={topupBonusEndTime}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-white/80">Bank Account</Label>

@@ -39,7 +39,7 @@ async function getWalletData(userId: string) {
       .limit(TRANSACTION_PAGE_SIZE + 1),
     supabase
       .from('platform_settings')
-      .select('buy_price_per_point, user_value_per_point, payout_minimum_ttd, mandatory_topup_ttd')
+      .select('buy_price_per_point, user_value_per_point, payout_minimum_ttd, mandatory_topup_ttd, topup_bonus_enabled, topup_bonus_points, topup_bonus_end_time')
       .eq('id', 1)
       .maybeSingle(),
     supabase
@@ -78,6 +78,7 @@ async function getWalletData(userId: string) {
     settings,
     earningsLedger: earningsLedger ?? [],
     payouts: payouts ?? [],
+    hasCompletedFirstTopup: wallet?.has_completed_first_topup ?? false,
   }
 }
 
@@ -150,7 +151,7 @@ export default async function WalletPage() {
   if (!user) {
     redirect('/')
   }
-  const { wallet, banks, transactions, transactionsHasMore, settings, earningsLedger, payouts } = await getWalletData(user.id)
+  const { wallet, banks, transactions, transactionsHasMore, settings, earningsLedger, payouts, hasCompletedFirstTopup } = await getWalletData(user.id)
   
   return (
     <div className="space-y-6">
@@ -166,6 +167,10 @@ export default async function WalletPage() {
         userValuePerPoint={Number(settings?.user_value_per_point ?? 1)}
         payoutMinimumTtd={Number(settings?.payout_minimum_ttd ?? 100)}
         mandatoryTopupTtd={Number(settings?.mandatory_topup_ttd ?? 50)}
+        topupBonusEnabled={settings?.topup_bonus_enabled ?? false}
+        topupBonusPoints={Number(settings?.topup_bonus_points ?? 0)}
+        topupBonusEndTime={settings?.topup_bonus_end_time ?? null}
+        hasCompletedFirstTopup={hasCompletedFirstTopup}
         onSubmitAction={submitReceiptAction}
       />
     </div>

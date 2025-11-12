@@ -70,6 +70,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
   } | null>(null)
   const referralSearchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
   const referralDropdownRef = React.useRef<HTMLDivElement>(null)
+  const [topupBonusEnabled, setTopupBonusEnabled] = React.useState(false)
 
   // Restore cursor position after password visibility toggle
   React.useEffect(() => {
@@ -151,10 +152,38 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     }
   }, [])
 
+  // Fetch top-up bonus enabled status
+  React.useEffect(() => {
+    if (!open) return
+    
+    const fetchBonusStatus = async () => {
+      try {
+        const { data } = await supabase
+          .from('platform_settings')
+          .select('topup_bonus_enabled, topup_bonus_end_time')
+          .eq('id', 1)
+          .maybeSingle()
+        
+        const isEnabled = data?.topup_bonus_enabled ?? false
+        const endTime = data?.topup_bonus_end_time ? new Date(data.topup_bonus_end_time) : null
+        const isExpired = endTime ? new Date() >= endTime : false
+        
+        // Only enable if not expired
+        setTopupBonusEnabled(isEnabled && !isExpired)
+      } catch (error) {
+        console.error('Error fetching bonus status:', error)
+        setTopupBonusEnabled(false)
+      }
+    }
+    
+    fetchBonusStatus()
+  }, [open])
+
   // Auto-detect referral from URL parameter on mount and when dialog opens
   React.useEffect(() => {
     if (typeof window === 'undefined') return
     if (!open || activeTab !== 'signup') return
+    if (topupBonusEnabled) return // Skip referral if bonus is enabled
     
     const urlParams = new URLSearchParams(window.location.search)
     const refCode = urlParams.get('ref')
@@ -164,7 +193,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       setReferralSearch(refCode)
       searchReferralUser(refCode)
     }
-  }, [open, activeTab, searchReferralUser, selectedReferrer])
+  }, [open, activeTab, searchReferralUser, selectedReferrer, topupBonusEnabled])
 
   // Handle referral search with debounce
   React.useEffect(() => {
@@ -647,6 +676,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                 </p>
               </div>
 
+              {!topupBonusEnabled && (
               <div className="space-y-2">
                 <Label htmlFor="signup-referral">Referred By (Optional)</Label>
                 <div className="relative" ref={referralDropdownRef}>
@@ -726,6 +756,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                   Optional: Search for the person who referred you
                 </p>
               </div>
+              )}
 
               {error && (
                 <div className="text-sm text-destructive">

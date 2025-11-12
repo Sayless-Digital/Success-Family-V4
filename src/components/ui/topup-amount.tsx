@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { BonusCountdown } from '@/components/bonus-countdown'
 
 interface TopUpAmountProps {
   id?: string
@@ -10,6 +11,9 @@ interface TopUpAmountProps {
   minAmount?: number // minimum top-up in TTD
   presets?: number[] // point presets
   buyPricePerPoint: number
+  showBonus?: boolean // whether to show bonus preview
+  bonusPoints?: number // number of bonus points
+  bonusEndTime?: string | null // expiration time for bonus
 }
 
 export function TopUpAmount({
@@ -18,6 +22,9 @@ export function TopUpAmount({
   minAmount = 50,
   presets,
   buyPricePerPoint,
+  showBonus = false,
+  bonusPoints = 0,
+  bonusEndTime = null,
 }: TopUpAmountProps) {
   const toCents = (n: number) => Math.round(n * 100)
   const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
@@ -66,7 +73,40 @@ export function TopUpAmount({
         ))}
       </div>
       <div className="text-xs text-white/60">Minimum top up is {minPointsRounded} pts (≈ $ {minAmount.toFixed(2)} TTD, rounded to whole dollars).</div>
-      <div className="text-white/80 text-sm">Cost: <span className="font-medium">$ {amount.toFixed(2)}</span> for <span className="font-medium">{points.toLocaleString()} pts</span></div>
+      <div className="text-white/80 text-sm">
+        Cost: <span className="font-medium">$ {amount.toFixed(2)}</span> for <span className="font-medium">{points.toLocaleString()} pts</span>
+        {showBonus && bonusPoints > 0 && (
+          <span className="ml-2 text-white/60">
+            + <span className="font-medium text-white/80">{bonusPoints.toLocaleString()} bonus pts</span>
+          </span>
+        )}
+      </div>
+      {showBonus && bonusPoints > 0 && (
+        <>
+          <div className="text-xs text-white/60">
+            You'll receive {points.toLocaleString()} + {bonusPoints.toLocaleString()} = <span className="font-medium text-white/80">{(points + bonusPoints).toLocaleString()} total points</span>
+          </div>
+          {bonusEndTime && (() => {
+            const expirationTime = new Date(bonusEndTime)
+            const isTodayOnly = expirationTime.toDateString() === new Date().toDateString()
+            return (
+              <>
+                <BonusCountdown endTime={bonusEndTime} />
+                <div className="text-xs text-white/60">
+                  {isTodayOnly && <span className="font-medium text-white/80">Today Only</span>} 
+                  {isTodayOnly && ' - '}
+                  Expires: {expirationTime.toLocaleString(undefined, { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    hour: 'numeric',
+                    minute: '2-digit'
+                  })}
+                </div>
+              </>
+            )
+          })()}
+        </>
+      )}
     </div>
   )
 }
