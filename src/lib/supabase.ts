@@ -16,5 +16,18 @@ export const supabase = createBrowserClient(
       // Use PKCE flow for better security and mobile compatibility
       flowType: 'pkce',
     },
+    global: {
+      headers: {
+        // CRITICAL: Add proper Accept headers to fix 406 errors
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    },
+    // Add realtime configuration for better channel reliability
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
   }
 )

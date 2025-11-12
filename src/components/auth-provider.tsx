@@ -79,6 +79,8 @@ async function fetchProfileWithRetry(userId: string, maxRetries = 3, timeout = 1
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // CRITICAL: Start with isLoading=true but only on client to avoid hydration mismatch
+  // Server will render with loading=true, client will hydrate with loading=true, then update
   const [user, setUser] = React.useState<SupabaseUser | null>(null)
   const [userProfile, setUserProfile] = React.useState<User | null>(null)
   const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
@@ -89,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = React.useState(true)
   const [walletDataLoaded, setWalletDataLoaded] = React.useState(false)
   const [profileError, setProfileError] = React.useState(false)
+  const [isHydrated, setIsHydrated] = React.useState(false)
 
   // Helper to clear all auth state
   const clearAuthState = React.useCallback(() => {
@@ -143,64 +146,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
+  // Hydration effect - runs immediately on client mount
+  React.useEffect(() => {
+    setIsHydrated(true)
+  }, [])
+
   // Initialize auth state on mount
   React.useEffect(() => {
+    // Wait for hydration before initializing auth to avoid hydration mismatches
+    if (!isHydrated) return
+
     let isMounted = true
     let authInitialized = false
     let isProcessingAuthChange = false
 
-    // Get initial session with timeout protection
+    // Get initial session with simplified timeout protection
     const initializeAuth = async () => {
-      let timeoutFired = false
-      
-      // Set a maximum timeout for the entire initialization (5 seconds)
-      // This prevents infinite loading states on slow networks (especially mobile)
-      const initTimeout = setTimeout(() => {
-        if (!authInitialized && isMounted) {
-          console.warn("Auth initialization timeout - assuming no session")
-          timeoutFired = true
-          clearAuthState()
-          userRef.current = null
-          userProfileRef.current = null
-          authInitialized = true
-          setIsLoading(false)
-        }
-      }, 5000)
-
       try {
-        // First, get session from cookies (fast, for instant UI)
-        // Wrap getSession in a timeout to prevent hanging on slow networks
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
-          setTimeout(() => resolve({ data: { session: null }, error: null }), 3000)
-        })
+        // Get session with a reasonable timeout (3 seconds)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000)
         
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
-        
-        // Check if timeout already fired - if so, don't continue
-        if (timeoutFired || !isMounted || authInitialized) {
-          return
-        }
-
-        if (session?.user) {
-          // CRITICAL: Validate session with server using getUser()
-          // This ensures the session is actually valid, not just cached in cookies
-          // Also wrap getUser in a timeout
-          const userPromise = supabase.auth.getUser()
-          const userTimeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
-            setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), 2000)
-          })
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+          clearTimeout(timeoutId)
           
-          const { data: { user }, error } = await Promise.race([userPromise, userTimeoutPromise])
+          if (!isMounted || authInitialized) return
           
-          // Check again if timeout fired or component unmounted
-          if (timeoutFired || !isMounted || authInitialized) {
-            return
-          }
-          
-          if (error || !user) {
-            // Session is invalid - clear state (stale cookies or timeout)
-            console.warn("Session validation failed:", error?.message || "No user")
+          if (sessionError) {
+            console.warn("Session fetch error:", sessionError)
             clearAuthState()
             userRef.current = null
             userProfileRef.current = null
@@ -208,51 +182,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(false)
             return
           }
-          
-          // Session is valid - set user
-          setUser(user)
-          userRef.current = user
-          
-          // Fetch profile with retry logic (this has its own timeout)
-          const profile = await fetchProfileWithRetry(user.id)
-          
-          // Check again if timeout fired or component unmounted
-          if (timeoutFired || !isMounted || authInitialized) {
-            return
-          }
-          
-          if (profile) {
-            setUserProfile(profile)
-            userProfileRef.current = profile
-            setProfileError(false)
+
+          if (session?.user) {
+            // Validate session with getUser() - simpler without race condition timeouts
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            
+            if (!isMounted || authInitialized) return
+            
+            if (userError || !user) {
+              console.warn("Session validation failed:", userError?.message || "No user")
+              clearAuthState()
+              userRef.current = null
+              userProfileRef.current = null
+              authInitialized = true
+              setIsLoading(false)
+              return
+            }
+            
+            // Session is valid - set user
+            setUser(user)
+            userRef.current = user
+            
+            // Fetch profile with retry logic
+            const profile = await fetchProfileWithRetry(user.id, 3, 10000)
+            
+            if (!isMounted || authInitialized) return
+            
+            if (profile) {
+              setUserProfile(profile)
+              userProfileRef.current = profile
+              setProfileError(false)
+            } else {
+              console.warn("Failed to fetch user profile after retries")
+              setProfileError(true)
+            }
           } else {
-            console.warn("Failed to fetch user profile after retries")
-            setProfileError(true)
-            // Don't sign out - keep user authenticated but show error state
+            // No session
+            clearAuthState()
+            userRef.current = null
+            userProfileRef.current = null
           }
-        } else {
-          // No session, ensure state is cleared (fast path)
+        } catch (abortError) {
+          // Timeout or abort - treat as no session
+          if (!isMounted) return
+          console.warn("Auth initialization timeout")
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
         }
       } catch (error) {
         console.error("Error initializing auth:", error)
-        if (timeoutFired || authInitialized) {
-          // Timeout already handled it, don't double-clear
-          return
-        }
-        if (isMounted) {
-          clearAuthState()
-          userRef.current = null
-          userProfileRef.current = null
-        }
+        if (!isMounted || authInitialized) return
+        clearAuthState()
+        userRef.current = null
+        userProfileRef.current = null
       } finally {
-        // Clear the timeout since we're done (either successfully or with error)
-        clearTimeout(initTimeout)
-        
-        // Only set loading to false if timeout didn't fire and we're not already initialized
-        if (!timeoutFired && isMounted && !authInitialized) {
+        if (isMounted && !authInitialized) {
           authInitialized = true
           setIsLoading(false)
         }
@@ -355,7 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false
       subscription.unsubscribe()
     }
-  }, [clearAuthState])
+  }, [clearAuthState, isHydrated])
 
   const handleSignOut = React.useCallback(async () => {
     try {

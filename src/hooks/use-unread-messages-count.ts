@@ -18,10 +18,10 @@ export function useUnreadMessagesCount(userId: string | null) {
 
     let channel: RealtimeChannel | null = null
     let isCancelled = false
+    let channelSubscribed = false
 
     const fetchUnreadCount = async () => {
       try {
-        // Get all threads where the user is a participant with their last_read_at
         const { data: participants, error: participantsError } = await supabase
           .from("dm_participants")
           .select("thread_id, last_read_at")
@@ -44,25 +44,18 @@ export function useUnreadMessagesCount(userId: string | null) {
           return
         }
 
-        // Count unread messages across all threads
-        // A message is unread if:
-        // 1. It was sent by someone else (not the current user)
-        // 2. It was created after the user's last_read_at for that thread (or last_read_at is null)
         let totalUnread = 0
 
-        // Process each thread to count unread messages
         for (const participant of participants) {
           const threadId = participant.thread_id
           const lastReadAt = participant.last_read_at
 
-          // Build query to count unread messages in this thread
           let query = supabase
             .from("dm_messages")
             .select("id", { count: "exact", head: true })
             .eq("thread_id", threadId)
-            .neq("sender_id", userId) // Only messages from others
+            .neq("sender_id", userId)
 
-          // If there's a last_read_at, only count messages after that time
           if (lastReadAt) {
             query = query.gt("created_at", lastReadAt)
           }
@@ -90,7 +83,6 @@ export function useUnreadMessagesCount(userId: string | null) {
       }
     }
 
-    // Debounced refetch to avoid too many requests (reduced from 300ms to 100ms for faster updates)
     const debouncedRefetch = () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
@@ -99,10 +91,9 @@ export function useUnreadMessagesCount(userId: string | null) {
         if (!isCancelled) {
           fetchUnreadCount()
         }
-      }, 100) // 100ms debounce for faster updates
+      }, 100)
     }
 
-    // Immediate refetch (no debounce) for critical updates
     const immediateRefetch = () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
@@ -113,79 +104,97 @@ export function useUnreadMessagesCount(userId: string | null) {
       }
     }
 
-    // Initial fetch
     fetchUnreadCount()
 
-    // Subscribe to real-time updates using Supabase Realtime
-    // Listen to new messages and participant updates
-    channel = supabase
-      .channel(`unread-messages-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "dm_messages",
-        },
-        async (payload) => {
-          if (isCancelled) return
-          
-          // When a new message is inserted, check if it's relevant to the current user
-          const newMessage = payload.new as any
-          if (!newMessage || newMessage.sender_id === userId) {
-            return // Skip if it's our own message
-          }
+    const subscriptionTimer = setTimeout(() => {
+      if (isCancelled) return
+      
+      try {
+        channel = supabase
+          .channel(`unread-messages-${userId}`, {
+            config: {
+              broadcast: { self: false },
+              presence: { key: userId },
+            },
+          })
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "dm_messages",
+            },
+            async (payload) => {
+              if (isCancelled || !channelSubscribed) return
+              
+              const newMessage = payload.new as any
+              if (!newMessage || newMessage.sender_id === userId) {
+                return
+              }
 
-          // Check if the current user is a participant in this thread
-          const { data: participant } = await supabase
-            .from("dm_participants")
-            .select("thread_id")
-            .eq("thread_id", newMessage.thread_id)
-            .eq("user_id", userId)
-            .maybeSingle()
+              const { data: participant } = await supabase
+                .from("dm_participants")
+                .select("thread_id")
+                .eq("thread_id", newMessage.thread_id)
+                .eq("user_id", userId)
+                .maybeSingle()
 
-          // Only refetch if user is a participant in this thread
-          // Use immediate refetch for new messages (critical update)
-          if (participant) {
-            immediateRefetch()
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "dm_participants",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          // When last_read_at is updated (messages marked as read), refetch count immediately
-          if (!isCancelled) {
-            immediateRefetch()
-          }
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED" && !isCancelled) {
-          // Refetch after subscription is established to ensure we have the latest count
+              if (participant && !isCancelled) {
+                immediateRefetch()
+              }
+            },
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "dm_participants",
+              filter: `user_id=eq.${userId}`,
+            },
+            () => {
+              if (!isCancelled && channelSubscribed) {
+                immediateRefetch()
+              }
+            },
+          )
+          .subscribe((status) => {
+            if (isCancelled) return
+            
+            if (status === "SUBSCRIBED") {
+              channelSubscribed = true
+              fetchUnreadCount()
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              console.error(`[useUnreadMessagesCount] Channel error: ${status}`)
+              channelSubscribed = false
+              if (!isCancelled) {
+                fetchUnreadCount()
+              }
+            } else if (status === "CLOSED") {
+              channelSubscribed = false
+            }
+          })
+      } catch (error) {
+        console.error("[useUnreadMessagesCount] Error setting up channel:", error)
+        if (!isCancelled) {
           fetchUnreadCount()
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`[useUnreadMessagesCount] Channel error: ${status}`)
-          // Try to refetch on error to get current state
-          if (!isCancelled) {
-            fetchUnreadCount()
-          }
         }
-      })
+      }
+    }, 500)
 
     return () => {
       isCancelled = true
+      channelSubscribed = false
+      clearTimeout(subscriptionTimer)
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
       }
       if (channel) {
-        supabase.removeChannel(channel)
+        try {
+          supabase.removeChannel(channel)
+        } catch (error) {
+          // Ignore cleanup errors
+        }
       }
     }
   }, [userId])
