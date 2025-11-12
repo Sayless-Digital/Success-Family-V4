@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { X, Plus, ChevronLeft, ChevronRight, Mic, Image as ImageIcon, Play, Pause, Trash2 } from "lucide-react"
+import { X, Plus, ChevronLeft, ChevronRight, Mic, Image as ImageIcon, Play, Pause, Trash2, Crown } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -12,6 +12,7 @@ import type { MediaType, PostWithAuthor } from "@/types"
 import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
+import { BoostRewardsDialog } from "@/components/boost-rewards-dialog"
 
 interface InlinePostComposerProps {
   communityId: string
@@ -32,6 +33,7 @@ interface MediaFile {
   file: File
   preview: string
   type: MediaType
+  requiresBoost?: boolean
 }
 
 export function InlinePostComposer({
@@ -73,6 +75,7 @@ export function InlinePostComposer({
   const [voiceNote, setVoiceNote] = React.useState<MediaFile | null>(null)
   const [imageFiles, setImageFiles] = React.useState<MediaFile[]>([])
   const [submitting, setSubmitting] = React.useState(false)
+  const [showBoostRewardsDialog, setShowBoostRewardsDialog] = React.useState(false)
   const [uploadProgress, setUploadProgress] = React.useState<{ current: number; total: number } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [showVoiceRecorder, setShowVoiceRecorder] = React.useState(false)
@@ -259,7 +262,7 @@ export function InlinePostComposer({
     audio.load()
     
     // Replace existing voice note if any (only one allowed)
-    setVoiceNote({ file, preview, type: 'audio' })
+    setVoiceNote({ file, preview, type: 'audio', requiresBoost: false })
     setShowVoiceRecorder(false)
   }
 
@@ -394,7 +397,7 @@ export function InlinePostComposer({
     if (voiceNote) {
       setUploadProgress({ current: 1, total: totalFiles })
       
-      const { file, type } = voiceNote
+      const { file, type, requiresBoost } = voiceNote
       const fileExt = file.name.split('.').pop()
       const timestamp = Date.now()
       const fileName = `${timestamp}-voice.${fileExt}`
@@ -424,7 +427,8 @@ export function InlinePostComposer({
           file_name: file.name,
           file_size: file.size,
           mime_type: file.type,
-          display_order: displayOrder++
+          display_order: displayOrder++,
+          requires_boost: requiresBoost || false
         })
         .select()
 
@@ -701,6 +705,27 @@ export function InlinePostComposer({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
+                        setShowBoostRewardsDialog(true)
+                      }}
+                      className={cn(
+                        "flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer flex-shrink-0",
+                        voiceNote.requiresBoost
+                          ? "bg-white/10 border-white/30"
+                          : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                      )}
+                      title={voiceNote.requiresBoost ? "Voice note locked behind boost" : "Set boost rewards"}
+                    >
+                      <Crown className={cn(
+                        "h-4 w-4 transition-all",
+                        voiceNote.requiresBoost
+                          ? "text-white/90 fill-white/20"
+                          : "text-white/70 hover:text-white/80"
+                      )} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
                         removeVoiceNote()
                       }}
                       className="flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
@@ -892,6 +917,19 @@ export function InlinePostComposer({
           </div>
         )}
       </CardContent>
+      
+      {/* Boost Rewards Dialog */}
+      {voiceNote && (
+        <BoostRewardsDialog
+          open={showBoostRewardsDialog}
+          onOpenChange={setShowBoostRewardsDialog}
+          requiresBoost={voiceNote.requiresBoost || false}
+          onRequiresBoostChange={(requiresBoost) => {
+            setVoiceNote(prev => prev ? { ...prev, requiresBoost } : null)
+          }}
+          mediaType="audio"
+        />
+      )}
     </Card>
   )
 }

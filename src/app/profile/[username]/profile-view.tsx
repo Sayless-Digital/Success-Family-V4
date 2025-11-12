@@ -1683,7 +1683,20 @@ export default function ProfileView({
 
                   {/* Post Media Slider */}
                   {post.media && post.media.length > 0 && (
-                    <PostMediaSlider media={post.media} author={post.author} />
+                    <PostMediaSlider 
+                      media={post.media} 
+                      author={post.author}
+                      userHasBoosted={post.user_has_boosted || false}
+                      authorId={post.author_id}
+                      currentUserId={currentUser?.id}
+                    />
+                  )}
+
+                  {/* Boost to unlock reward message */}
+                  {post.media?.some(m => m.media_type === 'audio' && m.requires_boost && !post.user_has_boosted && post.author_id !== currentUser?.id) && (
+                    <div className="mt-3 text-center">
+                      <p className="text-sm text-white/70">Boost to unlock reward</p>
+                    </div>
                   )}
 
                   {/* Boost and Save Buttons */}

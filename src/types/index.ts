@@ -304,6 +304,7 @@ export interface PostMedia {
   file_size?: number
   mime_type?: string
   display_order: number
+  requires_boost?: boolean
   created_at?: string
 }
 

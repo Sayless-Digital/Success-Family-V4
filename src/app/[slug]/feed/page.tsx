@@ -54,7 +54,8 @@ export default async function FeedPage({ params }: FeedPageProps) {
           media_type,
           storage_path,
           file_name,
-          display_order
+          display_order,
+          requires_boost
         )
       `)
       .eq('community_id', community.id)

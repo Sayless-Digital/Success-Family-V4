@@ -125,12 +125,8 @@ export default function EmailsPage() {
       const data = await response.json()
       if (data.email) {
         setUserEmail(data.email)
-        // Always call setup to ensure endpoint URL is up-to-date
-        // This fixes cases where endpoints have wrong URLs (e.g., localhost in production)
-        console.log("Email exists, ensuring endpoint URL is current...")
-        setupEmail()
       } else {
-        // If no email exists, set it up
+        // If no email exists, create it automatically
         setupEmail()
       }
     } catch (error) {
@@ -151,18 +147,12 @@ export default function EmailsPage() {
         toast.warning(data.warning, {
           description: "You may need to verify the domain in Inbound first",
         })
-      } else if (data.message && data.message.includes("updated")) {
-        // Silently update - don't show toast for URL updates on every page load
-        console.log("Endpoint URL updated successfully")
-      } else if (data.message && data.message.includes("synced")) {
-        toast.success("Email address synced with Inbound successfully")
       } else if (data.message && data.message.includes("created")) {
         toast.success("Email address created successfully")
       }
     } catch (error) {
       console.error("Error setting up email:", error)
-      // Don't show error toast on every page load - only log it
-      // toast.error("Failed to set up email address")
+      toast.error("Failed to set up email address")
     }
   }
 

@@ -109,7 +109,7 @@ export default function CommunitySettingsPage() {
     if (authLoading) return // Wait for auth to load
     
     if (!user) {
-      router.push(`/${slug}`)
+      router.push('/')
       return
     }
     

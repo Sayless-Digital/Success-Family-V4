@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { X, Image as ImageIcon, Mic, Play, Pause, Trash2 } from "lucide-react"
+import { X, Image as ImageIcon, Mic, Play, Pause, Trash2, Crown } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
 import { PostMediaSlider } from "@/components/post-media-slider"
+import { BoostRewardsDialog } from "@/components/boost-rewards-dialog"
 
 interface EditPostDialogProps {
   open: boolean
@@ -23,6 +24,7 @@ interface MediaFile {
   file: File
   preview: string
   type: MediaType
+  requiresBoost?: boolean
 }
 
 interface ExistingMedia {
@@ -30,6 +32,7 @@ interface ExistingMedia {
   preview: string
   type: MediaType
   storagePath: string
+  requiresBoost?: boolean
 }
 
 export function EditPostDialog({
@@ -45,6 +48,8 @@ export function EditPostDialog({
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [showVoiceRecorder, setShowVoiceRecorder] = React.useState(false)
+  const [showBoostRewardsDialog, setShowBoostRewardsDialog] = React.useState(false)
+  const [editingMediaId, setEditingMediaId] = React.useState<string | null>(null)
   const [playingAudio, setPlayingAudio] = React.useState<string | null>(null)
   const [audioProgress, setAudioProgress] = React.useState<Record<string, { current: number; duration: number }>>({})
   const audioRefs = React.useRef<Record<string, HTMLAudioElement>>({})
@@ -58,7 +63,8 @@ export function EditPostDialog({
         id: m.id!,
         preview: supabase.storage.from('post-media').getPublicUrl(m.storage_path).data.publicUrl,
         type: m.media_type,
-        storagePath: m.storage_path
+        storagePath: m.storage_path,
+        requiresBoost: m.requires_boost || false
       }))
       setExistingMedia(existing)
       setContent(post.content)
@@ -166,6 +172,8 @@ export function EditPostDialog({
     const preview = URL.createObjectURL(audioBlob)
     const fileName = `voice-note-${Date.now()}.webm`
     const file = new File([audioBlob], fileName, { type: 'audio/webm' })
+    
+    setMediaFiles(prev => [...prev, { file, preview, type: 'audio', requiresBoost: false }])
 
     const audio = new Audio(preview)
     audio.addEventListener('loadedmetadata', () => {
@@ -197,7 +205,6 @@ export function EditPostDialog({
     audioRefs.current[preview] = audio
     audio.load()
 
-    setMediaFiles(prev => [...prev, { file, preview, type: 'audio' }])
     setShowVoiceRecorder(false)
   }
 
@@ -312,7 +319,8 @@ export function EditPostDialog({
           file_name: media.file.name,
           file_size: media.file.size,
           mime_type: media.file.type,
-          display_order: existingMedia.length + i
+          display_order: existingMedia.length + i,
+          requires_boost: media.requiresBoost || false
         })
 
         if (mediaError) throw mediaError
@@ -321,6 +329,16 @@ export function EditPostDialog({
       // Refresh wallet balance if we added voice notes (only for non-admins, as admins don't have points deducted)
       if (hasVoiceNotes && !isAdmin) {
         await refreshWalletBalance?.()
+      }
+
+      // Update requires_boost for existing media
+      for (const media of existingMedia) {
+        const { error: updateError } = await supabase
+          .from('post_media')
+          .update({ requires_boost: media.requiresBoost || false })
+          .eq('id', media.id)
+        
+        if (updateError) throw updateError
       }
 
       // Fetch updated post
@@ -340,7 +358,8 @@ export function EditPostDialog({
             media_type,
             storage_path,
             file_name,
-            display_order
+            display_order,
+            requires_boost
           )
         `)
         .eq('id', post.id)
@@ -393,6 +412,26 @@ export function EditPostDialog({
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-white/60">Voice Note</span>
                           <div className="flex-1" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingMediaId(media.id)
+                              setShowBoostRewardsDialog(true)
+                            }}
+                            className={cn(
+                              "h-6 w-6 p-0",
+                              media.requiresBoost
+                                ? "text-white/90 hover:text-white"
+                                : "text-white/70 hover:text-white"
+                            )}
+                            title={media.requiresBoost ? "Voice note locked behind boost" : "Set boost rewards"}
+                          >
+                            <Crown className={cn(
+                              "h-3 w-3",
+                              media.requiresBoost && "fill-white/20"
+                            )} />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -453,6 +492,26 @@ export function EditPostDialog({
                             ) : (
                               <Play className="h-4 w-4 text-white/70" />
                             )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingMediaId(`new-${index}`)
+                              setShowBoostRewardsDialog(true)
+                            }}
+                            className={cn(
+                              "h-8 w-8 p-0",
+                              media.requiresBoost
+                                ? "text-white/90 hover:text-white"
+                                : "text-white/70 hover:text-white"
+                            )}
+                            title={media.requiresBoost ? "Voice note locked behind boost" : "Set boost rewards"}
+                          >
+                            <Crown className={cn(
+                              "h-4 w-4",
+                              media.requiresBoost && "fill-white/20"
+                            )} />
                           </Button>
                           <Button
                             variant="ghost"
@@ -592,6 +651,25 @@ export function EditPostDialog({
           </div>
         </div>
       </DialogContent>
+      {/* Boost Rewards Dialog */}
+      <BoostRewardsDialog
+        open={showBoostRewardsDialog}
+        onOpenChange={setShowBoostRewardsDialog}
+        requiresBoost={
+          editingMediaId?.startsWith('new-')
+            ? mediaFiles[parseInt(editingMediaId.replace('new-', ''))]?.requiresBoost || false
+            : existingMedia.find(m => m.id === editingMediaId)?.requiresBoost || false
+        }
+        onRequiresBoostChange={(requiresBoost) => {
+          if (editingMediaId?.startsWith('new-')) {
+            const index = parseInt(editingMediaId.replace('new-', ''))
+            setMediaFiles(prev => prev.map((m, i) => i === index ? { ...m, requiresBoost } : m))
+          } else if (editingMediaId) {
+            setExistingMedia(prev => prev.map(m => m.id === editingMediaId ? { ...m, requiresBoost } : m))
+          }
+        }}
+        mediaType="audio"
+      />
     </Dialog>
   )
 }

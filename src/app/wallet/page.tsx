@@ -147,7 +147,9 @@ async function submitReceiptAction(formData: FormData) {
 export default async function WalletPage() {
   const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
+  if (!user) {
+    redirect('/')
+  }
   const { wallet, banks, transactions, transactionsHasMore, settings, earningsLedger, payouts } = await getWalletData(user.id)
   
   return (

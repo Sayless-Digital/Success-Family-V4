@@ -716,7 +716,13 @@ export default function DiscoveryFeedView({
                             {/* Post Media Slider */}
                             {post.media && post.media.length > 0 && (
                               <div className="mt-3">
-                                <PostMediaSlider media={post.media} author={post.author} />
+                                <PostMediaSlider 
+                                  media={post.media} 
+                                  author={post.author}
+                                  userHasBoosted={post.user_has_boosted || false}
+                                  authorId={post.author_id}
+                                  currentUserId={user?.id}
+                                />
                               </div>
                             )}
                           </div>
@@ -921,7 +927,13 @@ export default function DiscoveryFeedView({
                     )}
 
                     {post.media && post.media.length > 0 && (
-                      <PostMediaSlider media={post.media} author={post.author} />
+                      <PostMediaSlider 
+                        media={post.media} 
+                        author={post.author}
+                        userHasBoosted={post.user_has_boosted || false}
+                        authorId={post.author_id}
+                        currentUserId={user?.id}
+                      />
                     )}
 
                     <div className="flex items-center justify-between gap-2.5">
@@ -1054,7 +1066,13 @@ export default function DiscoveryFeedView({
                             )}
 
                             {comment.media && comment.media.length > 0 && (
-                              <PostMediaSlider media={comment.media} author={comment.author} />
+                              <PostMediaSlider 
+                                media={comment.media} 
+                                author={comment.author}
+                                userHasBoosted={comment.user_has_boosted || false}
+                                authorId={comment.author_id}
+                                currentUserId={user?.id}
+                              />
                             )}
                           </div>
                         </div>

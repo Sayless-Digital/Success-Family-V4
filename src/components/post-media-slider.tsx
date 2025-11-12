@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight, Mic, Play, Pause } from "lucide-react"
+import { ChevronLeft, ChevronRight, Mic, Play, Pause, Lock } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import type { PostMedia, PostAuthorSummary } from "@/types"
 import { PostMediaLightbox } from "@/components/post-media-lightbox"
@@ -12,9 +12,12 @@ import { cn } from "@/lib/utils"
 interface PostMediaSliderProps {
   media: PostMedia[]
   author?: PostAuthorSummary
+  userHasBoosted?: boolean
+  authorId?: string
+  currentUserId?: string
 }
 
-export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
+export function PostMediaSlider({ media, author, userHasBoosted = false, authorId, currentUserId }: PostMediaSliderProps) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
@@ -34,6 +37,14 @@ export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
   const voiceNote = React.useMemo(() => {
     return sortedMedia.find(m => m.media_type === 'audio') || null
   }, [sortedMedia])
+
+  // Check if voice note is locked
+  const isVoiceNoteLocked = React.useMemo(() => {
+    if (!voiceNote || !voiceNote.requires_boost) return false
+    // Voice note is accessible if user has boosted or is the author
+    const isAuthor = authorId && currentUserId && authorId === currentUserId
+    return !userHasBoosted && !isAuthor
+  }, [voiceNote, userHasBoosted, authorId, currentUserId])
 
   const images = React.useMemo(() => {
     return sortedMedia.filter(m => m.media_type !== 'audio')
@@ -197,7 +208,20 @@ export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
       <div className="relative mt-3">
       {/* Voice Note - Separate Container Above */}
       {voiceNote && (
-        <div className="rounded-lg overflow-hidden bg-white/10 border border-white/20 mb-3">
+        <div className={cn(
+          "rounded-lg overflow-hidden border mb-3",
+          isVoiceNoteLocked
+            ? "bg-white/5 border-white/10 opacity-60"
+            : "bg-white/10 border-white/20"
+        )}>
+          {isVoiceNoteLocked && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-lg">
+              <div className="flex flex-col items-center gap-2 text-white/80">
+                <Lock className="h-6 w-6" />
+                <span className="text-sm font-medium">Boost to unlock</span>
+              </div>
+            </div>
+          )}
           <div className="p-3 relative overflow-hidden">
             <div className="flex items-center gap-2">
               <div className="font-mono text-sm text-white/80">
@@ -212,9 +236,15 @@ export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleAudioPlay(voiceNote.id)
+                    if (!isVoiceNoteLocked) {
+                      handleAudioPlay(voiceNote.id)
+                    }
                   }}
-                  className="flex-shrink-0 relative"
+                  disabled={isVoiceNoteLocked}
+                  className={cn(
+                    "flex-shrink-0 relative",
+                    isVoiceNoteLocked && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   <div className="relative">
                     <div className={cn(
@@ -246,11 +276,16 @@ export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleAudioPlay(voiceNote.id)
+                    if (!isVoiceNoteLocked) {
+                      handleAudioPlay(voiceNote.id)
+                    }
                   }}
+                  disabled={isVoiceNoteLocked}
                   className={cn(
-                    "flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer flex-shrink-0",
-                    "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                    "flex items-center justify-center p-2 rounded-full border transition-all flex-shrink-0",
+                    isVoiceNoteLocked
+                      ? "bg-white/5 border-white/10 opacity-50 cursor-not-allowed"
+                      : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 cursor-pointer"
                   )}
                 >
                   {playingAudio === voiceNote.id ? (
@@ -262,8 +297,12 @@ export function PostMediaSlider({ media, author }: PostMediaSliderProps) {
               )}
             </div>
             <div 
-              className="w-full h-2 bg-white/10 rounded-full mt-2 cursor-pointer relative group backdrop-blur-sm overflow-visible"
+              className={cn(
+                "w-full h-2 bg-white/10 rounded-full mt-2 relative group backdrop-blur-sm overflow-visible",
+                !isVoiceNoteLocked && "cursor-pointer"
+              )}
               onClick={(e) => {
+                if (isVoiceNoteLocked) return
                 const audio = audioRefs.current[voiceNote.id]
                 if (!audio || !audioProgress[voiceNote.id]?.duration) return
                 

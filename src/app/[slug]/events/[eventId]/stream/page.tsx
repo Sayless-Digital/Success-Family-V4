@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import StreamView from "./stream-view"
 import { StreamErrorBoundary } from "./error-boundary"
@@ -52,7 +52,7 @@ export default async function StreamPage({ params }: StreamPageProps) {
   const { data: { user } } = await supabase.auth.getUser()
   
   if (!user) {
-    notFound() // Should redirect to auth, but for now just 404
+    redirect('/')
   }
 
   // Get user profile - use maybeSingle() to avoid error when no rows found

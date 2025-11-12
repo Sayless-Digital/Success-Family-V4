@@ -2262,9 +2262,22 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
                     {/* Post Media Slider */}
                     {post.media && post.media.length > 0 && (
-                      <PostMediaSlider media={post.media} author={post.author} />
+                      <PostMediaSlider 
+                        media={post.media} 
+                        author={post.author}
+                        userHasBoosted={post.user_has_boosted || false}
+                        authorId={post.author_id}
+                        currentUserId={currentUserId}
+                      />
                     )}
                   </>
+                )}
+
+                {/* Boost to unlock reward message */}
+                {editingPostId !== post.id && post.media?.some(m => m.media_type === 'audio' && m.requires_boost && !post.user_has_boosted && post.author_id !== currentUserId) && (
+                  <div className="mt-3 text-center">
+                    <p className="text-sm text-white/70">Boost to unlock reward</p>
+                  </div>
                 )}
 
                 {/* Boost, Contribute, and Save Buttons - Hide when editing */}
@@ -2455,7 +2468,13 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                       )}
 
                       {post.media && post.media.length > 0 && (
-                        <PostMediaSlider media={post.media} author={post.author} />
+                        <PostMediaSlider 
+                          media={post.media} 
+                          author={post.author}
+                          userHasBoosted={post.user_has_boosted || false}
+                          authorId={post.author_id}
+                          currentUserId={currentUserId}
+                        />
                       )}
 
                       <div className="flex items-center justify-between gap-2.5">
@@ -2590,7 +2609,13 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                                 )}
 
                                 {comment.media && comment.media.length > 0 && (
-                                  <PostMediaSlider media={comment.media} author={comment.author} />
+                                  <PostMediaSlider 
+                                    media={comment.media} 
+                                    author={comment.author}
+                                    userHasBoosted={comment.user_has_boosted || false}
+                                    authorId={comment.author_id}
+                                    currentUserId={currentUserId}
+                                  />
                                 )}
 
                                 <div className="flex items-center gap-3">
