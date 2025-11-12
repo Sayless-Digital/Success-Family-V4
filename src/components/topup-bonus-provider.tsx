@@ -154,9 +154,10 @@ export function TopUpBonusProvider() {
       if (prevUserRef.current) {
         hasCheckedRef.current = false
         prevUserRef.current = null
-        // Clear session check flag on sign out
+        // Clear session check flags on sign out
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('topup_bonus_session_checked')
+          sessionStorage.removeItem('topup_bonus_previous_user_id')
         }
       }
       return
@@ -165,29 +166,50 @@ export function TopUpBonusProvider() {
     const currentUserId = user.id
     const previousUserId = prevUserRef.current
 
+    // Get previous user ID from sessionStorage (persists across page loads)
+    const storedPreviousUserId = typeof window !== 'undefined'
+      ? sessionStorage.getItem('topup_bonus_previous_user_id')
+      : null
+
     // Check if we've already checked in this session (persists across page loads)
     const sessionChecked = typeof window !== 'undefined' 
       ? sessionStorage.getItem('topup_bonus_session_checked') === currentUserId
       : false
 
     // Detect if this is a new sign-in:
-    // 1. Previous user was null/undefined and now we have a user (initial sign-in)
-    // 2. Previous user ID is different from current user ID (user switched accounts)
-    const isNewSignIn = (previousUserId === null && currentUserId) || 
-                        (previousUserId !== null && previousUserId !== currentUserId)
+    // 1. No stored previous user ID and we have a current user (first time in session)
+    // 2. Stored previous user ID is different from current user ID (user switched accounts)
+    const isNewSignIn = (!storedPreviousUserId && currentUserId) || 
+                        (storedPreviousUserId !== null && storedPreviousUserId !== currentUserId)
+
+    // If we've already checked in this session for this user, don't check again (prevents showing on every page load)
+    if (sessionChecked && storedPreviousUserId === currentUserId) {
+      console.log('[TopUpBonus] Already checked in this session, skipping', {
+        sessionChecked,
+        storedPreviousUserId,
+        currentUserId
+      })
+      prevUserRef.current = currentUserId
+      // Update stored user ID if not set
+      if (typeof window !== 'undefined' && !storedPreviousUserId) {
+        sessionStorage.setItem('topup_bonus_previous_user_id', currentUserId)
+      }
+      return
+    }
 
     // On new sign-in, always check (cooldown doesn't apply)
     if (isNewSignIn) {
       console.log('[TopUpBonus] New sign-in detected, checking eligibility (cooldown bypassed)', {
-        previousUserId,
+        storedPreviousUserId,
         currentUserId,
         sessionChecked
       })
       prevUserRef.current = currentUserId
       hasCheckedRef.current = false
-      // Clear session check so it shows on new sign-in
+      // Clear session check and update stored user ID so it shows on new sign-in
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('topup_bonus_session_checked')
+        sessionStorage.setItem('topup_bonus_previous_user_id', currentUserId)
       }
       const timeoutId = setTimeout(() => {
         checkBonusEligibility(true) // Pass true to indicate new sign-in
@@ -197,16 +219,11 @@ export function TopUpBonusProvider() {
       }
     }
 
-    // If we've already checked in this session, don't check again (prevents showing on every page load)
-    // But only if the user ID matches (same user in same session)
-    if (sessionChecked && previousUserId === currentUserId) {
-      console.log('[TopUpBonus] Already checked in this session, skipping')
-      prevUserRef.current = currentUserId
-      return
-    }
-
-    // Update ref
+    // Update ref and stored user ID
     prevUserRef.current = currentUserId
+    if (typeof window !== 'undefined' && storedPreviousUserId !== currentUserId) {
+      sessionStorage.setItem('topup_bonus_previous_user_id', currentUserId)
+    }
 
     // Only check once when user becomes available (first time in this session)
     if (hasCheckedRef.current && previousUserId === currentUserId) {
