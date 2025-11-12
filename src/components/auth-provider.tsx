@@ -255,6 +255,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clearAuthState()
             userRef.current = null
             userProfileRef.current = null
+            // CRITICAL: Ensure loading is cleared on sign out
+            setIsLoading(false)
             return
           }
 
@@ -268,6 +270,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // User changed - set user immediately
               setUser(session.user)
               userRef.current = session.user
+              // CRITICAL: Set loading to true when new user signs in to show loading state
+              setIsLoading(true)
             }
             
             // Always try to fetch profile (it might have been updated)
@@ -292,6 +296,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // Don't auto-sign-out - let the user retry or handle it manually
               }
             }
+            
+            // CRITICAL: Always clear loading state after profile fetch completes (success or failure)
+            // This ensures the UI doesn't get stuck in loading state, especially on mobile
+            setIsLoading(false)
           }
         } finally {
           isProcessingAuthChange = false

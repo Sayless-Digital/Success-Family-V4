@@ -86,9 +86,10 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
       hasInitializedRef.current = true
       // Set state based on page configuration
       const { shouldOpen, shouldPin } = onlineUsersSidebarConfig
-      // Apply config for both mobile and desktop (mobile will show sidebar if config says so)
-      setIsOnlineUsersSidebarOpen(shouldOpen)
-      setIsOnlineUsersSidebarPinned(shouldPin)
+      // CRITICAL: On mobile, never auto-open the sidebar - it should only open via button click
+      // On desktop, respect the shouldOpen config (for home page and signup pages)
+      setIsOnlineUsersSidebarOpen(isMobile ? false : shouldOpen)
+      setIsOnlineUsersSidebarPinned(isMobile ? false : shouldPin)
     }
   }, [isMobile, onlineUsersSidebarConfig, pathname])
 
