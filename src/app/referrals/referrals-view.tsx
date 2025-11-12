@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -101,11 +100,6 @@ export function ReferralsView({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Referrals"
-        subtitle="Share your referral link and earn points when your referrals top up"
-      />
-
       {/* Referral Link Card */}
       <Card className="bg-white/5 border-white/20 border-0">
         <CardHeader>

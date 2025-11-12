@@ -41,6 +41,9 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     // Home page - pinned
     if (pathname === '/') return { shouldOpen: true, shouldPin: true }
     
+    // Signup page (referral signup) - pinned like home page
+    if (pathname.startsWith('/signup/')) return { shouldOpen: true, shouldPin: true }
+    
     // Emails page - unpinned (floating)
     if (pathname === '/emails' || pathname.startsWith('/emails/')) {
       return { shouldOpen: false, shouldPin: false } // Closed by default, but available on hover
@@ -48,7 +51,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     
     // Community pages - routes like /[slug] or /[slug]/*
     // Exclude known non-community routes
-    const nonCommunityRoutes = ['/communities', '/create-community', '/settings', '/admin', '/account', '/profile', '/messages', '/wallet', '/storage', '/topup', '/emails']
+    const nonCommunityRoutes = ['/communities', '/create-community', '/settings', '/admin', '/account', '/profile', '/messages', '/wallet', '/storage', '/topup', '/emails', '/signup']
     const isNonCommunityRoute = nonCommunityRoutes.some(route => 
       pathname === route || pathname.startsWith(route + '/')
     )
@@ -76,21 +79,16 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
 
   // Update online users sidebar state when pathname changes or screen size changes
   useEffect(() => {
-    if (isMobile) {
-      // Always closed on mobile
-      setIsOnlineUsersSidebarOpen(false)
-      setIsOnlineUsersSidebarPinned(false)
-    } else {
-      // On desktop
-      const pathnameChanged = prevPathnameRef.current !== pathname
-      if (!hasInitializedRef.current || pathnameChanged) {
-        prevPathnameRef.current = pathname
-        hasInitializedRef.current = true
-        // Set state based on page configuration
-        const { shouldOpen, shouldPin } = onlineUsersSidebarConfig
-        setIsOnlineUsersSidebarOpen(shouldOpen)
-        setIsOnlineUsersSidebarPinned(shouldPin)
-      }
+    const pathnameChanged = prevPathnameRef.current !== pathname
+    // Always update state when pathname or mobile state changes
+    if (!hasInitializedRef.current || pathnameChanged) {
+      prevPathnameRef.current = pathname
+      hasInitializedRef.current = true
+      // Set state based on page configuration
+      const { shouldOpen, shouldPin } = onlineUsersSidebarConfig
+      // Apply config for both mobile and desktop (mobile will show sidebar if config says so)
+      setIsOnlineUsersSidebarOpen(shouldOpen)
+      setIsOnlineUsersSidebarPinned(shouldPin)
     }
   }, [isMobile, onlineUsersSidebarConfig, pathname])
 
@@ -386,7 +384,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
           <div className="w-full h-full">
             <Silk
               key={pathname}
-              speed={5}
+              speed={pathname === '/' ? 1.5 : 0.3}
               scale={1}
               color={pathname === '/' ? "#7004dc" : "#2d0354"}
               noiseIntensity={1.5}

@@ -1879,6 +1879,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
           <InlinePostComposer
             communityId={community.id}
             communitySlug={community.slug}
+            contentClassName="p-2"
           />
         )}
 

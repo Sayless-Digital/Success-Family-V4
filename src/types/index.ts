@@ -280,6 +280,7 @@ export interface Post {
   created_at: string
   updated_at: string
   published_at?: string
+  boost_reward_message?: string | null
   media?: PostMedia[]
   boost_count?: number
   user_has_boosted?: boolean

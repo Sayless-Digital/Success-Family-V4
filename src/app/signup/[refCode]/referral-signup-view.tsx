@@ -186,44 +186,82 @@ export function ReferralSignupView({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Join Success Family"
-        subtitle="Create your account and start your journey"
-        className="text-center"
-      />
+      {/* Compact Header with Referrer Info */}
+      <div className="space-y-4">
+        <div className="space-y-2 text-center">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
+            Join Success Family
+          </h1>
+          <p className="text-sm sm:text-base text-white/70">
+            Create your account and start your journey
+          </p>
+        </div>
 
-      {/* Referrer Info Card */}
-      <Card className="bg-white/5 border-white/20 border-0">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Gift className="h-5 w-5 text-white/70" />
-            Referred By
-          </CardTitle>
-          <CardDescription className="text-white/60">
-            You were invited by {referrerUser.first_name}. They'll earn {referralBonusPoints} points when you top up!
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3">
-            <Avatar className="h-12 w-12 border-2 border-white/20">
-              <AvatarImage src={referrerUser.profile_picture || undefined} />
-              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white">
-                {referrerUser.first_name[0]}{referrerUser.last_name[0]}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium text-white">
-                {referrerUser.first_name} {referrerUser.last_name}
+        {/* Neat Referrer Badge */}
+        <div className="px-4 py-4 sm:py-3 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm max-w-2xl mx-auto">
+          {/* Mobile: Stacked Layout */}
+          <div className="flex flex-col sm:hidden items-center gap-3.5">
+            <div className="flex items-center justify-center gap-2">
+              <Gift className="h-4 w-4 text-white/70" />
+              <span className="text-xs font-medium text-white/70 uppercase tracking-wide">Invited by</span>
+            </div>
+            <div className="flex flex-col items-center justify-center gap-2.5 w-full">
+              <div className="flex justify-center">
+                <Avatar className="h-12 w-12 border-2 border-white/20">
+                  <AvatarImage src={referrerUser.profile_picture || undefined} />
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-base font-semibold">
+                    {referrerUser.first_name[0]}{referrerUser.last_name[0]}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+              <div className="text-center w-full">
+                <p className="text-base font-semibold text-white leading-tight">
+                  {referrerUser.first_name} {referrerUser.last_name}
+                </p>
+                <p className="text-xs text-white/60 leading-tight mt-0.5">@{referrerUser.username}</p>
+              </div>
+            </div>
+            <div className="w-full pt-3 border-t border-white/20">
+              <p className="text-xs text-white/70 text-center leading-relaxed">
+                They'll earn <span className="text-white font-semibold">{referralBonusPoints} points</span> when you top up
               </p>
-              <p className="text-sm text-white/60">@{referrerUser.username}</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          
+          {/* Desktop: Horizontal Layout */}
+          <div className="hidden sm:flex items-center justify-center gap-x-4">
+            <div className="flex items-center gap-2">
+              <Gift className="h-4 w-4 text-white/70 flex-shrink-0" />
+              <span className="text-xs font-medium text-white/70 whitespace-nowrap">Invited by</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0">
+                <AvatarImage src={referrerUser.profile_picture || undefined} />
+                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-xs font-semibold">
+                  {referrerUser.first_name[0]}{referrerUser.last_name[0]}
+                </AvatarFallback>
+              </Avatar>
+              <div className="text-left min-w-0">
+                <p className="text-sm font-semibold text-white leading-tight">
+                  {referrerUser.first_name} {referrerUser.last_name}
+                </p>
+                <p className="text-xs text-white/60 leading-tight">@{referrerUser.username}</p>
+              </div>
+            </div>
+            <div className="h-6 w-px bg-white/20 flex-shrink-0" />
+            <div className="text-left flex-shrink-0">
+              <p className="text-xs text-white/70 leading-tight">
+                Earns <span className="text-white font-semibold">{referralBonusPoints} points</span>
+              </p>
+              <p className="text-xs text-white/60 leading-tight">when you top up</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Signup Form */}
       <Card className="bg-white/5 border-white/20 border-0">
-        <CardHeader>
+        <CardHeader className="text-center">
           <CardTitle className="text-white">Create Your Account</CardTitle>
           <CardDescription className="text-white/60">
             Fill in your details to get started

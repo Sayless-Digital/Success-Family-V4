@@ -1,5 +1,6 @@
 import { createServerSupabaseClient, createPublicSupabaseClient } from "@/lib/supabase-server"
 import DiscoveryFeedView from "./discovery-feed-view"
+import { LandingPage } from "@/components/landing-page"
 import { formatRelativeTime } from "@/lib/utils"
 import type { PostWithAuthor } from "@/types"
 import { unstable_cache } from "next/cache"
@@ -241,6 +242,16 @@ export default async function HomePage() {
     } as EnrichedPost
   })
   
+  // Show landing page for logged-out users, feed for logged-in users
+  if (!user) {
+    return (
+      <LandingPage
+        currentUserCount={currentUserCount}
+        userGoal={userGoal}
+      />
+    )
+  }
+
   const initialRelativeTimes = Object.fromEntries(
     finalPosts.map(post => [
       post.id,
@@ -251,7 +262,7 @@ export default async function HomePage() {
   return (
     <DiscoveryFeedView
       posts={finalPosts}
-      currentUserId={user?.id}
+      currentUserId={user.id}
       initialRelativeTimes={initialRelativeTimes}
       payoutMinimumPoints={minimumPayoutPoints}
       currentUserCount={currentUserCount}

@@ -13,6 +13,13 @@ import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
 import { BoostRewardsDialog } from "@/components/boost-rewards-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface InlinePostComposerProps {
   communityId: string
@@ -27,6 +34,17 @@ interface InlinePostComposerProps {
   disableRouterRefresh?: boolean
   hideCollapsedTrigger?: boolean
   onPostCreated?: (post: PostWithAuthor) => void
+  onExpandedChange?: (isExpanded: boolean) => void
+  className?: string
+  contentClassName?: string
+  communityOptions?: {
+    id: string
+    name: string
+    slug: string
+    logoUrl?: string | null
+  }[]
+  selectedCommunityId?: string
+  onCommunityChange?: (communityId: string) => void
 }
 
 interface MediaFile {
@@ -49,33 +67,54 @@ export function InlinePostComposer({
   disableRouterRefresh,
   hideCollapsedTrigger,
   onPostCreated,
+  onExpandedChange,
+  className,
+  contentClassName,
+  communityOptions,
+  selectedCommunityId,
+  onCommunityChange,
 }: InlinePostComposerProps) {
   const router = useRouter()
   const { user, userProfile, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const resolvedMode = mode ?? "post"
   const resolvedAllowImages = allowImages ?? resolvedMode === "post"
   const resolvedAllowVoiceNote = allowVoiceNote ?? resolvedMode !== "reply"
+  const resolvedCommunityOptions = communityOptions ?? []
+  const resolvedSelectedCommunityId = selectedCommunityId ?? communityId
+  const currentCommunity = React.useMemo(
+    () =>
+      resolvedCommunityOptions.find((option) => option.id === resolvedSelectedCommunityId) ??
+      resolvedCommunityOptions.find((option) => option.id === communityId),
+    [resolvedCommunityOptions, resolvedSelectedCommunityId, communityId]
+  )
+
   const collapsedLabelText = collapsedLabel ?? (
     resolvedMode === "post"
-      ? "Share something valuable..."
+      ? "Write something valuable..."
       : resolvedMode === "comment"
         ? "What's on your mind?"
         : "Reply to this comment..."
   )
   const placeholderText = placeholder ?? (
     resolvedMode === "post"
-      ? "What's on your mind?"
+      ? "Write something valuable"
       : resolvedMode === "comment"
         ? "What's on your mind?"
         : "Share your reply..."
   )
   const initialExpandedState = hideCollapsedTrigger ? true : initialExpanded ?? false
   const [isExpanded, setIsExpanded] = React.useState(initialExpandedState)
+
+  // Notify parent when expanded state changes
+  React.useEffect(() => {
+    onExpandedChange?.(isExpanded)
+  }, [isExpanded, onExpandedChange])
   const [content, setContent] = React.useState("")
   const [voiceNote, setVoiceNote] = React.useState<MediaFile | null>(null)
   const [imageFiles, setImageFiles] = React.useState<MediaFile[]>([])
   const [submitting, setSubmitting] = React.useState(false)
   const [showBoostRewardsDialog, setShowBoostRewardsDialog] = React.useState(false)
+  const [boostRewardMessage, setBoostRewardMessage] = React.useState<string>("")
   const [uploadProgress, setUploadProgress] = React.useState<{ current: number; total: number } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [showVoiceRecorder, setShowVoiceRecorder] = React.useState(false)
@@ -97,10 +136,15 @@ export function InlinePostComposer({
   const isSubmitDisabled = submitting || showVoiceRecorder || !canSubmitContent
   const submitLabel =
     resolvedMode === "post" ? "Post" : resolvedMode === "comment" ? "Contribute" : "Reply"
+  const showCommunitySelector =
+    isExpanded &&
+    resolvedCommunityOptions.length > 0 &&
+    typeof onCommunityChange === "function"
   const reset = () => {
     setContent("")
     setVoiceNote(null)
     setImageFiles([])
+    setBoostRewardMessage("")
     setUploadProgress(null)
     setError(null)
     setIsExpanded(initialExpandedState)
@@ -514,6 +558,18 @@ export function InlinePostComposer({
     
     try {
       const contentToSave = currentTrimmedContent.length > 0 ? currentTrimmedContent : ""
+      const hasBoostRewardMessage = boostRewardMessage.trim().length > 0
+      
+      // Check balance for boost reward message (skip for admins)
+      const isAdmin = userProfile?.role === 'admin'
+      if (hasBoostRewardMessage && !isAdmin) {
+        const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
+        if (availableBalance < 1) {
+          setError("You need at least 1 point to add a boost reward message")
+          setSubmitting(false)
+          return
+        }
+      }
       
       const { data: insertedPost, error: postError } = await supabase
         .from('posts')
@@ -522,7 +578,8 @@ export function InlinePostComposer({
           author_id: user.id,
           content: contentToSave,
           parent_post_id: parentPostId,
-          published_at: new Date().toISOString()
+          published_at: new Date().toISOString(),
+          boost_reward_message: boostRewardMessage.trim() || null
         })
         .select(`
           *,
@@ -545,6 +602,24 @@ export function InlinePostComposer({
 
       if (postError) {
         throw new Error(`Failed to create post: ${postError.message}`)
+      }
+
+      // Deduct points for boost reward message if present (admins bypass this)
+      if (hasBoostRewardMessage && user) {
+        const isAdmin = userProfile?.role === 'admin'
+        if (!isAdmin) {
+          const { error: pointsError } = await supabase.rpc('deduct_points_for_voice_notes', {
+            p_user_id: user.id,
+            p_point_cost: 1
+          })
+
+          if (pointsError) {
+            console.error('Points deduction error for boost reward message:', pointsError)
+            throw new Error(`Failed to deduct points: ${pointsError.message}`)
+          }
+
+          await refreshWalletBalance()
+        }
       }
 
       // Upload media if any
@@ -610,9 +685,10 @@ export function InlinePostComposer({
   return (
     <Card className={cn(
       "bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 transition-all",
-      isExpanded ? "" : "hover:bg-white/15 cursor-pointer"
+      isExpanded ? "" : "hover:bg-white/15 cursor-pointer",
+      className
     )}>
-      <CardContent className="p-3">
+      <CardContent className={cn("p-3", contentClassName)}>
         {!hideCollapsedTrigger && !isExpanded ? (
           // Collapsed State - Click to Expand
           <div 
@@ -630,17 +706,68 @@ export function InlinePostComposer({
         ) : (
           // Expanded State - Full Composer
           <div className="space-y-4">
-            {/* Header with Avatar */}
-            <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10 border-4 border-white/20 flex-shrink-0" userId={user?.id}>
-                <AvatarImage src={userProfile.profile_picture} alt={`${userProfile.first_name} ${userProfile.last_name}`} />
-                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                  {userProfile.first_name[0]}{userProfile.last_name[0]}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-white/80 text-sm font-medium flex-1">
-                {userProfile.first_name} {userProfile.last_name}
-              </span>
+            {/* Header with Avatar and Community Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-3 flex-1">
+                <Avatar className="h-10 w-10 border-4 border-white/20 flex-shrink-0" userId={user?.id}>
+                  <AvatarImage src={userProfile.profile_picture} alt={`${userProfile.first_name} ${userProfile.last_name}`} />
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                    {userProfile.first_name[0]}{userProfile.last_name[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-white/80 text-sm font-medium">
+                  {userProfile.first_name} {userProfile.last_name}
+                </span>
+              </div>
+
+              {showCommunitySelector && (
+                <Select
+                  value={resolvedSelectedCommunityId}
+                  onValueChange={(value) => onCommunityChange?.(value)}
+                >
+                  <SelectTrigger className="w-full sm:w-auto sm:ml-auto min-w-[200px] bg-white/10 border border-white/20 text-left text-white/80 hover:bg-white/15 [&>span]:hidden">
+                    <SelectValue>
+                      {currentCommunity?.name ?? "Select a community"}
+                    </SelectValue>
+                    <div className="flex items-center gap-2 flex-1">
+                      <Avatar className="h-6 w-6 border border-white/20 flex-shrink-0">
+                        <AvatarImage
+                          src={currentCommunity?.logoUrl || undefined}
+                          alt={currentCommunity ? `${currentCommunity.name} logo` : "Community logo"}
+                        />
+                        <AvatarFallback className="bg-white/10 text-white/80 text-xs uppercase">
+                          {currentCommunity?.name
+                            ? currentCommunity.name.slice(0, 2).toUpperCase()
+                            : "SF"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium text-white/80 truncate">
+                        {currentCommunity?.name ?? "Select a community"}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {resolvedCommunityOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6 border border-white/20 flex-shrink-0">
+                            <AvatarImage
+                              src={option.logoUrl || undefined}
+                              alt={`${option.name} logo`}
+                            />
+                            <AvatarFallback className="bg-white/10 text-white/80 text-xs uppercase">
+                              {option.name.slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm text-white/80">
+                            {option.name}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Text Input */}
@@ -671,7 +798,13 @@ export function InlinePostComposer({
 
             {/* Voice Note Preview - Separate Container */}
             {resolvedAllowVoiceNote && voiceNote && (
-              <div className="rounded-lg overflow-hidden bg-white/10 border border-white/20">
+              <div className="rounded-lg overflow-hidden bg-white/10 border border-white/20 relative">
+                {voiceNote.requiresBoost && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm">
+                    <Crown className="h-3 w-3 text-white/80" />
+                    <span className="text-xs font-medium text-white/80">Boost reward</span>
+                  </div>
+                )}
                 <div className="p-3 relative overflow-hidden">
                   <div className="flex items-center gap-2">
                     <div className="font-mono text-sm text-white/80">
@@ -700,27 +833,6 @@ export function InlinePostComposer({
                       ) : (
                         <Play className="h-4 w-4 text-white/70 hover:text-white/80 transition-all" />
                       )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowBoostRewardsDialog(true)
-                      }}
-                      className={cn(
-                        "flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer flex-shrink-0",
-                        voiceNote.requiresBoost
-                          ? "bg-white/10 border-white/30"
-                          : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
-                      )}
-                      title={voiceNote.requiresBoost ? "Voice note locked behind boost" : "Set boost rewards"}
-                    >
-                      <Crown className={cn(
-                        "h-4 w-4 transition-all",
-                        voiceNote.requiresBoost
-                          ? "text-white/90 fill-white/20"
-                          : "text-white/70 hover:text-white/80"
-                      )} />
                     </button>
                     <button
                       type="button"
@@ -885,6 +997,22 @@ export function InlinePostComposer({
                 </button>
               )}
 
+              {resolvedAllowVoiceNote && (
+                <button
+                  type="button"
+                  onClick={() => setShowBoostRewardsDialog(true)}
+                  disabled={submitting || showVoiceRecorder}
+                  className="group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                  title="Set boost rewards"
+                >
+                  <Crown className={cn(
+                    "h-4 w-4 text-white/70 group-hover:text-white/80 transition-all",
+                    voiceNote?.requiresBoost && "text-white/90"
+                  )} />
+                  <span className="sr-only">Boost Rewards</span>
+                </button>
+              )}
+
               <div className="flex-1" />
 
               <Button
@@ -919,17 +1047,17 @@ export function InlinePostComposer({
       </CardContent>
       
       {/* Boost Rewards Dialog */}
-      {voiceNote && (
-        <BoostRewardsDialog
-          open={showBoostRewardsDialog}
-          onOpenChange={setShowBoostRewardsDialog}
-          requiresBoost={voiceNote.requiresBoost || false}
-          onRequiresBoostChange={(requiresBoost) => {
-            setVoiceNote(prev => prev ? { ...prev, requiresBoost } : null)
-          }}
-          mediaType="audio"
-        />
-      )}
+      <BoostRewardsDialog
+        open={showBoostRewardsDialog}
+        onOpenChange={setShowBoostRewardsDialog}
+        requiresBoost={voiceNote?.requiresBoost || false}
+        onRequiresBoostChange={(requiresBoost) => {
+          setVoiceNote(prev => prev ? { ...prev, requiresBoost } : null)
+        }}
+        boostRewardMessage={boostRewardMessage}
+        onBoostRewardMessageChange={setBoostRewardMessage}
+        mediaType={voiceNote ? "audio" : undefined}
+      />
     </Card>
   )
 }

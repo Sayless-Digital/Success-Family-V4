@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
+import type { Community } from "@/types"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
@@ -71,6 +73,7 @@ export default function DiscoveryFeedView({
   currentUserCount,
   userGoal
 }: DiscoveryFeedViewProps) {
+  const router = useRouter()
   const { user, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const [activeTab, setActiveTab] = useState<TabValue>("trending")
   const [posts, setPosts] = useState(initialPosts)
@@ -91,6 +94,12 @@ export default function DiscoveryFeedView({
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+
+  // User communities and post composer state
+  const [userCommunities, setUserCommunities] = useState<Community[]>([])
+  const [selectedCommunityId, setSelectedCommunityId] = useState<string>("")
+  const [communitiesLoading, setCommunitiesLoading] = useState(false)
+  const [isComposerExpanded, setIsComposerExpanded] = useState(false)
 
   // Update relative times periodically
   useEffect(() => {
@@ -236,6 +245,59 @@ export default function DiscoveryFeedView({
   useEffect(() => {
     postIdsRef.current = new Set(posts.map(p => p.id))
   }, [posts])
+
+  // Fetch user communities
+  useEffect(() => {
+    if (!user) {
+      setUserCommunities([])
+      setSelectedCommunityId("")
+      return
+    }
+
+    const fetchUserCommunities = async () => {
+      setCommunitiesLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('community_members')
+          .select(`
+            community_id,
+            communities (
+              id,
+              name,
+              slug,
+              description,
+              is_active,
+              logo_url
+            )
+          `)
+          .eq('user_id', user.id)
+
+        if (error) {
+          console.error('Error fetching user communities:', error)
+          return
+        }
+
+        // Transform the data to extract communities
+        const communities = data
+          ?.map((item: any) => item.communities)
+          .filter(Boolean)
+          .filter((c: Community) => c.is_active) || []
+        
+        setUserCommunities(communities)
+        
+        // Set first community as default if available
+        if (communities.length > 0) {
+          setSelectedCommunityId(prev => prev || communities[0].id)
+        }
+      } catch (error) {
+        console.error('Error fetching user communities:', error)
+      } finally {
+        setCommunitiesLoading(false)
+      }
+    }
+
+    fetchUserCommunities()
+  }, [user])
 
   // Check membership for all unique communities
   useEffect(() => {
@@ -453,6 +515,25 @@ export default function DiscoveryFeedView({
   // Calculate progress percentage
   const progressPercentage = userGoal > 0 ? Math.min((currentUserCount / userGoal) * 100, 100) : 0
 
+  // Handle post creation from composer
+  const handlePostCreated = async (newPost: PostWithAuthor) => {
+    // Refresh the page to get updated posts
+    router.refresh()
+  }
+
+  // Get selected community
+  const composerCommunityOptions = useMemo(
+    () =>
+      userCommunities.map((community) => ({
+        id: community.id,
+        name: community.name,
+        slug: community.slug,
+        logoUrl: community.logo_url,
+      })),
+    [userCommunities]
+  )
+  const selectedCommunity = userCommunities.find(c => c.id === selectedCommunityId)
+
   // Empty state
   if (displayPosts.length === 0) {
     return (
@@ -470,6 +551,26 @@ export default function DiscoveryFeedView({
               <span className="text-sm font-medium text-white">Users Signed up</span>
             </div>
           </div>
+
+          {/* Post Composer with Community Selector - Only show if user is logged in and has communities */}
+          {user && userCommunities.length > 0 && selectedCommunity && (
+            <InlinePostComposer
+              communityId={selectedCommunity.id}
+              communitySlug={selectedCommunity.slug}
+              mode="post"
+              placeholder="What's on your mind?"
+              allowImages={true}
+              allowVoiceNote={true}
+              initialExpanded={false}
+              disableRouterRefresh={true}
+              onPostCreated={handlePostCreated}
+              onExpandedChange={setIsComposerExpanded}
+              contentClassName="p-2"
+              communityOptions={composerCommunityOptions}
+              selectedCommunityId={selectedCommunityId}
+              onCommunityChange={setSelectedCommunityId}
+            />
+          )}
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="w-full">
             <TabsList className="w-full">
@@ -547,6 +648,25 @@ export default function DiscoveryFeedView({
 
           <TabsContent value={activeTab} className="mt-4">
             <div className="space-y-4">
+              {/* Post Composer with Community Selector - Only show if user is logged in and has communities */}
+              {user && userCommunities.length > 0 && selectedCommunity && (
+                <InlinePostComposer
+                  communityId={selectedCommunity.id}
+                  communitySlug={selectedCommunity.slug}
+                  mode="post"
+                  placeholder="Write something valuable"
+                  allowImages={true}
+                  allowVoiceNote={true}
+                  initialExpanded={false}
+                  disableRouterRefresh={true}
+                  onPostCreated={handlePostCreated}
+                  onExpandedChange={setIsComposerExpanded}
+                  contentClassName="p-2"
+                  communityOptions={composerCommunityOptions}
+                  selectedCommunityId={selectedCommunityId}
+                  onCommunityChange={setSelectedCommunityId}
+                />
+              )}
               {displayPosts.map((post) => {
                 const community = post.community || (post as any).communities
                 
@@ -678,7 +798,7 @@ export default function DiscoveryFeedView({
                           <Textarea
                             value={editingContent[post.id] || ''}
                             onChange={(e) => setEditingContent(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            placeholder="What's on your mind?"
+                            placeholder="Write something valuable"
                             className="w-full bg-white/10 border-white/20 text-white placeholder:text-white/40 resize-none focus:ring-white/20 min-h-[100px]"
                             onInput={(e) => {
                               const target = e.target as HTMLTextAreaElement
