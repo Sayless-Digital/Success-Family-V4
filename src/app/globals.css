@@ -254,7 +254,7 @@
       background-position: 200% center;
     }
   }
-
+  
   @keyframes shimmer-rotate {
     0% {
       transform: translateX(-100%) translateY(-100%) rotate(45deg);

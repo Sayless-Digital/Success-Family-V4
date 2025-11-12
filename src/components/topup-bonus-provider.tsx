@@ -31,6 +31,24 @@ export function TopUpBonusProvider() {
       return
     }
 
+    // Check if 10 minutes have passed since last show
+    const storageKey = `topup_bonus_last_shown_${user.id}`
+    const lastShown = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
+    
+    if (lastShown) {
+      const lastShownTime = parseInt(lastShown, 10)
+      const now = Date.now()
+      const tenMinutes = 10 * 60 * 1000 // 10 minutes in milliseconds
+      const timeSinceLastShow = now - lastShownTime
+      
+      if (timeSinceLastShow < tenMinutes) {
+        const minutesRemaining = Math.ceil((tenMinutes - timeSinceLastShow) / 60000)
+        console.log(`[TopUpBonus] Dialog shown recently, waiting ${minutesRemaining} more minute(s)`)
+        setShowDialog(false)
+        return
+      }
+    }
+
     console.log('[TopUpBonus] Checking bonus eligibility for user:', user.id)
 
     try {
@@ -78,11 +96,16 @@ export function TopUpBonusProvider() {
         console.log('[TopUpBonus] Bonus not expired, expires at:', expirationTime)
       }
 
-      // Show dialog if bonus is enabled and not expired (shows every time during bonus period)
+      // Show dialog if bonus is enabled and not expired, and 10 minutes have passed
       console.log('[TopUpBonus] Showing dialog with', settings.topup_bonus_points, 'points')
       setBonusPoints(settings.topup_bonus_points)
       setBonusEndTime(settings.topup_bonus_end_time)
       setShowDialog(true)
+      
+      // Store the current time when dialog is shown
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(storageKey, Date.now().toString())
+      }
     } catch (error) {
       console.error('[TopUpBonus] Error checking bonus eligibility:', error)
       setShowDialog(false)
@@ -178,6 +201,11 @@ export function TopUpBonusProvider() {
       onOpenChange={(open) => {
         console.log('[TopUpBonus] Dialog onOpenChange called with:', open)
         setShowDialog(open)
+        // Store timestamp when dialog is closed (user dismissed it)
+        if (!open && user && typeof window !== 'undefined') {
+          const storageKey = `topup_bonus_last_shown_${user.id}`
+          localStorage.setItem(storageKey, Date.now().toString())
+        }
       }}
       bonusPoints={bonusPoints}
       bonusEndTime={bonusEndTime}

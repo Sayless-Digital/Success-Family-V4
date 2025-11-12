@@ -73,7 +73,9 @@ export function TopUpBonusDialog({ open, onOpenChange, bonusPoints, bonusEndTime
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         ref={dialogRef}
-        className="sm:max-w-md [&>div]:p-0 [&>div]:relative [&>div]:overflow-y-auto [&>div]:flex [&>div]:flex-col [&>div]:h-full"
+        className="sm:max-w-md [&>div]:p-0 [&>div]:relative [&>div]:overflow-y-auto [&>div]:flex [&>div]:flex-col [&>div]:h-full [&>button]:z-[50]"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
         style={{
           border: '2px solid rgba(255, 215, 0, 0.4)',
           background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.2) 0%, rgba(255, 215, 0, 0.2) 50%, rgba(147, 51, 234, 0.2) 100%)',
@@ -85,17 +87,17 @@ export function TopUpBonusDialog({ open, onOpenChange, bonusPoints, bonusEndTime
           <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/10 via-purple-500/10 to-yellow-400/10 animate-pulse pointer-events-none z-0" />
           
           {/* Sparkle effects */}
-          <div className="absolute top-4 right-12 sm:top-2 sm:right-1/2 sm:translate-x-1/2 pointer-events-none z-20">
+          <div className="absolute top-4 right-20 sm:top-2 sm:right-1/2 sm:translate-x-1/2 pointer-events-none z-[1]">
             <Sparkles className="h-6 w-6 text-yellow-400 animate-pulse" />
           </div>
-          <div className="absolute top-8 left-6 pointer-events-none z-20">
+          <div className="absolute top-8 left-6 pointer-events-none z-[1]">
             <Sparkles className="h-4 w-4 text-purple-400 animate-pulse" style={{ animationDelay: '0.5s' }} />
           </div>
-          <div className="absolute bottom-20 right-8 pointer-events-none z-20">
+          <div className="absolute bottom-20 right-8 pointer-events-none z-[1]">
             <Sparkles className="h-5 w-5 text-yellow-300 animate-pulse" style={{ animationDelay: '1s' }} />
           </div>
 
-          <div className="p-4 sm:p-5 relative z-10 overflow-y-auto h-full flex flex-col justify-center sm:justify-start">
+          <div className="p-4 sm:p-5 relative z-[2] overflow-y-auto h-full flex flex-col justify-center sm:justify-start">
             <DialogHeader className="space-y-2">
               <div className="flex justify-center">
                 <div 

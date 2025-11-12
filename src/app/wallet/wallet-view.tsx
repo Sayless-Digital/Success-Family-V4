@@ -587,7 +587,7 @@ export function WalletView({
                   <DialogDescription className="text-white/70">
                     Upload your receipt and select the bank account used to add points to your wallet.
                   </DialogDescription>
-                </DialogHeader>
+              </DialogHeader>
                 <form action={onSubmitAction} id="topup-form" className="space-y-5 pt-2 pb-6">
                   {(() => {
                     const isBonusValid = topupBonusEnabled && topupBonusPoints > 0
@@ -598,46 +598,78 @@ export function WalletView({
                     if (!isBonusValid || isExpired) return null
                     
                     return (
-                      <div className="rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/20 p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Gift className="h-5 w-5 text-white/80" />
-                            <div className="text-sm font-semibold text-white/90">Top-Up Bonus!</div>
+                      <div 
+                        className="rounded-lg border-2 border-yellow-400/40 p-4 space-y-3 relative overflow-hidden"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, rgba(255, 215, 0, 0.15) 50%, rgba(147, 51, 234, 0.15) 100%)',
+                          boxShadow: '0 0 20px rgba(147, 51, 234, 0.3), 0 0 40px rgba(255, 215, 0, 0.2), inset 0 0 30px rgba(147, 51, 234, 0.1)',
+                        }}
+                      >
+                        {/* Animated gradient overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/5 via-purple-500/5 to-yellow-400/5 animate-pulse pointer-events-none z-0" />
+                        
+                        <div className="relative z-10 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="h-8 w-8 rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-purple-500 flex items-center justify-center border-2 border-yellow-400/50 shadow-lg relative overflow-hidden"
+                                style={{
+                                  boxShadow: '0 0 15px rgba(255, 215, 0, 0.6), 0 0 30px rgba(147, 51, 234, 0.4)',
+                                }}
+                              >
+                                <Gift className="h-4 w-4 text-white relative z-10 drop-shadow-lg" />
+                              </div>
+                              <div className="text-sm font-bold bg-gradient-to-r from-yellow-400 via-yellow-300 to-purple-400 bg-clip-text text-transparent">Top-Up Bonus!</div>
+                            </div>
+                            {isTodayOnly && (
+                              <span 
+                                className="text-xs font-bold text-white bg-gradient-to-r from-yellow-500/90 to-purple-500/90 px-3 py-1 rounded-full border-2 border-yellow-400/50 shadow-lg"
+                                style={{
+                                  boxShadow: '0 0 10px rgba(255, 215, 0, 0.5)',
+                                }}
+                              >
+                                Today Only
+                              </span>
+                            )}
                           </div>
-                          {isTodayOnly && (
-                            <span className="text-xs font-semibold text-white/90 bg-white/15 px-2.5 py-1 rounded-full border border-white/20">
-                              Today Only
-                            </span>
+                          <div className="text-center">
+                            <div className="inline-flex items-baseline gap-1.5">
+                              <span 
+                                className="text-3xl sm:text-4xl font-black bg-gradient-to-br from-yellow-400 via-yellow-300 to-purple-400 bg-clip-text text-transparent drop-shadow-lg"
+                                style={{
+                                  textShadow: '0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(147, 51, 234, 0.3)',
+                                  filter: 'drop-shadow(0 0 6px rgba(255, 215, 0, 0.6))',
+                                }}
+                              >
+                                +{topupBonusPoints.toLocaleString()}
+                              </span>
+                              <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-yellow-300 to-purple-300 bg-clip-text text-transparent">bonus points</span>
+                            </div>
+                          </div>
+                          {expirationTime && (
+                            <>
+                              <BonusCountdown endTime={topupBonusEndTime!} />
+                              <div className="text-center">
+                                <p className="text-[10px] sm:text-xs text-white/60 font-medium">
+                                  Expires: {expirationTime.toLocaleString(undefined, { 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    year: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                            </>
                           )}
                         </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-white">
-                            +{topupBonusPoints.toLocaleString()} <span className="text-lg font-medium text-white/80">bonus points</span>
-                          </div>
-                        </div>
-                        {expirationTime && (
-                          <>
-                            <BonusCountdown endTime={topupBonusEndTime!} />
-                            <div className="text-center">
-                              <p className="text-xs text-white/50">
-                                Expires: {expirationTime.toLocaleString(undefined, { 
-                                  month: 'short', 
-                                  day: 'numeric', 
-                                  year: 'numeric',
-                                  hour: 'numeric',
-                                  minute: '2-digit'
-                                })}
-                              </p>
-                            </div>
-                          </>
-                        )}
                       </div>
                     )
                   })()}
-                  <div className="space-y-2">
+                <div className="space-y-2">
                     <Label htmlFor="points" className="text-white/90 font-medium">
-                      Points
-                    </Label>
+                    Points
+                  </Label>
                     <TopUpAmount 
                       buyPricePerPoint={Number(buyPricePerPoint ?? 1)} 
                       minAmount={mandatoryTopupTtd}
@@ -649,57 +681,93 @@ export function WalletView({
                       bonusPoints={topupBonusPoints}
                       bonusEndTime={topupBonusEndTime}
                     />
-                  </div>
-                  <div className="space-y-2">
+                </div>
+                <div className="space-y-2">
                     <Label className="text-white/90 font-medium">Bank Account</Label>
-                    {singleBank ? (
-                      <>
-                        <input type="hidden" name="bank_account_id" value={singleBank.id} />
-                        <div className="rounded-lg bg-white/10 border border-white/20 p-4 space-y-3">
-                          <div className="text-white/90 text-sm font-semibold mb-3">{singleBank.bank_name}</div>
-                          <div className="space-y-3">
-                            <CopyField label="Account Name" value={singleBank.account_name || ''} />
-                            <CopyField label="Account Number" value={singleBank.account_number || ''} />
-                            <CopyField label="Account Type" value={singleBank.account_type || ''} />
+                  {singleBank ? (
+                    <>
+                      <input type="hidden" name="bank_account_id" value={singleBank.id} />
+                        <div className="rounded-lg bg-white/10 border border-white/20 p-4 space-y-4">
+                          <div className="pb-2 border-b border-white/10">
+                            <div className="text-white font-semibold text-base">{singleBank.bank_name}</div>
                           </div>
-                        </div>
-                      </>
-                    ) : (
-                      <Select name="bank_account_id" required>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select account" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {banks.map((b) => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.bank_name} — {b.account_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                  <div className="space-y-2">
+                          <div className="space-y-3">
+                            <CopyField label="Account Name" value={singleBank.account_name ?? ''} />
+                            <CopyField label="Account Number" value={singleBank.account_number ?? ''} />
+                            <CopyField label="Account Type" value={singleBank.account_type ?? ''} />
+                          </div>
+                      </div>
+                    </>
+                  ) : (
+                    <Select name="bank_account_id" required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {banks.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.bank_name} — {b.account_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="space-y-2">
                     <Label htmlFor="file" className="text-white/90 font-medium">
-                      Receipt File
-                    </Label>
+                    Receipt File
+                  </Label>
                     <ReceiptUpload
                       id="file"
                       name="file"
                       accept="image/*,application/pdf"
                       required
                     />
-                  </div>
-                </form>
+                </div>
+              </form>
               </div>
-              <div className="border-t border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md py-4 sm:py-6">
+              <div className="border-t border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md py-3 sm:py-4">
                 <div className="px-6">
                   <Button 
                     type="submit" 
                     form="topup-form"
-                    className="w-full bg-white/15 text-white hover:bg-white/25 h-11 text-base font-semibold"
+                    className={cn(
+                      "w-full h-11 text-base font-bold relative overflow-hidden group",
+                      (() => {
+                        const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                        const isExpired = expirationTime ? new Date() >= expirationTime : false
+                        const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+                        return hasBonus
+                          ? "text-white"
+                          : "bg-white/15 text-white hover:bg-white/25"
+                      })()
+                    )}
+                    style={(() => {
+                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                      const isExpired = expirationTime ? new Date() >= expirationTime : false
+                      const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+                      return hasBonus
+                        ? {
+                            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                            boxShadow: '0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(147, 51, 234, 0.3)',
+                          }
+                        : undefined
+                    })()}
                   >
-                    Top Up
+                    {(() => {
+                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                      const isExpired = expirationTime ? new Date() >= expirationTime : false
+                      const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+                      return hasBonus ? "Top Up with Bonus" : "Top Up"
+                    })()}
+                    {(() => {
+                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+                      const isExpired = expirationTime ? new Date() >= expirationTime : false
+                      const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+                      return hasBonus && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                      )
+                    })()}
                   </Button>
                 </div>
               </div>
@@ -768,15 +836,19 @@ export function WalletView({
       </div>
 
       {banks.length > 1 && (
-        <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-4 space-y-4">
-          <div className="text-white font-semibold text-lg">Bank Details</div>
-          <div className="space-y-3">
+        <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border border-white/20 p-5 space-y-4">
+          <div className="text-white font-semibold text-lg pb-1">Bank Details</div>
+          <div className="space-y-4">
             {banks.map((b) => (
-              <div key={b.id} className="rounded-lg bg-white/5 border border-white/10 p-4 space-y-3">
-                <div className="text-white font-medium text-base pb-2 border-b border-white/10">{b.bank_name}</div>
-                <CopyField label="Account Name" value={b.account_name} />
-                <CopyField label="Account Number" value={b.account_number} />
-                <CopyField label="Account Type" value={b.account_type} />
+              <div key={b.id} className="rounded-lg bg-white/10 border border-white/20 p-4 space-y-4">
+                <div className="pb-3 border-b border-white/10">
+                  <div className="text-white font-semibold text-base">{b.bank_name}</div>
+                </div>
+                <div className="space-y-3">
+                  <CopyField label="Account Name" value={b.account_name ?? ''} />
+                  <CopyField label="Account Number" value={b.account_number ?? ''} />
+                  <CopyField label="Account Type" value={b.account_type ?? ''} />
+                </div>
               </div>
             ))}
           </div>
