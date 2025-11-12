@@ -85,7 +85,7 @@ export function TopUpBonusDialog({ open, onOpenChange, bonusPoints, bonusEndTime
           <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/10 via-purple-500/10 to-yellow-400/10 animate-pulse pointer-events-none z-0" />
           
           {/* Sparkle effects */}
-          <div className="absolute top-4 right-4 pointer-events-none z-20">
+          <div className="absolute top-4 right-12 sm:top-2 sm:right-1/2 sm:translate-x-1/2 pointer-events-none z-20">
             <Sparkles className="h-6 w-6 text-yellow-400 animate-pulse" />
           </div>
           <div className="absolute top-8 left-6 pointer-events-none z-20">
@@ -95,7 +95,7 @@ export function TopUpBonusDialog({ open, onOpenChange, bonusPoints, bonusEndTime
             <Sparkles className="h-5 w-5 text-yellow-300 animate-pulse" style={{ animationDelay: '1s' }} />
           </div>
 
-          <div className="p-4 sm:p-5 relative z-10 overflow-y-auto h-full">
+          <div className="p-4 sm:p-5 relative z-10 overflow-y-auto h-full flex flex-col justify-center sm:justify-start">
             <DialogHeader className="space-y-2">
               <div className="flex justify-center">
                 <div 
