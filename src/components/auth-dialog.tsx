@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/components/auth-provider"
 
 interface AuthDialogProps {
   open: boolean
@@ -29,6 +30,7 @@ interface AuthDialogProps {
 const REMEMBER_ME_STORAGE_KEY = "sf-auth-remember-v1"
 
 export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDialogProps) {
+  const { waitForAuthStateChange } = useAuth()
   const [activeTab, setActiveTab] = React.useState(defaultTab)
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -293,23 +295,39 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     setIsLoading(true)
     setError(null)
 
-    const result = await signIn({
-      email: signInData.email,
-      password: signInData.password,
-    })
+    try {
+      const result = await signIn({
+        email: signInData.email,
+        password: signInData.password,
+      })
 
-    setIsLoading(false)
-
-    if (result.success) {
-      // Close dialog immediately without showing success message
-      onOpenChange(false)
-      // Reset form
-      if (!rememberMe) {
-        setSignInData({ email: "", password: "" })
+      if (result.success) {
+        // CRITICAL: Wait for realtime auth state change to complete before closing dialog
+        // This ensures the session is properly persisted and auth state is updated
+        // Especially important on mobile where network delays can cause issues
+        const authStateUpdated = await waitForAuthStateChange(15000) // 15 second timeout
+        
+        if (authStateUpdated) {
+          // Auth state successfully updated - close dialog
+          onOpenChange(false)
+          // Reset form
+          if (!rememberMe) {
+            setSignInData({ email: "", password: "" })
+          }
+          toast.success("Welcome back! Signed in successfully!")
+        } else {
+          // Auth state didn't update in time - show error but keep dialog open
+          setError("Sign in successful but session not updated. Please try refreshing the page.")
+          console.error("Auth state change timeout - session may not be persisted")
+        }
+      } else {
+        setError(result.error?.message || "Failed to sign in")
       }
-      toast.success("Welcome back! Signed in successfully!")
-    } else {
-      setError(result.error?.message || "Failed to sign in")
+    } catch (error) {
+      console.error("Sign in error:", error)
+      setError("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsLoading(false)
     }
   }
 

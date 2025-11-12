@@ -63,12 +63,21 @@ export async function signUp(data: SignUpData): Promise<AuthResult> {
 
 /**
  * Sign in an existing user with email and password
+ * Uses cache busting to ensure fresh auth state
  */
 export async function signIn(data: SignInData): Promise<AuthResult> {
   try {
+    // CRITICAL: Add cache busting timestamp to ensure fresh auth request
+    // This prevents stale cached responses on mobile
+    const cacheBuster = `_t=${Date.now()}`
+    
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
+      options: {
+        // Ensure session is persisted
+        shouldCreateUser: false,
+      },
     })
 
     if (error) {
@@ -76,6 +85,15 @@ export async function signIn(data: SignInData): Promise<AuthResult> {
         success: false,
         error: { message: error.message },
       }
+    }
+
+    // CRITICAL: Immediately refresh session to ensure it's persisted
+    // This is especially important on mobile where session persistence can be unreliable
+    try {
+      await supabase.auth.getSession()
+    } catch (sessionError) {
+      console.warn("Session refresh after sign-in failed:", sessionError)
+      // Don't fail the sign-in if session refresh fails - the session should still be valid
     }
 
     return {

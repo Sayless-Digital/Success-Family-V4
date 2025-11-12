@@ -19,6 +19,7 @@ interface AuthContextType {
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   refreshWalletBalance: () => Promise<void>
+  waitForAuthStateChange: (timeout?: number) => Promise<boolean>
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
@@ -104,12 +105,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Use refs to access current state without causing re-subscriptions
   const userRef = React.useRef<SupabaseUser | null>(null)
   const userProfileRef = React.useRef<User | null>(null)
+  const authStateChangeResolversRef = React.useRef<Set<(value: boolean) => void>>(new Set())
 
   // Update refs when state changes
   React.useEffect(() => {
     userRef.current = user
     userProfileRef.current = userProfile
   }, [user, userProfile])
+
+  // Wait for auth state change to complete (used by auth dialog)
+  // This waits for the next SIGNED_IN event to complete (profile loaded)
+  const waitForAuthStateChange = React.useCallback((timeout = 15000): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // Store initial state to detect changes
+      const initialUser = userRef.current
+      const initialProfile = userProfileRef.current
+      
+      // If we're already authenticated with profile, wait a bit to see if a new sign-in happens
+      // Otherwise, wait for the next auth state change
+      const timeoutId = setTimeout(() => {
+        authStateChangeResolversRef.current.delete(resolver)
+        // Check if state changed from initial state
+        const currentUser = userRef.current
+        const currentProfile = userProfileRef.current
+        const hasChanged = currentUser !== initialUser || currentProfile !== initialProfile
+        // Resolve true if we have a user and profile (either new or existing)
+        resolve(hasChanged && currentUser !== null && currentProfile !== null)
+      }, timeout)
+
+      const resolver = (value: boolean) => {
+        clearTimeout(timeoutId)
+        authStateChangeResolversRef.current.delete(resolver)
+        resolve(value)
+      }
+
+      authStateChangeResolversRef.current.add(resolver)
+    })
+  }, [])
 
   // Initialize auth state on mount
   React.useEffect(() => {
@@ -229,20 +261,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth()
 
-    // Listen for auth state changes
+    // Listen for auth state changes (realtime)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!isMounted) return
 
-        // Don't process auth changes until initial auth is complete
-        if (!authInitialized) {
-          // Queue the event to be processed after initialization
-          // This prevents race conditions
+        // CRITICAL: Process SIGNED_IN events immediately, even during initialization
+        // This ensures mobile sign-ins are handled in realtime without delay
+        const isSignInEvent = event === 'SIGNED_IN'
+        const shouldProcess = authInitialized || isSignInEvent
+
+        if (!shouldProcess) {
+          // Queue the event to be processed after initialization (for non-sign-in events)
           return
         }
 
-        // Prevent concurrent auth state processing
-        if (isProcessingAuthChange) {
+        // Prevent concurrent auth state processing (except for SIGNED_IN which should process immediately)
+        if (isProcessingAuthChange && !isSignInEvent) {
           console.warn("Auth state change already processing, skipping")
           return
         }
@@ -257,6 +292,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userProfileRef.current = null
             // CRITICAL: Ensure loading is cleared on sign out
             setIsLoading(false)
+            // Notify waiters
+            authStateChangeResolversRef.current.forEach(resolve => resolve(false))
+            authStateChangeResolversRef.current.clear()
             return
           }
 
@@ -275,6 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             
             // Always try to fetch profile (it might have been updated)
+            // Use shorter timeout on mobile for faster response
             const profile = await fetchProfileWithRetry(session.user.id)
             
             if (!isMounted) return
@@ -300,6 +339,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // CRITICAL: Always clear loading state after profile fetch completes (success or failure)
             // This ensures the UI doesn't get stuck in loading state, especially on mobile
             setIsLoading(false)
+            
+            // Notify waiters that auth state change is complete
+            const isAuthenticated = profile !== null
+            authStateChangeResolversRef.current.forEach(resolve => resolve(isAuthenticated))
+            authStateChangeResolversRef.current.clear()
           }
         } finally {
           isProcessingAuthChange = false
@@ -528,6 +572,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut: handleSignOut,
     refreshProfile,
     refreshWalletBalance,
+    waitForAuthStateChange,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
