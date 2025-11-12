@@ -44,7 +44,7 @@ async function getWalletData(userId: string) {
       .maybeSingle(),
     supabase
       .from('wallet_earnings_ledger')
-      .select('id, source_type, source_id, community_id, points, amount_ttd, status, available_at, created_at, confirmed_at, reversed_at, metadata')
+      .select('id, source_type, source_id, community_id, points, amount_ttd, status, available_at, created_at, metadata')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(50),

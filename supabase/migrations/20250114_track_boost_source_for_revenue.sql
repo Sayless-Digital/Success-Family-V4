@@ -115,8 +115,9 @@ BEGIN
       ) -- p_metadata
     );
 
+    -- Fixed: Use earnings_ledger_id instead of ledger_entry_id
     UPDATE public.post_boosts
-    SET ledger_entry_id = v_ledger_id
+    SET earnings_ledger_id = v_ledger_id
     WHERE id = v_boost_id;
 
     v_result := json_build_object(

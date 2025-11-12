@@ -59,8 +59,6 @@ type WalletEarningsEntry = {
   status: string
   available_at?: string | null
   created_at: string
-  confirmed_at?: string | null
-  reversed_at?: string | null
   metadata?: Record<string, unknown> | null
 }
 
@@ -383,7 +381,7 @@ export function WalletView({
     const { data, error } = await supabase
       .from("wallet_earnings_ledger")
       .select(
-        "id, user_id, source_type, source_id, community_id, points, amount_ttd, status, available_at, created_at, confirmed_at, reversed_at, metadata"
+        "id, user_id, source_type, source_id, community_id, points, amount_ttd, status, available_at, created_at, metadata"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
