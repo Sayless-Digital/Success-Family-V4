@@ -33,7 +33,7 @@ async function getWalletData(userId: string) {
     supabase.from('bank_accounts').select('id, account_name, bank_name, account_number, account_type').eq('is_active', true),
     supabase
       .from('transactions')
-      .select('id, type, amount_ttd, points_delta, earnings_points_delta, receipt_url, status, created_at, recipient_user_id, context')
+      .select('id, type, amount_ttd, points_delta, earnings_points_delta, receipt_url, status, created_at, recipient_user_id, sender_user_id, sender_name, recipient_name, context')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(TRANSACTION_PAGE_SIZE + 1),
@@ -60,29 +60,13 @@ async function getWalletData(userId: string) {
   const hasMoreTransactions = txs.length > TRANSACTION_PAGE_SIZE
   const trimmedTransactions = hasMoreTransactions ? txs.slice(0, TRANSACTION_PAGE_SIZE) : txs
   
-  // Fetch recipient users for transactions that have recipients
-  const recipientIds = Array.from(new Set(trimmedTransactions.map((t: any) => t.recipient_user_id).filter(Boolean)))
-  let recipientMap: Record<string, { name: string; username?: string }> = {}
-  if (recipientIds.length > 0) {
-    const { data: recipients } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, username')
-      .in('id', recipientIds)
-    
-    if (recipients) {
-      for (const r of recipients) {
-        const fullName = r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : null
-        const label = fullName || r.username || r.id
-        recipientMap[r.id] = { name: label, username: r.username || undefined }
-      }
-    }
-  }
-  
+  // Names are now stored directly in the transaction table, so we don't need to fetch them separately
+  // Only need to create signed URLs for receipts
   const signed = await Promise.all(
     trimmedTransactions.map(async (t: any) => {
-      if (!t.receipt_url) return { ...t, signed_url: null, recipient_name: t.recipient_user_id ? recipientMap[t.recipient_user_id]?.name : null }
+      if (!t.receipt_url) return { ...t, signed_url: null }
       const { data: signedUrl } = await supabase.storage.from('receipts').createSignedUrl(t.receipt_url, 600)
-      return { ...t, signed_url: signedUrl?.signedUrl || null, recipient_name: t.recipient_user_id ? recipientMap[t.recipient_user_id]?.name : null }
+      return { ...t, signed_url: signedUrl?.signedUrl || null }
     })
   )
 

@@ -42,8 +42,10 @@ type Transaction = {
   status: string
   created_at: string
   recipient_user_id: string | null
-  signed_url?: string | null
+  sender_user_id?: string | null
+  sender_name?: string | null
   recipient_name?: string | null
+  signed_url?: string | null
   context?: Record<string, unknown> | null
 }
 
@@ -303,29 +305,14 @@ export function WalletView({
         return []
       }
 
-      const recipientIds = Array.from(new Set(list.map((t: any) => t.recipient_user_id).filter(Boolean)))
-      let recipientMap: Record<string, { name: string; username?: string }> = {}
-      if (recipientIds.length > 0) {
-        const { data: recipients } = await supabase
-          .from("users")
-          .select("id, first_name, last_name, username")
-          .in("id", recipientIds)
-        if (recipients) {
-          for (const r of recipients) {
-            const fullName = r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : null
-            const label = fullName || r.username || r.id
-            recipientMap[r.id] = { name: label, username: r.username || undefined }
-          }
-        }
-      }
-
+      // Names are now stored directly in the transaction table, so we don't need to fetch them separately
+      // Only need to create signed URLs for receipts
       const signed = await Promise.all(
         list.map(async (t: any) => {
           const base = {
             ...t,
             points_delta: Number(t.points_delta ?? 0),
             earnings_points_delta: Number(t.earnings_points_delta ?? 0),
-            recipient_name: t.recipient_user_id ? recipientMap[t.recipient_user_id]?.name : null,
           }
           if (!t.receipt_url) {
             return { ...base, signed_url: null }
@@ -356,7 +343,7 @@ export function WalletView({
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id, type, amount_ttd, points_delta, earnings_points_delta, receipt_url, status, created_at, recipient_user_id, context"
+          "id, type, amount_ttd, points_delta, earnings_points_delta, receipt_url, status, created_at, recipient_user_id, sender_user_id, sender_name, recipient_name, context"
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
@@ -753,17 +740,20 @@ export function WalletView({
                 const earningsDelta = formatPointsDelta(t.earnings_points_delta)
                 
                 // Determine recipient label based on transaction type
+                // Names are now stored directly in the transaction table
                 let recipientLabel = "—"
                 if (t.type === "point_refund" && t.points_delta > 0) {
                   recipientLabel = "You"
-                } else if (t.type === "earning_credit" && t.recipient_user_id) {
-                  // For earning_credit, recipient_user_id is the sender
-                  recipientLabel = t.recipient_name ? `Received from ${t.recipient_name}` : "Received from user"
+                } else if (t.type === "earning_credit" && t.sender_name) {
+                  // For earning_credit, sender_name is who sent the money
+                  recipientLabel = `Received from ${t.sender_name}`
                 } else if (t.type === "point_spend" && t.points_delta < 0) {
-                  // For point_spend, recipient_user_id is who received the points
+                  // For point_spend, recipient_name is who received the points
                   recipientLabel = t.recipient_name ? `Sent to ${t.recipient_name}` : (t.recipient_user_id ? "Sent to user" : "Platform")
                 } else if (t.recipient_name) {
                   recipientLabel = t.recipient_name
+                } else if (t.sender_name && t.type !== "earning_credit") {
+                  recipientLabel = t.sender_name
                 }
 
                 return (
@@ -839,17 +829,20 @@ export function WalletView({
             const amountDisplay = formatCurrencyTtd(t.amount_ttd)
             
             // Determine recipient label based on transaction type
+            // Names are now stored directly in the transaction table
             let recipientLabel = "—"
             if (t.type === "point_refund" && t.points_delta > 0) {
               recipientLabel = "You"
-            } else if (t.type === "earning_credit" && t.recipient_user_id) {
-              // For earning_credit, recipient_user_id is the sender
-              recipientLabel = t.recipient_name ? `Received from ${t.recipient_name}` : "Received from user"
+            } else if (t.type === "earning_credit" && t.sender_name) {
+              // For earning_credit, sender_name is who sent the money
+              recipientLabel = `Received from ${t.sender_name}`
             } else if (t.type === "point_spend" && t.points_delta < 0) {
-              // For point_spend, recipient_user_id is who received the points
+              // For point_spend, recipient_name is who received the points
               recipientLabel = t.recipient_name ? `Sent to ${t.recipient_name}` : (t.recipient_user_id ? "Sent to user" : "Platform")
             } else if (t.recipient_name) {
               recipientLabel = t.recipient_name
+            } else if (t.sender_name && t.type !== "earning_credit") {
+              recipientLabel = t.sender_name
             }
 
             return (

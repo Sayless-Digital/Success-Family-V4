@@ -161,6 +161,7 @@ export type TransactionType =
   | 'point_refund'
   | 'earning_credit'
   | 'earning_reversal'
+  | 'referral_bonus'
 export type TransactionStatus = 'pending' | 'verified' | 'rejected'
 
 export interface Transaction {
@@ -177,11 +178,40 @@ export interface Transaction {
   verified_at?: string
   rejection_reason?: string
   recipient_user_id?: string // User who received points (NULL for platform fees)
+  sender_user_id?: string // User who initiated the transaction (sender of payment/points)
+  sender_name?: string // Name of the sender at the time of transaction (denormalized for audit trail)
+  recipient_name?: string // Name of the recipient at the time of transaction (denormalized for audit trail)
+  buy_price_per_point_at_time?: number // Historical buy price per point at transaction time
+  user_value_per_point_at_time?: number // Historical user value per point at transaction time
   context?: Record<string, unknown>
   created_at: string
 }
 
+export type PlatformRevenueType =
+  | 'topup_profit'
+  | 'voice_note_fee'
+  | 'live_event_fee'
+  | 'referral_expense'
+  | 'user_earnings_expense'
+
+export interface PlatformRevenueLedgerEntry {
+  id: string
+  transaction_id?: string
+  revenue_type: PlatformRevenueType
+  amount_ttd: number // Positive for revenue, negative for expenses
+  points_involved: number
+  buy_price_per_point?: number // Historical buy price (for topups only)
+  user_value_per_point: number // Historical user value (for all types)
+  is_liquid: boolean // True if revenue is available for withdrawal
+  bank_account_id?: string
+  metadata?: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
 export type WalletEarningStatus = 'pending' | 'confirmed' | 'locked' | 'reversed'
+// Note: 'available' and 'paid' from migration file are not used - use 'confirmed' instead
+// confirmed_at and reversed_at columns removed as redundant with status field
 
 export interface WalletEarningsLedgerEntry {
   id: string
@@ -189,14 +219,13 @@ export interface WalletEarningsLedgerEntry {
   source_type: 'boost' | 'live_registration' | 'manual_adjustment' | 'storage_credit'
   source_id?: string
   community_id?: string
-  points: number
+  points: number // Column name is "points", not "points_amount" as in outdated migration files
   amount_ttd?: number
   status: WalletEarningStatus
-  available_at?: string
+  available_at?: string // Column name is "available_at", not "release_at" as in outdated migration files
   created_at: string
-  confirmed_at?: string
-  reversed_at?: string
   metadata?: Record<string, unknown>
+  // Note: confirmed_at and reversed_at removed - status field is sufficient
 }
 
 export type PayoutStatus = 'pending' | 'processing' | 'paid' | 'cancelled'
