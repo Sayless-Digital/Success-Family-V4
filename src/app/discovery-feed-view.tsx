@@ -80,7 +80,12 @@ export default function DiscoveryFeedView({
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
-  const postIdsRef = React.useRef<Set<string>>(new Set(posts.map(p => p.id)))
+  const postIdsRef = React.useRef<Set<string>>(new Set(initialPosts.map(p => p.id)))
+  const [newPostsCount, setNewPostsCount] = useState(0)
+  // If we have 100 posts initially, there might be more
+  const [hasMore, setHasMore] = useState(initialPosts.length >= 100)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const loadMoreRef = React.useRef<HTMLDivElement>(null)
   const [contributionDialogOpen, setContributionDialogOpen] = useState<string | null>(null)
   const [contributionDialogIndex, setContributionDialogIndex] = useState<number | null>(null)
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, HierarchicalPost[]>>({})
@@ -250,6 +255,238 @@ export default function DiscoveryFeedView({
   useEffect(() => {
     postIdsRef.current = new Set(posts.map(p => p.id))
   }, [posts])
+
+  // Load more posts (infinite scroll)
+  const loadMorePosts = async () => {
+    if (isLoadingMore || !hasMore || posts.length === 0) return
+
+    setIsLoadingMore(true)
+    try {
+      // Get the oldest post's timestamp for pagination
+      const oldestPost = [...posts].sort((a, b) => {
+        const dateA = new Date(a.published_at || a.created_at).getTime()
+        const dateB = new Date(b.published_at || b.created_at).getTime()
+        return dateA - dateB
+      })[0]
+
+      const oldestPostDate = oldestPost?.published_at || oldestPost?.created_at
+
+      // Fetch next batch of posts
+      const { data: newPostsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          author:users!posts_author_id_fkey(
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_picture
+          ),
+          community:communities!posts_community_id_fkey(
+            id,
+            name,
+            slug,
+            logo_url
+          ),
+          media:post_media(
+            id,
+            media_type,
+            storage_path,
+            file_name,
+            display_order
+          )
+        `)
+        .eq('depth', 0)
+        .eq('is_pinned', false)
+        .not('published_at', 'is', null)
+        .lt('published_at', oldestPostDate)
+        .order('published_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        console.error('Error loading more posts:', error)
+        toast.error('Failed to load more posts')
+        return
+      }
+
+      if (!newPostsData || newPostsData.length === 0) {
+        setHasMore(false)
+        return
+      }
+
+      // Filter out posts that already exist
+      const existingPostIds = new Set(posts.map(p => p.id))
+      const trulyNewPosts = newPostsData.filter(p => !existingPostIds.has(p.id))
+
+      if (trulyNewPosts.length === 0) {
+        setHasMore(false)
+        return
+      }
+
+      // Enrich new posts with discovery feed data (same logic as loadNewPosts)
+      const newPostIds = trulyNewPosts.map(p => p.id)
+      const newAuthorIds = [...new Set(trulyNewPosts.map(p => p.author_id))]
+      const now = new Date()
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+      // Parallel fetch all enrichment data
+      const [
+        boostCountsResult,
+        recentBoostsResult,
+        authorTotalsResult,
+        authorEarningsResult,
+        userBoostStatusResult
+      ] = await Promise.all([
+        supabase.rpc('get_posts_boost_counts', { p_post_ids: newPostIds }),
+        supabase
+          .from('post_boosts')
+          .select('post_id, created_at')
+          .in('post_id', newPostIds)
+          .gte('created_at', twentyFourHoursAgo.toISOString()),
+        supabase.rpc('get_authors_total_boost_counts', { p_author_ids: newAuthorIds }),
+        supabase
+          .from('wallets')
+          .select('user_id, earnings_points')
+          .in('user_id', newAuthorIds),
+        user && newPostIds.length > 0
+          ? supabase.rpc('get_user_boosted_posts', {
+              p_post_ids: newPostIds,
+              p_user_id: user.id
+            })
+          : Promise.resolve({ data: [] })
+      ])
+
+      const boostCountMap = new Map<string, number>(
+        (boostCountsResult.data || []).map((b: { post_id: string; boost_count: number }) => [b.post_id, b.boost_count])
+      )
+
+      const recentBoostsMap = new Map<string, number>()
+      ;(recentBoostsResult.data || []).forEach((b: { post_id: string }) => {
+        recentBoostsMap.set(b.post_id, (recentBoostsMap.get(b.post_id) || 0) + 1)
+      })
+
+      const authorTotalsMap = new Map<string, number>(
+        (authorTotalsResult.data || []).map((a: { author_id: string; total_boost_count: number }) => [a.author_id, Number(a.total_boost_count)])
+      )
+
+      const authorEarningsMap = new Map<string, number>(
+        (authorEarningsResult.data || []).map((w: { user_id: string; earnings_points: number }) => [w.user_id, Number(w.earnings_points || 0)])
+      )
+
+      const boostStatusMap = new Map<string, { user_has_boosted: boolean; can_unboost: boolean }>(
+        (userBoostStatusResult.data || []).map((b: { post_id: string; user_has_boosted: boolean; can_unboost: boolean }) => [
+          b.post_id,
+          { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }
+        ])
+      )
+
+      // Use payoutMinimumPoints from props
+      const minimumPayoutPoints = payoutMinimumPoints
+
+      // Enrich new posts
+      const enrichedNewPosts = trulyNewPosts.map(post => {
+        const boostCount = boostCountMap.get(post.id) || 0
+        const recentBoosts = recentBoostsMap.get(post.id) || 0
+        const postDate = new Date(post.published_at || post.created_at)
+        const postAgeHours = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60)
+        
+        const recencyFactor = 100 / (postAgeHours + 1)
+        const discoveryScore = (recentBoosts * 3) + boostCount + recencyFactor
+        
+        const authorTotalBoosts = authorTotalsMap.get(post.author_id) || 0
+        const authorEarnings = authorEarningsMap.get(post.author_id) || 0
+        const pointsToPayout = Math.max(0, minimumPayoutPoints - Number(authorEarnings))
+        const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 20
+        
+        const communityData = (post as any).community || (post as any).communities
+        
+        const boostStatus = boostStatusMap.get(post.id) ?? { user_has_boosted: false, can_unboost: false }
+        
+        return {
+          ...post,
+          boost_count: boostCount,
+          discovery_score: discoveryScore,
+          recent_boosts: recentBoosts,
+          author_total_boosts: authorTotalBoosts,
+          is_low_visibility: authorTotalBoosts < 10,
+          is_near_payout: isNearPayout,
+          points_to_payout: pointsToPayout,
+          popular_score: boostCount,
+          created_timestamp: postDate.getTime(),
+          user_has_boosted: boostStatus.user_has_boosted,
+          can_unboost: boostStatus.can_unboost,
+          community: communityData ? {
+            id: communityData.id,
+            name: communityData.name,
+            slug: communityData.slug,
+            logo_url: communityData.logo_url
+          } : undefined
+        } as typeof initialPosts[0]
+      })
+
+      // Update postIds ref
+      enrichedNewPosts.forEach(post => {
+        postIdsRef.current.add(post.id)
+      })
+
+      // Append new posts to existing list
+      setPosts(prevPosts => [...prevPosts, ...enrichedNewPosts])
+
+      // Update relative times
+      const newRelativeTimes: Record<string, string> = {}
+      enrichedNewPosts.forEach(post => {
+        newRelativeTimes[post.id] = formatRelativeTime(post.published_at || post.created_at)
+      })
+      setRelativeTimes(prev => ({ ...prev, ...newRelativeTimes }))
+
+      // Check if there are more posts
+      if (enrichedNewPosts.length < 50) {
+        setHasMore(false)
+      }
+    } catch (error: any) {
+      console.error('Error loading more posts:', error)
+      toast.error('Failed to load more posts')
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // Infinite scroll - Intersection Observer
+  useEffect(() => {
+    if (!hasMore || isLoadingMore || posts.length === 0) return
+
+    const loadMore = () => {
+      if (!isLoadingMore && hasMore && posts.length > 0) {
+        loadMorePosts()
+      }
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const firstEntry = entries[0]
+        if (firstEntry.isIntersecting) {
+          loadMore()
+        }
+      },
+      {
+        root: null,
+        rootMargin: '200px',
+        threshold: 0.1
+      }
+    )
+
+    const currentRef = loadMoreRef.current
+    if (currentRef) {
+      observer.observe(currentRef)
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef)
+      }
+    }
+  }, [hasMore, isLoadingMore, posts.length])
 
   // Fetch user communities
   useEffect(() => {
@@ -517,6 +754,251 @@ export default function DiscoveryFeedView({
     }
   }, [posts])
 
+  // Real-time subscription for new posts from all communities
+  useEffect(() => {
+    const channel = supabase
+      .channel('discovery-new-posts')
+      .on(
+        'postgres_changes' as any,
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'posts',
+          filter: 'depth=eq.0'
+        },
+        (payload: any) => {
+          const newPost = payload.new as { id?: string; depth?: number; published_at?: string | null; is_pinned?: boolean } | null
+          if (!newPost || !newPost.id) {
+            return
+          }
+
+          // Only count root-level posts
+          if (newPost.depth !== 0) {
+            return
+          }
+
+          // Only count posts that are published and not pinned
+          if (!newPost.published_at || newPost.is_pinned) {
+            return
+          }
+
+          // Check if post already exists in current list
+          if (postIdsRef.current.has(newPost.id)) {
+            return
+          }
+
+          // Increment new posts counter
+          setNewPostsCount(prev => prev + 1)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  // Load new posts when user clicks the notification
+  const loadNewPosts = async () => {
+    if (!posts.length) return
+
+    try {
+      // Get the most recent post timestamp from current posts
+      const mostRecentPost = posts.reduce((latest, post) => {
+        const postDate = new Date(post.published_at || post.created_at)
+        const latestDate = new Date(latest.published_at || latest.created_at)
+        return postDate > latestDate ? post : latest
+      })
+
+      const mostRecentDate = mostRecentPost.published_at || mostRecentPost.created_at
+
+      // Fetch new posts that were created after the most recent one
+      const { data: newPostsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          author:users!posts_author_id_fkey(
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_picture
+          ),
+          community:communities!posts_community_id_fkey(
+            id,
+            name,
+            slug,
+            logo_url
+          ),
+          media:post_media(
+            id,
+            media_type,
+            storage_path,
+            file_name,
+            display_order
+          )
+        `)
+        .eq('depth', 0)
+        .eq('is_pinned', false)
+        .not('published_at', 'is', null)
+        .gt('published_at', mostRecentDate)
+        .order('published_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        console.error('Error fetching new posts:', error)
+        toast.error('Failed to load new posts')
+        return
+      }
+
+      if (!newPostsData || newPostsData.length === 0) {
+        setNewPostsCount(0)
+        toast.info('No new posts to load')
+        return
+      }
+
+      // Filter out posts that already exist in the current list
+      const existingPostIds = new Set(posts.map(p => p.id))
+      const trulyNewPosts = newPostsData.filter(p => !existingPostIds.has(p.id))
+
+      if (trulyNewPosts.length === 0) {
+        setNewPostsCount(0)
+        toast.info('No new posts to load')
+        return
+      }
+
+      // Enrich new posts with discovery feed data
+      const newPostIds = trulyNewPosts.map(p => p.id)
+      const newAuthorIds = [...new Set(trulyNewPosts.map(p => p.author_id))]
+      const now = new Date()
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+      // Parallel fetch all enrichment data
+      const [
+        boostCountsResult,
+        recentBoostsResult,
+        authorTotalsResult,
+        authorEarningsResult,
+        userBoostStatusResult
+      ] = await Promise.all([
+        supabase.rpc('get_posts_boost_counts', { p_post_ids: newPostIds }),
+        // Get recent boosts (last 24 hours)
+        supabase
+          .from('post_boosts')
+          .select('post_id, created_at')
+          .in('post_id', newPostIds)
+          .gte('created_at', twentyFourHoursAgo.toISOString()),
+        // Get author total boost counts (for low-visibility detection)
+        supabase.rpc('get_authors_total_boost_counts', { p_author_ids: newAuthorIds }),
+        // Get author earnings for payout milestone calculation
+        supabase
+          .from('wallets')
+          .select('user_id, earnings_points')
+          .in('user_id', newAuthorIds),
+        // Get user boost status if authenticated
+        user && newPostIds.length > 0
+          ? supabase.rpc('get_user_boosted_posts', {
+              p_post_ids: newPostIds,
+              p_user_id: user.id
+            })
+          : Promise.resolve({ data: [] })
+      ])
+
+      const boostCountMap = new Map<string, number>(
+        (boostCountsResult.data || []).map((b: { post_id: string; boost_count: number }) => [b.post_id, b.boost_count])
+      )
+
+      const recentBoostsMap = new Map<string, number>()
+      ;(recentBoostsResult.data || []).forEach((b: { post_id: string }) => {
+        recentBoostsMap.set(b.post_id, (recentBoostsMap.get(b.post_id) || 0) + 1)
+      })
+
+      const authorTotalsMap = new Map<string, number>(
+        (authorTotalsResult.data || []).map((a: { author_id: string; total_boost_count: number }) => [a.author_id, Number(a.total_boost_count)])
+      )
+
+      const authorEarningsMap = new Map<string, number>(
+        (authorEarningsResult.data || []).map((w: { user_id: string; earnings_points: number }) => [w.user_id, Number(w.earnings_points || 0)])
+      )
+
+      const boostStatusMap = new Map<string, { user_has_boosted: boolean; can_unboost: boolean }>(
+        (userBoostStatusResult.data || []).map((b: { post_id: string; user_has_boosted: boolean; can_unboost: boolean }) => [
+          b.post_id,
+          { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }
+        ])
+      )
+
+      // Use payoutMinimumPoints from props
+      const minimumPayoutPoints = payoutMinimumPoints
+
+      // Enrich new posts
+      const enrichedNewPosts = trulyNewPosts.map(post => {
+        const boostCount = boostCountMap.get(post.id) || 0
+        const recentBoosts = recentBoostsMap.get(post.id) || 0
+        const postDate = new Date(post.published_at || post.created_at)
+        const postAgeHours = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60)
+        
+        // Calculate discovery score: (recent_boosts * 3) + total_boosts + recency_factor
+        const recencyFactor = 100 / (postAgeHours + 1)
+        const discoveryScore = (recentBoosts * 3) + boostCount + recencyFactor
+        
+        // Get author data
+        const authorTotalBoosts = authorTotalsMap.get(post.author_id) || 0
+        const authorEarnings = authorEarningsMap.get(post.author_id) || 0
+        const pointsToPayout = Math.max(0, minimumPayoutPoints - Number(authorEarnings))
+        const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 20
+        
+        // Extract community data
+        const communityData = (post as any).community || (post as any).communities
+        
+        // Get user boost status
+        const boostStatus = boostStatusMap.get(post.id) ?? { user_has_boosted: false, can_unboost: false }
+        
+        return {
+          ...post,
+          boost_count: boostCount,
+          discovery_score: discoveryScore,
+          recent_boosts: recentBoosts,
+          author_total_boosts: authorTotalBoosts,
+          is_low_visibility: authorTotalBoosts < 10,
+          is_near_payout: isNearPayout,
+          points_to_payout: pointsToPayout,
+          popular_score: boostCount,
+          created_timestamp: postDate.getTime(),
+          user_has_boosted: boostStatus.user_has_boosted,
+          can_unboost: boostStatus.can_unboost,
+          community: communityData ? {
+            id: communityData.id,
+            name: communityData.name,
+            slug: communityData.slug,
+            logo_url: communityData.logo_url
+          } : undefined
+        } as typeof initialPosts[0]
+      })
+
+      // Update postIds ref
+      enrichedNewPosts.forEach(post => {
+        postIdsRef.current.add(post.id)
+      })
+
+      // Prepend new posts to the existing list
+      setPosts(prevPosts => [...enrichedNewPosts, ...prevPosts])
+      setNewPostsCount(0)
+      
+      // Update relative times for new posts
+      const newRelativeTimes: Record<string, string> = {}
+      enrichedNewPosts.forEach(post => {
+        newRelativeTimes[post.id] = formatRelativeTime(post.published_at || post.created_at)
+      })
+      setRelativeTimes(prev => ({ ...prev, ...newRelativeTimes }))
+      
+      toast.success(`Loaded ${enrichedNewPosts.length} new ${enrichedNewPosts.length === 1 ? 'post' : 'posts'}`)
+    } catch (error: any) {
+      console.error('Error loading new posts:', error)
+      toast.error('Failed to load new posts')
+    }
+  }
+
   // Calculate progress percentage
   const progressPercentage = userGoal > 0 ? Math.min((currentUserCount / userGoal) * 100, 100) : 0
 
@@ -556,6 +1038,18 @@ export default function DiscoveryFeedView({
               <span className="text-sm font-medium text-white">Users Signed up</span>
             </div>
           </div>
+
+          {/* New Posts Notification - Sticky at top when visible */}
+          {newPostsCount > 0 && (
+            <div className="sticky top-14 z-[100] flex justify-center py-2 mb-2">
+              <button
+                onClick={loadNewPosts}
+                className="bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg hover:bg-primary/90 transition-all animate-bounce text-sm font-medium backdrop-blur-sm border border-white/20 cursor-pointer"
+              >
+                {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'} - Click to load
+              </button>
+            </div>
+          )}
 
           {/* Post Composer with Community Selector - Only show if user is logged in and has communities */}
           {user && userCommunities.length > 0 && selectedCommunity && (
@@ -626,6 +1120,18 @@ export default function DiscoveryFeedView({
             <span className="text-sm font-medium text-white">Users Signed up</span>
           </div>
         </div>
+
+        {/* New Posts Notification - Sticky at top when visible */}
+        {newPostsCount > 0 && (
+          <div className="sticky top-14 z-[100] flex justify-center py-2 mb-2">
+            <button
+              onClick={loadNewPosts}
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg hover:bg-primary/90 transition-all animate-bounce text-sm font-medium backdrop-blur-sm border border-white/20 cursor-pointer"
+            >
+              {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'} - Click to load
+            </button>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="w-full">
           <TabsList className="w-full">
@@ -932,6 +1438,18 @@ export default function DiscoveryFeedView({
                   </Card>
                 )
               })}
+              
+              {/* Load More Trigger - Intersection Observer Target */}
+              {hasMore && (
+                <div ref={loadMoreRef} className="h-4 w-full" />
+              )}
+              
+              {/* Loading Spinner */}
+              {isLoadingMore && (
+                <div className="flex items-center justify-center py-8">
+                  <LoadingSpinner />
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>

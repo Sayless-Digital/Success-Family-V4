@@ -29,7 +29,7 @@ import {
   type MessageResult,
 } from "@/lib/chat-shared"
 import type { DirectMessageParticipant, DirectMessageThread } from "@/types"
-import { cn, formatRelativeTime } from "@/lib/utils"
+import { cn, formatRelativeTime, linkifyText } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -1682,7 +1682,7 @@ export default function MessagesView({
                                   <p className={cn(
                                     "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words",
                                     hasImages && "pr-12 sm:pr-14"
-                                  )}>{message.content}</p>
+                                  )}>{linkifyText(message.content)}</p>
                                 )}
                                 {attachmentsForMessage.length > 0 && (
                                   <div className={cn(isImageOnly ? "" : "space-y-2", message.content && "mt-1.5")}>

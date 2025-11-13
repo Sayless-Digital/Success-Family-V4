@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift, TrendingUp, Wallet, Mail } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift, TrendingUp, Wallet, Mail, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -23,6 +23,7 @@ interface GlobalSidebarProps {
 const baseNavigationItems = [
   { icon: Home, label: "Home", href: "/" },
   { icon: Users, label: "Communities", href: "/communities" },
+  { icon: HelpCircle, label: "FAQ", href: "/faq" },
 ]
 
 // User menu items (shown when authenticated)
