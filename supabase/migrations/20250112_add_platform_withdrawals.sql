@@ -84,3 +84,4 @@ COMMENT ON COLUMN public.platform_withdrawals.processed_by IS 'Admin user who pr
 COMMENT ON COLUMN public.platform_withdrawals.notes IS 'Additional notes about the withdrawal';
 
 
+

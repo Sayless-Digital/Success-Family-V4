@@ -138,3 +138,4 @@ COMMENT ON FUNCTION public.deduct_points_for_voice_notes IS 'Deducts points from
 COMMENT ON FUNCTION public.deduct_points_for_stream_creation IS 'Deducts points from user wallet for stream creation. Admins bypass point deduction.';
 
 
+
