@@ -75,7 +75,7 @@ const faqSections = [
       {
         question: "Are there any costs to join communities?",
         answer:
-          "No! All communities are completely free to join. However, while joining is free, you'll need points to participate in certain activities like boosting posts, joining live events, or uploading videos. These activities use the points you've topped up in your wallet.",
+          "No! All communities are completely free to join. However, while joining is free, you'll need points to participate in certain activities like boosting posts, joining live events, or adding media to posts. These activities use the points you've topped up in your wallet.",
       },
     ],
   },
@@ -122,7 +122,12 @@ const faqSections = [
       {
         question: "How do I boost a post?",
         answer:
-          "To boost a post, simply click the boost button (lightning icon) on any post you like. You'll spend 1 point from your combined balance (regular wallet balance and earnings balance), and the post author will receive 1 point in their earnings balance (separate from wallet balance, which can be cashed out later). If the creator has set up a boost reward (like an exclusive message), you'll receive it automatically via direct message. You can boost multiple posts, but you can only boost each post once. Boosts can be undone within 1 minute of placing them. After 1 minute, boosts cannot be reversed.",
+          "To boost a post, simply click the boost button (lightning icon) on any post you like. You'll spend 1 point from your combined balance (regular wallet balance and earnings balance), and the post author will receive 1 point in their earnings balance (separate from wallet balance, which can be cashed out later). If the creator has set up a boost reward (like an exclusive message), you'll receive it automatically via direct message. You can boost multiple posts, but you can only boost each post once. Important: Boosts are permanent and cannot be reversed, so make sure you want to boost a post before clicking.",
+      },
+      {
+        question: "Can I undo a boost?",
+        answer:
+          "No, boosts are permanent and cannot be reversed. Once you boost a post, the point is spent and transferred to the post author's earnings balance. You cannot undo a boost after clicking the boost button, so make sure you want to boost a post before clicking.",
       },
       {
         question: "What are boost rewards?",
@@ -132,12 +137,12 @@ const faqSections = [
       {
         question: "How do I create a post?",
         answer:
-          "To create a post, navigate to a community you're a member of and click the 'Create Post' button. You can add text, images, videos, or other media to your post. Once published, other members can view, comment, and boost your post.",
+          "To create a post, navigate to a community you're a member of and click the 'Create Post' button. You can add text, images, and voice notes to your post. Once published, other members can view, comment, and boost your post.",
       },
       {
         question: "What types of media can I add to posts?",
         answer:
-          "You can add images, videos, documents, and audio files to your posts. The platform supports various file formats, and media is stored securely in the cloud. Some media types may have file size limits.",
+          "Currently, you can add images and voice notes to your posts. Additional media types such as videos and documents are coming soon. Media files are stored securely in the cloud and may have file size limits.",
       },
       {
         question: "How does the discovery feed work?",
@@ -199,7 +204,7 @@ const faqSections = [
       {
         question: "How much storage do I get?",
         answer:
-          "Every user gets 1 GB of free storage for their videos and media. This is enough for most users' needs. If you need more storage, you can purchase additional storage using points.",
+          "Every user gets 1 GB of free storage for their media files and event recordings. This is enough for most users' needs. If you need more storage, you can purchase additional storage using points.",
       },
       {
         question: "How do I purchase additional storage?",
@@ -212,14 +217,14 @@ const faqSections = [
           "If you exceed your storage limit, you'll need to either purchase additional storage using points or delete old media. The platform will notify you when you're approaching your limit so you can take action before it becomes an issue. Make sure you have enough points in your wallet to purchase additional storage if needed.",
       },
       {
-        question: "Can I upload videos?",
+        question: "Can I upload videos to posts?",
         answer:
-          "Yes! You can upload videos to your community. Videos are stored securely and can be shared in posts or added to playlists. Video uploads count toward your storage limit.",
+          "Video uploads to posts are coming soon. Currently, you can add images and voice notes to posts. However, event recordings (which are videos) are automatically saved when you record live events, and these can be added to playlists or shared in your community.",
       },
       {
         question: "What are playlists?",
         answer:
-          "Playlists are collections of videos that you can organize for your community. You can create playlists with event recordings or uploaded videos, and members can watch them in order. Playlists are great for organizing educational content or event series.",
+          "Playlists are collections of videos that you can organize for your community. You can create playlists with event recordings, and members can watch them in order. Playlists are great for organizing educational content or event series. Video uploads to playlists are coming soon.",
       },
     ],
   },
@@ -230,22 +235,12 @@ const faqSections = [
       {
         question: "How do I send a direct message?",
         answer:
-          "To send a direct message, go to the Messages page and click 'New Message'. You can search for users by username and start a conversation. Some users may require you to send a message request first before they accept your message.",
+          "To send a direct message, go to the Messages page and click 'New Message'. You can search for users by username and start a conversation. You can message any user directly - there are no message requests required. Conversations start automatically when you send your first message.",
       },
       {
         question: "Can I send media in direct messages?",
         answer:
-          "Yes! You can send images, audio files, and other attachments in direct messages. Media files are stored securely and count toward your storage limit if they're large files.",
-      },
-      {
-        question: "What are message requests?",
-        answer:
-          "Message requests allow users to control who can message them. If a user has message requests enabled, you'll need to send a request first. They can then accept or decline your request. Once accepted, you can message them freely.",
-      },
-      {
-        question: "Can I block users?",
-        answer:
-          "Yes, you can block users from sending you messages. Blocked users won't be able to contact you, and you won't see their messages. You can unblock users later if you change your mind.",
+          "Yes! You can send images and voice notes in direct messages. Media files are stored securely and count toward your storage limit if they're large files.",
       },
     ],
   },
@@ -256,7 +251,7 @@ const faqSections = [
       {
         question: "How do I edit my profile?",
         answer:
-          "You can edit your profile from the Account page. You can update your username, name, bio, profile picture, and social media links. Your username must be unique and can only contain letters, numbers, and underscores.",
+          "You can edit your profile from the Account page. You can update your username, name, bio, and profile picture. Your username must be unique and can only contain letters, numbers, and underscores.",
       },
       {
         question: "What is my profile used for?",
@@ -267,11 +262,6 @@ const faqSections = [
         question: "Can I follow other users?",
         answer:
           "Yes! You can follow other users to see their activity and stay connected. Following someone doesn't automatically give them access to your content, but it helps you discover their posts and updates.",
-      },
-      {
-        question: "What are social media links?",
-        answer:
-          "Social media links allow you to add links to your Twitter, LinkedIn, GitHub, Instagram, Facebook, YouTube, TikTok, or personal website. These links appear on your profile so others can connect with you on other platforms.",
       },
     ],
   },
