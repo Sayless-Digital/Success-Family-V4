@@ -108,7 +108,7 @@ BEGIN
     v_referral.id, -- Use referral_id as source_id
     v_bonus_points,
     v_amount_ttd,
-    'available', -- Referral bonuses are immediately available
+    'confirmed', -- Referral bonuses are immediately available (use 'confirmed' status)
     now(),
     jsonb_build_object(
       'referral_id', v_referral.id,
