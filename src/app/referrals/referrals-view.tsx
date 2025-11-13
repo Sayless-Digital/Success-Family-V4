@@ -35,12 +35,14 @@ interface ReferralsViewProps {
   }>
   referralTopups: Array<{
     id: string
+    referral_id: string
     transaction_id: string
     referrer_bonus_transaction_id: string | null
     bonus_points_awarded: number
     topup_number: number
     created_at: string
     referral: {
+      referred_user_id?: string
       referred_user: {
         id: string
         username: string
@@ -55,6 +57,13 @@ interface ReferralsViewProps {
       created_at: string
     }
   }>
+  referredUserTopups: Record<string, Array<{
+    id: string
+    user_id: string
+    amount_ttd: number
+    created_at: string
+    status: string
+  }>>
   totalEarnings: number
   bonusTransactions: Array<{
     id: string
@@ -76,6 +85,7 @@ export function ReferralsView({
   referralMaxTopups,
   referrals,
   referralTopups,
+  referredUserTopups,
   totalEarnings,
   bonusTransactions,
 }: ReferralsViewProps) {
@@ -211,9 +221,12 @@ export function ReferralsView({
             <div className="space-y-4">
               {referrals.map((referral) => {
                 const userTopups = referralTopups.filter(
-                  (rt) => rt.referral.referred_user.id === referral.referred_user.id
+                  (rt) => rt.referral?.referred_user?.id === referral.referred_user.id
                 )
+                // Also check if the user has any topup transactions (even if no bonus was awarded)
+                const userTopupTransactions = referredUserTopups[referral.referred_user.id] || []
                 const hasConverted = userTopups.length > 0
+                const hasToppedUp = userTopupTransactions.length > 0
 
                 return (
                   <div
@@ -241,20 +254,22 @@ export function ReferralsView({
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      {hasConverted ? (
+                    {hasToppedUp && (
+                      <div className="text-right">
                         <div>
                           <p className="text-sm font-medium text-white">
-                            {userTopups.length} top-up{userTopups.length !== 1 ? "s" : ""}
+                            {userTopupTransactions.length} top-up{userTopupTransactions.length !== 1 ? "s" : ""}
                           </p>
-                          <p className="text-xs text-white/60">
-                            {userTopups.reduce((sum, rt) => sum + Number(rt.bonus_points_awarded || 0), 0)} points earned
-                          </p>
+                          {hasConverted ? (
+                            <p className="text-xs text-white/60">
+                              {userTopups.reduce((sum, rt) => sum + Number(rt.bonus_points_awarded || 0), 0)} points earned
+                            </p>
+                          ) : (
+                            <p className="text-xs text-white/40">Pending bonus</p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-sm text-white/60">No top-ups yet</p>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -293,7 +308,9 @@ export function ReferralsView({
                       </p>
                     </div>
                   </div>
-                  <p className="text-sm font-bold text-white">+{transaction.points_delta} points</p>
+                  <p className="text-sm font-bold text-white">
+                    +{transaction.points_delta || 0} points
+                  </p>
                 </div>
               ))}
             </div>

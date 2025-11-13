@@ -60,7 +60,7 @@ export default async function ReferralsPage() {
       : referral.referred_user,
   })).filter((referral) => referral.referred_user) // Filter out any with missing user data
 
-  // Get referral topups (conversions)
+  // Get referral topups (conversions) - records when bonuses were awarded
   const referralIds = referrals.map((r) => r.id)
   let referralTopups: any[] = []
   
@@ -69,12 +69,14 @@ export default async function ReferralsPage() {
       .from("referral_topups")
       .select(`
         id,
+        referral_id,
         transaction_id,
         referrer_bonus_transaction_id,
         bonus_points_awarded,
         topup_number,
         created_at,
         referral:referrals!referral_topups_referral_id_fkey(
+          referred_user_id,
           referred_user:users!referrals_referred_user_id_fkey(
             id,
             username,
@@ -102,17 +104,43 @@ export default async function ReferralsPage() {
 
       return {
         id: topup.id,
+        referral_id: topup.referral_id,
         transaction_id: topup.transaction_id,
         referrer_bonus_transaction_id: topup.referrer_bonus_transaction_id,
         bonus_points_awarded: Number(topup.bonus_points_awarded || 0),
         topup_number: Number(topup.topup_number || 0),
         created_at: topup.created_at,
         referral: {
+          referred_user_id: referral?.referred_user_id,
           referred_user: referredUser,
         },
         transaction: transaction,
       }
-    }).filter((topup) => topup.referral.referred_user && topup.transaction)
+    }).filter((topup) => topup.referral?.referred_user && topup.transaction)
+  }
+
+  // Also get topup transactions from referred users to check if they've topped up
+  // (even if no bonus was awarded, e.g., if max topups limit reached)
+  // Include all statuses, not just verified, to catch historical topups
+  const referredUserIds = referrals.map((r) => r.referred_user_id)
+  let referredUserTopups: Record<string, any[]> = {}
+  
+  if (referredUserIds.length > 0) {
+    const { data: topupsData } = await supabase
+      .from("transactions")
+      .select("id, user_id, amount_ttd, created_at, status")
+      .in("user_id", referredUserIds)
+      .eq("type", "top_up")
+      .order("created_at", { ascending: false })
+    
+    // Group topups by referred_user_id (include all statuses)
+    referredUserTopups = (topupsData || []).reduce((acc: Record<string, any[]>, topup: any) => {
+      if (!acc[topup.user_id]) {
+        acc[topup.user_id] = []
+      }
+      acc[topup.user_id].push(topup)
+      return acc
+    }, {})
   }
 
   // Calculate total earnings
@@ -128,6 +156,7 @@ export default async function ReferralsPage() {
     .select(`
       id,
       points_delta,
+      earnings_points_delta,
       created_at,
       recipient_user_id,
       recipient:users!transactions_recipient_user_id_fkey(
@@ -143,9 +172,10 @@ export default async function ReferralsPage() {
     .limit(50)
 
   // Transform bonus transactions data - extract single object from array
+  // Use earnings_points_delta instead of points_delta for referral bonuses
   const bonusTransactions = (bonusTransactionsData || []).map((transaction: any) => ({
     id: transaction.id,
-    points_delta: Number(transaction.points_delta || 0),
+    points_delta: Number(transaction.earnings_points_delta || transaction.points_delta || 0),
     created_at: transaction.created_at,
     recipient_user_id: transaction.recipient_user_id,
     recipient: Array.isArray(transaction.recipient)
@@ -160,6 +190,7 @@ export default async function ReferralsPage() {
       referralMaxTopups={settings?.referral_max_topups || 3}
       referrals={referrals}
       referralTopups={referralTopups}
+      referredUserTopups={referredUserTopups}
       totalEarnings={totalEarnings}
       bonusTransactions={bonusTransactions}
     />
