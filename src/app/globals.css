@@ -1102,3 +1102,200 @@ html [data-sonner-toast][data-styled='true'] [data-close-button]:active,
 .email-content [id*="signature"] {
   display: none !important;
 }
+
+/* Ensure Radix UI portals (dialogs, dropdowns, etc.) work in fullscreen mode */
+/* When an element is in fullscreen, portals need to be visible and properly positioned */
+/* Target portals that are children of body but need to appear in fullscreen */
+body:has(:fullscreen) [data-radix-portal],
+body:has(:-webkit-full-screen) [data-radix-portal],
+body:has(:-moz-full-screen) [data-radix-portal],
+body:has(:-ms-fullscreen) [data-radix-portal] {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Ensure dialog overlays and content work in fullscreen */
+body:has(:fullscreen) [data-radix-dialog-overlay],
+body:has(:-webkit-full-screen) [data-radix-dialog-overlay],
+body:has(:-moz-full-screen) [data-radix-dialog-overlay],
+body:has(:-ms-fullscreen) [data-radix-dialog-overlay] {
+  position: fixed !important;
+  z-index: 2147483646 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+body:has(:fullscreen) [data-radix-dialog-content],
+body:has(:-webkit-full-screen) [data-radix-dialog-content],
+body:has(:-moz-full-screen) [data-radix-dialog-content],
+body:has(:-ms-fullscreen) [data-radix-dialog-content] {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: flex !important;
+}
+
+/* Ensure dropdown menus work in fullscreen */
+body:has(:fullscreen) [data-radix-dropdown-menu-content],
+body:has(:-webkit-full-screen) [data-radix-dropdown-menu-content],
+body:has(:-moz-full-screen) [data-radix-dropdown-menu-content],
+body:has(:-ms-fullscreen) [data-radix-dropdown-menu-content] {
+  position: absolute !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Ensure context menus work in fullscreen */
+body:has(:fullscreen) [data-radix-context-menu-content],
+body:has(:-webkit-full-screen) [data-radix-context-menu-content],
+body:has(:-moz-full-screen) [data-radix-context-menu-content],
+body:has(:-ms-fullscreen) [data-radix-context-menu-content] {
+  position: absolute !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Ensure select dropdowns work in fullscreen */
+body:has(:fullscreen) [data-radix-select-content],
+body:has(:-webkit-full-screen) [data-radix-select-content],
+body:has(:-moz-full-screen) [data-radix-select-content],
+body:has(:-ms-fullscreen) [data-radix-select-content] {
+  position: absolute !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Ensure tooltips work in fullscreen */
+body:has(:fullscreen) [data-radix-tooltip-content],
+body:has(:-webkit-full-screen) [data-radix-tooltip-content],
+body:has(:-moz-full-screen) [data-radix-tooltip-content],
+body:has(:-ms-fullscreen) [data-radix-tooltip-content] {
+  position: absolute !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Fallback for browsers that don't support :has() - target fullscreen element directly */
+:fullscreen [data-radix-portal],
+:-webkit-full-screen [data-radix-portal],
+:-moz-full-screen [data-radix-portal],
+:-ms-fullscreen [data-radix-portal] {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+:fullscreen [data-radix-dialog-overlay],
+:-webkit-full-screen [data-radix-dialog-overlay],
+:-moz-full-screen [data-radix-dialog-overlay],
+:-ms-fullscreen [data-radix-dialog-overlay] {
+  position: fixed !important;
+  z-index: 2147483646 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+:fullscreen [data-radix-dialog-content],
+:-webkit-full-screen [data-radix-dialog-content],
+:-moz-full-screen [data-radix-dialog-content],
+:-ms-fullscreen [data-radix-dialog-content] {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Preserve safe area insets (notch) in fullscreen mode on mobile */
+/* When an element goes fullscreen, override its height to account for safe area insets */
+:fullscreen,
+:-webkit-full-screen,
+:-moz-full-screen,
+:-ms-fullscreen {
+  /* Override height to exclude safe area insets */
+  height: calc(100vh - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0)) !important;
+  width: calc(100vw - env(safe-area-inset-left, 0) - env(safe-area-inset-right, 0)) !important;
+  /* Position to account for safe areas */
+  margin-top: env(safe-area-inset-top, 0) !important;
+  margin-bottom: env(safe-area-inset-bottom, 0) !important;
+  margin-left: env(safe-area-inset-left, 0) !important;
+  margin-right: env(safe-area-inset-right, 0) !important;
+  /* Add padding for inner content spacing */
+  padding-top: env(safe-area-inset-top, 0) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0) !important;
+  padding-left: env(safe-area-inset-left, 0) !important;
+  padding-right: env(safe-area-inset-right, 0) !important;
+  box-sizing: border-box !important;
+}
+
+/* 404 Page Animations */
+@keyframes glow-pulse {
+  0%, 100% {
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 0 40px rgba(255, 255, 255, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 30px rgba(255, 255, 255, 0.5), 0 0 60px rgba(255, 255, 255, 0.3);
+  }
+}
+
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes bounce-gentle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.animate-float-gentle {
+  animation: float-gentle 6s ease-in-out infinite;
+}
+
+.animate-404-title {
+  animation: glow-pulse 3s ease-in-out infinite, float-gentle 6s ease-in-out infinite;
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 2s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out both;
+}

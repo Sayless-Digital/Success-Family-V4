@@ -5,6 +5,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useFullscreenPortal } from "@/hooks/use-fullscreen-portal"
 
 const DropdownMenu = DropdownMenuPrimitive.Root
 
@@ -12,7 +13,11 @@ const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 
 const DropdownMenuGroup = DropdownMenuPrimitive.Group
 
-const DropdownMenuPortal = DropdownMenuPrimitive.Portal
+const DropdownMenuPortal = (props: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Portal>) => {
+  const container = useFullscreenPortal()
+  return <DropdownMenuPrimitive.Portal container={container} {...props} />
+}
+DropdownMenuPortal.displayName = DropdownMenuPrimitive.Portal.displayName
 
 const DropdownMenuSub = DropdownMenuPrimitive.Sub
 
@@ -46,8 +51,8 @@ const DropdownMenuSubContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.SubContent
     ref={ref}
-    className={cn(
-      "z-[400002] min-w-[8rem] overflow-hidden rounded-md border border-white/20 bg-white/5 p-1 text-white shadow-lg backdrop-blur-md origin-[--radix-dropdown-menu-content-transform-origin]",
+      className={cn(
+      "z-[2147483647] min-w-[8rem] overflow-hidden rounded-md border border-white/20 bg-white/5 p-1 text-white shadow-lg backdrop-blur-md origin-[--radix-dropdown-menu-content-transform-origin]",
       className,
     )}
     {...props}
@@ -59,19 +64,22 @@ DropdownMenuSubContent.displayName =
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
-  <DropdownMenuPrimitive.Portal>
-    <DropdownMenuPrimitive.Content
-      ref={ref}
-      sideOffset={sideOffset}
-      className={cn(
-      "z-[400002] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border border-white/20 bg-white/5 p-1 text-white shadow-md backdrop-blur-md origin-[--radix-dropdown-menu-content-transform-origin]",
-      className,
-      )}
-      {...props}
-    />
-  </DropdownMenuPrimitive.Portal>
-))
+>(({ className, sideOffset = 4, ...props }, ref) => {
+  const container = useFullscreenPortal()
+  return (
+    <DropdownMenuPrimitive.Portal container={container}>
+      <DropdownMenuPrimitive.Content
+        ref={ref}
+        sideOffset={sideOffset}
+        className={cn(
+        "z-[2147483647] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border border-white/20 bg-white/5 p-1 text-white shadow-md backdrop-blur-md origin-[--radix-dropdown-menu-content-transform-origin]",
+        className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
+  )
+})
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName
 
 const DropdownMenuItem = React.forwardRef<
