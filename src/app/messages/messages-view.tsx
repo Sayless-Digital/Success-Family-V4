@@ -1047,6 +1047,77 @@ export default function MessagesView({
     [notifyTyping, scheduleTypingBroadcast, autoResizeTextarea],
   )
 
+  // Map file extensions to MIME types
+  const getMimeTypeFromExtension = useCallback((extension: string, detectedType: string | undefined, mediaType: AttachmentState["mediaType"]): string => {
+    const extensionMap: Record<string, string> = {
+      // Images - All major formats
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      gif: "image/gif",
+      bmp: "image/bmp",
+      svg: "image/svg+xml",
+      tiff: "image/tiff",
+      tif: "image/tiff",
+      ico: "image/x-icon",
+      heic: "image/heic",
+      heif: "image/heif",
+      avif: "image/avif",
+      // Audio
+      webm: "audio/webm",
+      ogg: "audio/ogg",
+      mp3: "audio/mpeg",
+      mpeg: "audio/mpeg",
+      mp4: "audio/mp4",
+      wav: "audio/wav",
+      aac: "audio/aac",
+      flac: "audio/flac",
+      m4a: "audio/mp4",
+      opus: "audio/opus",
+      // Documents
+      pdf: "application/pdf",
+    }
+    
+    const ext = extension.toLowerCase()
+    const mimeFromExtension = extensionMap[ext]
+    
+    // ALWAYS prioritize extension-based detection for known extensions
+    // This prevents browser misdetection (e.g., detecting images as application/json)
+    if (mimeFromExtension) {
+      console.log(`[MIME Detection] Using extension-based MIME type: ${mimeFromExtension} (ext: ${ext}, detected: ${detectedType || "none"})`)
+      return mimeFromExtension
+    }
+    
+    // If no extension mapping, try to use detected type if it's valid
+    if (detectedType && detectedType !== "application/json" && detectedType !== "application/octet-stream") {
+      // Check if detected type is valid for the media type
+      if (mediaType === "image" && detectedType.startsWith("image/")) {
+        console.log(`[MIME Detection] Using detected image MIME type: ${detectedType}`)
+        return detectedType
+      }
+      if (mediaType === "audio" && detectedType.startsWith("audio/")) {
+        console.log(`[MIME Detection] Using detected audio MIME type: ${detectedType}`)
+        return detectedType
+      }
+      if (detectedType === "application/pdf") {
+        console.log(`[MIME Detection] Using detected PDF MIME type: ${detectedType}`)
+        return detectedType
+      }
+    }
+    
+    // Default based on media type as last resort
+    console.warn(`[MIME Detection] No extension mapping found, using default for media type: ${mediaType}`)
+    if (mediaType === "image") {
+      return "image/jpeg" // Default to JPEG for images
+    }
+    if (mediaType === "audio") {
+      return "audio/webm" // Default to WebM for audio
+    }
+    
+    return "application/octet-stream"
+  }, [])
+
   const handleAddFiles = useCallback(
     async (files: File[] | null, mediaType: AttachmentState["mediaType"]) => {
       if (!files || files.length === 0) return
@@ -1073,17 +1144,121 @@ export default function MessagesView({
         setAttachments((prev) => [...prev, pendingAttachment])
 
         try {
-          const extension = file.name?.split(".").pop() ?? "bin"
+          // Extract file extension more robustly
+          const fileName = file.name || "upload"
+          const lastDotIndex = fileName.lastIndexOf(".")
+          const extension = lastDotIndex > 0 && lastDotIndex < fileName.length - 1
+            ? fileName.slice(lastDotIndex + 1).toLowerCase()
+            : "bin"
+          
+          // Get MIME type from extension, validating against detected type
+          const detectedMimeType = file.type || ""
+          let mimeType = getMimeTypeFromExtension(extension, detectedMimeType, mediaType)
+          
+          // For JPG/JPEG files, ensure we use image/jpeg (standard MIME type)
+          if ((extension === "jpg" || extension === "jpeg") && mimeType !== "image/jpeg") {
+            console.warn(`[Message Upload] Correcting MIME type for ${fileName}: ${mimeType} -> image/jpeg`)
+            mimeType = "image/jpeg"
+          }
+          
+          // Validate MIME type is supported (client-side check)
+          const allowedMimeTypes = [
+            // Images - All major formats
+            "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/bmp", 
+            "image/svg+xml", "image/tiff", "image/x-icon", "image/ico",
+            "image/heic", "image/heif", "image/avif",
+            // Audio
+            "audio/webm", "audio/ogg", "audio/mpeg", "audio/mp3", "audio/mp4",
+            "audio/wav", "audio/aac", "audio/flac", "audio/opus",
+            // Documents
+            "application/pdf"
+          ]
+          
+          if (!allowedMimeTypes.includes(mimeType)) {
+            throw new Error(`File type ${mimeType} is not supported. Supported formats: JPEG, PNG, WebP, GIF, BMP, SVG, TIFF, HEIC, HEIF, AVIF, or audio files (WebM, MP3, WAV, AAC, FLAC, Opus).`)
+          }
+          
           const { bucket, objectPath, storagePath } = buildDmMediaStoragePath(viewer.id, extension)
-          const { error } = await supabase.storage.from(bucket).upload(objectPath, file, {
-            cacheControl: "0",
-            upsert: false,
-            contentType: file.type || "application/octet-stream",
+          
+          console.log(`[Message Upload] Uploading file: ${fileName}, extension: ${extension}, detectedType: ${detectedMimeType}, mimeType: ${mimeType}, objectPath: ${objectPath}, fileSize: ${file.size}`)
+          
+          // Use the detected MIME type (should be image/jpeg for JPG files)
+          const finalMimeType = mimeType
+          
+          // Upload options matching post upload pattern
+          const uploadOptions = {
+            contentType: finalMimeType,
+            cacheControl: '0',
+            upsert: false
+          }
+          
+          console.log(`[Message Upload] Upload options:`, {
+            ...uploadOptions,
+            fileSize: file.size,
+            fileName: file.name,
+            fileTypeFromFile: file.type,
+            detectedMimeType,
+            finalMimeType,
           })
+          
+          // Upload the File directly (same pattern as posts) to preserve binary data integrity
+          const { data: uploadData, error } = await supabase.storage
+            .from(bucket)
+            .upload(objectPath, file, uploadOptions)
 
           if (error) {
-            throw error
+            // Log the complete error object to understand what's happening
+            console.error(`[Message Upload] Upload error for ${fileName}:`, {
+              error,
+              errorMessage: error.message,
+              errorName: error.name,
+              errorStatus: (error as any).statusCode || (error as any).status || null,
+              errorStack: error.stack,
+              errorString: String(error),
+              errorJSON: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+              uploadDetails: {
+                fileName,
+                extension,
+                detectedMimeType,
+                mimeType,
+                finalMimeType,
+                objectPath,
+                fileSize: file.size,
+                bucket,
+                fileTypeFromFile: file.type,
+              },
+            })
+            
+            // Provide more specific error message based on the actual error
+            let errorMessage = error.message || "Upload failed"
+            
+            // Check for MIME type errors - look for various error messages
+            const errorMsg = error.message?.toLowerCase() || ""
+            if (
+              errorMsg.includes("mime type") || 
+              errorMsg.includes("not supported") || 
+              errorMsg.includes("allowed_mime_types") ||
+              errorMsg.includes("content type") ||
+              errorMsg.includes("invalid file type")
+            ) {
+              // This is a MIME type error from Supabase
+              errorMessage = `File type "${finalMimeType}" is not supported. The storage bucket may need to be configured to accept ${finalMimeType} files. Detected: ${detectedMimeType || "unknown"}, Extension: ${extension}`
+              console.error(`[Message Upload] MIME type validation failed. Sent: ${finalMimeType}, Detected: ${detectedMimeType}, Extension: ${extension}, Original file.type: ${file.type}`)
+            } else if ((error as any).statusCode === "409" || (error as any).status === 409 || errorMsg.includes("already exists") || errorMsg.includes("duplicate")) {
+              errorMessage = "File already exists"
+            } else if ((error as any).statusCode === "413" || (error as any).status === 413 || errorMsg.includes("too large") || errorMsg.includes("file_size_limit") || errorMsg.includes("file size")) {
+              errorMessage = `File is too large (max 25MB). Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`
+            } else if ((error as any).statusCode === "403" || (error as any).status === 403 || errorMsg.includes("permission") || errorMsg.includes("forbidden") || errorMsg.includes("access denied")) {
+              errorMessage = "Permission denied. Please check your account permissions."
+            } else {
+              // Use the exact error message from Supabase - this helps debug the actual issue
+              errorMessage = error.message || "Upload failed"
+            }
+            
+            throw new Error(errorMessage)
           }
+
+          console.log(`[Message Upload] Successfully uploaded ${fileName} to ${objectPath}`)
 
           setAttachments((prev) =>
             prev.map((item) =>
@@ -1093,22 +1268,23 @@ export default function MessagesView({
                     status: "ready",
                     storagePath,
                     objectPath,
-                    mimeType: file.type,
+                    mimeType: mimeType,
                     fileSize: file.size,
                   }
                 : item,
             ),
           )
         } catch (error: any) {
-          console.error(error)
-          toast.error(`Failed to upload ${file.name}`)
+          console.error(`[Message Upload] Error uploading ${file.name}:`, error)
+          const errorMessage = error?.message || error?.error?.message || "Upload failed"
+          toast.error(`Failed to upload ${file.name}: ${errorMessage}`)
           setAttachments((prev) =>
             prev.map((item) =>
               item.id === id
                 ? {
                     ...item,
                     status: "error",
-                    error: error?.message ?? "Upload failed",
+                    error: errorMessage,
                   }
                 : item,
             ),
@@ -1116,7 +1292,7 @@ export default function MessagesView({
         }
       }
     },
-    [viewer.id],
+    [viewer.id, getMimeTypeFromExtension],
   )
 
   const handleVoiceNoteComplete = useCallback(async (blob: Blob) => {

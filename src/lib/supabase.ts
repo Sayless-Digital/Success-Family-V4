@@ -19,8 +19,9 @@ export const supabase = createBrowserClient(
     global: {
       headers: {
         // CRITICAL: Add proper Accept headers to fix 406 errors
+        // NOTE: Do NOT set Content-Type here - it breaks binary file uploads
+        // Supabase storage client sets Content-Type automatically for file uploads
         'Accept': 'application/json',
-        'Content-Type': 'application/json',
       },
     },
     // Add realtime configuration for better channel reliability

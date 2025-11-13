@@ -185,179 +185,183 @@ export default function AdminTransactionsPage() {
           <p className="text-white/60 text-sm mt-1">There are no transactions to display yet</p>
         </div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Bank Account</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Points</TableHead>
-              <TableHead>Recipient</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Receipt</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {transactions.map((t) => {
-              const typeLabel = t.type?.replaceAll('_', ' ') || 'unknown'
-              const amountDisplay = formatCurrencyTtd(t.amount_ttd)
-              const pointsDisplay = formatPointsDelta(t.points_delta)
-              const recipientLabel = t.recipient_user_id
-                ? recipientMap?.[t.recipient_user_id]?.label || t.recipient_user_id
-                : t.type === 'point_spend' && t.points_delta < 0
-                  ? 'Platform'
-                  : '—'
+        <div className="rounded-lg border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full md:w-auto caption-bottom text-sm" style={{ minWidth: 'max-content' }}>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-[180px]">User</TableHead>
+                <TableHead className="min-w-[120px]">Type</TableHead>
+                <TableHead className="min-w-[180px]">Bank Account</TableHead>
+                <TableHead className="min-w-[130px]">Amount</TableHead>
+                <TableHead className="min-w-[120px]">Points</TableHead>
+                <TableHead className="min-w-[150px]">Recipient</TableHead>
+                <TableHead className="min-w-[120px]">Status</TableHead>
+                <TableHead className="min-w-[140px]">Date</TableHead>
+                <TableHead className="min-w-[110px]">Receipt</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {transactions.map((t) => {
+                const typeLabel = t.type?.replaceAll('_', ' ') || 'unknown'
+                const amountDisplay = formatCurrencyTtd(t.amount_ttd)
+                const pointsDisplay = formatPointsDelta(t.points_delta)
+                const recipientLabel = t.recipient_user_id
+                  ? recipientMap?.[t.recipient_user_id]?.label || t.recipient_user_id
+                  : t.type === 'point_spend' && t.points_delta < 0
+                    ? 'Platform'
+                    : '—'
 
-              return (
-                <ContextMenu key={t.id}>
-                  <ContextMenuTrigger asChild>
-                    <TableRow className="cursor-context-menu">
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{userMap?.[t.user_id]?.label || t.user_id}</div>
-                          <div className="text-sm text-white/60">{userMap?.[t.user_id]?.email || '—'}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="bg-white/10 text-white border-white/20 capitalize">
-                          {typeLabel}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {t.bank_account_id ? (
+                return (
+                  <ContextMenu key={t.id}>
+                    <ContextMenuTrigger asChild>
+                      <TableRow className="cursor-context-menu">
+                        <TableCell className="min-w-[180px]">
                           <div>
-                            <div className="font-medium">{bankMap?.[t.bank_account_id]?.label || t.bank_account_id}</div>
-                            {bankMap?.[t.bank_account_id]?.detail ? (
-                              <div className="text-sm text-white/60">{bankMap[t.bank_account_id].detail}</div>
-                            ) : null}
+                            <div className="font-medium">{userMap?.[t.user_id]?.label || t.user_id}</div>
+                            <div className="text-sm text-white/60">{userMap?.[t.user_id]?.email || '—'}</div>
                           </div>
-                        ) : (
-                          <span className="text-white/60">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {amountDisplay !== '—' ? (
-                          <div className={valuePillClasses}>
-                            <Coins className="h-4 w-4 text-white/70" />
-                            <span>{amountDisplay}</span>
-                          </div>
-                        ) : (
-                          <span className="text-white/60">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {pointsDisplay !== '—' ? (
-                          <div className={valuePillClasses}>
-                            <WalletIcon className="h-4 w-4 text-white/70" />
-                            <span>{pointsDisplay}</span>
-                          </div>
-                        ) : (
-                          <span className="text-white/60">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {t.recipient_user_id ? (
-                          <div>
-                            <div className="font-medium text-white/80">{recipientLabel}</div>
-                            {recipientMap?.[t.recipient_user_id]?.email && (
-                              <div className="text-sm text-white/60">{recipientMap[t.recipient_user_id].email}</div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className={cn(recipientLabel === 'Platform' ? 'italic text-white/60' : 'text-white/60')}>
-                            {recipientLabel}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
-                        {t.status === 'verified' ? (
-                          <Badge
-                            variant="outline"
-                            className="bg-green-500/20 text-green-400 border-green-500/30 w-fit text-xs"
-                          >
-                            {t.status}
+                        </TableCell>
+                        <TableCell className="min-w-[120px]">
+                          <Badge variant="outline" className="bg-white/10 text-white border-white/20 capitalize">
+                            {typeLabel}
                           </Badge>
-                        ) : (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors hover:opacity-80 cursor-pointer ${
-                                  t.status === 'rejected'
-                                    ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                                    : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                }`}
-                              >
-                                {t.status}
-                                <ChevronDown className="h-3 w-3" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              <DropdownMenuItem
-                                onClick={() => handleStatusChange(t, 'pending')}
-                                disabled={t.status === 'pending'}
-                              >
-                                Pending
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleVerify(t)}
-                              >
-                                Verified
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleReject(t)}
-                                disabled={t.status === 'rejected'}
-                              >
-                                Rejected
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{new Date(t.created_at).toLocaleDateString()}</div>
-                        <div className="text-xs text-white/60">{new Date(t.created_at).toLocaleTimeString()}</div>
-                      </TableCell>
-                      <TableCell>
-                        {t.signed_url ? (
-                          <a
-                            href={t.signed_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-white/80 hover:text-white underline"
-                          >
-                            View <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : (
-                          <span className="text-white/60 text-sm">No receipt</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem onClick={() => handleView(t)}>
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Details
-                    </ContextMenuItem>
-                    {t.status !== 'verified' && (
-                      <>
-                        <ContextMenuItem onClick={() => handleVerify(t)}>
-                          <CheckCircle2 className="h-4 w-4 mr-2" />
-                          Verify
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => handleReject(t)} className="text-red-400 focus:text-red-400 focus:bg-red-500/10">
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Reject
-                        </ContextMenuItem>
-                      </>
-                    )}
-                  </ContextMenuContent>
-                </ContextMenu>
-              )
-            })}
-          </TableBody>
-        </Table>
+                        </TableCell>
+                        <TableCell className="min-w-[180px]">
+                          {t.bank_account_id ? (
+                            <div>
+                              <div className="font-medium">{bankMap?.[t.bank_account_id]?.label || t.bank_account_id}</div>
+                              {bankMap?.[t.bank_account_id]?.detail ? (
+                                <div className="text-sm text-white/60">{bankMap[t.bank_account_id].detail}</div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-white/60">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-[130px]">
+                          {amountDisplay !== '—' ? (
+                            <div className={valuePillClasses}>
+                              <Coins className="h-4 w-4 text-white/70" />
+                              <span>{amountDisplay}</span>
+                            </div>
+                          ) : (
+                            <span className="text-white/60">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-[120px]">
+                          {pointsDisplay !== '—' ? (
+                            <div className={valuePillClasses}>
+                              <WalletIcon className="h-4 w-4 text-white/70" />
+                              <span>{pointsDisplay}</span>
+                            </div>
+                          ) : (
+                            <span className="text-white/60">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-[150px]">
+                          {t.recipient_user_id ? (
+                            <div>
+                              <div className="font-medium text-white/80">{recipientLabel}</div>
+                              {recipientMap?.[t.recipient_user_id]?.email && (
+                                <div className="text-sm text-white/60">{recipientMap[t.recipient_user_id].email}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className={cn(recipientLabel === 'Platform' ? 'italic text-white/60' : 'text-white/60')}>
+                              {recipientLabel}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-[120px]" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+                          {t.status === 'verified' ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-green-500/20 text-green-400 border-green-500/30 w-fit text-xs"
+                            >
+                              {t.status}
+                            </Badge>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors hover:opacity-80 cursor-pointer ${
+                                    t.status === 'rejected'
+                                      ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                                      : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                  }`}
+                                >
+                                  {t.status}
+                                  <ChevronDown className="h-3 w-3" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem
+                                  onClick={() => handleStatusChange(t, 'pending')}
+                                  disabled={t.status === 'pending'}
+                                >
+                                  Pending
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleVerify(t)}
+                                >
+                                  Verified
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleReject(t)}
+                                  disabled={t.status === 'rejected'}
+                                >
+                                  Rejected
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-[140px]">
+                          <div className="text-sm">{new Date(t.created_at).toLocaleDateString()}</div>
+                          <div className="text-xs text-white/60">{new Date(t.created_at).toLocaleTimeString()}</div>
+                        </TableCell>
+                        <TableCell className="min-w-[110px]">
+                          {t.signed_url ? (
+                            <a
+                              href={t.signed_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-white/80 hover:text-white underline"
+                            >
+                              View <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-white/60 text-sm">No receipt</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => handleView(t)}>
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Details
+                      </ContextMenuItem>
+                      {t.status !== 'verified' && (
+                        <>
+                          <ContextMenuItem onClick={() => handleVerify(t)}>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Verify
+                          </ContextMenuItem>
+                          <ContextMenuItem onClick={() => handleReject(t)} className="text-red-400 focus:text-red-400 focus:bg-red-500/10">
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Reject
+                          </ContextMenuItem>
+                        </>
+                      )}
+                    </ContextMenuContent>
+                  </ContextMenu>
+                )
+              })}
+            </TableBody>
+          </table>
+          </div>
+        </div>
       )}
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>

@@ -113,16 +113,24 @@ export async function POST(
 
     const allowedMediaTypes = new Set(["image", "audio", "file"])
 
-    const invalidAttachment = attachments.some(
-      (attachment) =>
-        !attachment.storagePath ||
-        !attachment.storagePath.startsWith("dm-media/") ||
-        !attachment.mediaType ||
-        !allowedMediaTypes.has(attachment.mediaType),
-    )
-
-    if (invalidAttachment) {
-      return errorResponse("Attachments must reference the dm-media bucket with valid media types", 400)
+    // Validate attachments with detailed error messages
+    for (const attachment of attachments) {
+      if (!attachment.storagePath) {
+        console.error("[api/dm/messages][POST] Missing storagePath in attachment:", attachment)
+        return errorResponse("Attachment is missing storage path", 400)
+      }
+      if (!attachment.storagePath.startsWith("dm-media/")) {
+        console.error("[api/dm/messages][POST] Invalid storagePath (must start with 'dm-media/'):", attachment.storagePath)
+        return errorResponse(`Invalid storage path: ${attachment.storagePath}. Must start with 'dm-media/'`, 400)
+      }
+      if (!attachment.mediaType) {
+        console.error("[api/dm/messages][POST] Missing mediaType in attachment:", attachment)
+        return errorResponse("Attachment is missing media type", 400)
+      }
+      if (!allowedMediaTypes.has(attachment.mediaType)) {
+        console.error("[api/dm/messages][POST] Invalid mediaType:", attachment.mediaType)
+        return errorResponse(`Invalid media type: ${attachment.mediaType}. Allowed types: image, audio, file`, 400)
+      }
     }
 
     if ((!trimmedContent || trimmedContent.length === 0) && attachments.length === 0) {
