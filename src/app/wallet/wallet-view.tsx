@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useFormStatus } from "react-dom"
 import { Coins, Wallet as WalletIcon, Eye, X, Gift } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
@@ -177,6 +178,55 @@ type TabValue = (typeof TAB_VALUES)[number]
 const isValidTab = (value: string | null | undefined): value is TabValue =>
   !!value && TAB_VALUES.includes(value as TabValue)
 
+// Submit button component that uses useFormStatus for loading state
+function TopUpSubmitButton({ 
+  topupBonusEnabled, 
+  topupBonusPoints, 
+  topupBonusEndTime 
+}: { 
+  topupBonusEnabled: boolean
+  topupBonusPoints: number
+  topupBonusEndTime: string | null
+}) {
+  const { pending } = useFormStatus()
+  const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
+  const isExpired = expirationTime ? new Date() >= expirationTime : false
+  const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
+
+  return (
+    <Button 
+      type="submit" 
+      form="topup-form"
+      disabled={pending}
+      className={cn(
+        "w-full h-11 text-base font-bold relative overflow-hidden group",
+        hasBonus
+          ? "text-white"
+          : "bg-white/15 text-white hover:bg-white/25"
+      )}
+      style={hasBonus
+        ? {
+            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+            boxShadow: '0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(147, 51, 234, 0.3)',
+          }
+        : undefined
+      }
+    >
+      {pending ? (
+        <>
+          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white mr-2" />
+          Submitting...
+        </>
+      ) : (
+        hasBonus ? "Top Up with Bonus" : "Top Up"
+      )}
+      {hasBonus && !pending && (
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+      )}
+    </Button>
+  )
+}
+
 export function WalletView({
   initialWallet,
   initialBanks,
@@ -251,6 +301,7 @@ export function WalletView({
   )
   const [topupDue, setTopupDue] = React.useState<string | null>(initialWallet?.next_topup_due_on ?? null)
   const [receiptViewer, setReceiptViewer] = React.useState<{ url: string } | null>(null)
+  const [topupDialogOpen, setTopupDialogOpen] = React.useState(false)
 
   const loadMoreRef = React.useRef<HTMLDivElement | null>(null)
   const transactionsRef = React.useRef<Transaction[]>(transactions)
@@ -282,6 +333,20 @@ export function WalletView({
       setTopupDue(nextTopupDueOn)
     }
   }, [nextTopupDueOn])
+
+  // Check for openTopup parameter and open dialog automatically
+  React.useEffect(() => {
+    const openTopup = searchParams.get("openTopup")
+    if (openTopup === "true") {
+      setTopupDialogOpen(true)
+      // Remove the parameter from URL
+      const params = new URLSearchParams(searchParamsString)
+      params.delete("openTopup")
+      const query = params.toString()
+      const href = query ? `${pathname}?${query}` : pathname
+      router.replace(href, { scroll: false })
+    }
+  }, [searchParams, searchParamsString, pathname, router])
 
   React.useEffect(() => {
     const params = new URLSearchParams(searchParamsString)
@@ -576,7 +641,7 @@ export function WalletView({
               {walletPoints.toLocaleString()} <span className="text-xl font-medium text-white/60">pts</span>
             </div>
           </div>
-          <Dialog>
+          <Dialog open={topupDialogOpen} onOpenChange={setTopupDialogOpen}>
             <DialogTrigger asChild>
               <Button className="mt-4 bg-white/10 text-white/80 hover:bg-white/20 touch-feedback">Top Up</Button>
             </DialogTrigger>
@@ -728,47 +793,11 @@ export function WalletView({
               </div>
               <div className="border-t border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md py-3 sm:py-4">
                 <div className="px-6">
-                  <Button 
-                    type="submit" 
-                    form="topup-form"
-                    className={cn(
-                      "w-full h-11 text-base font-bold relative overflow-hidden group",
-                      (() => {
-                        const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
-                        const isExpired = expirationTime ? new Date() >= expirationTime : false
-                        const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
-                        return hasBonus
-                          ? "text-white"
-                          : "bg-white/15 text-white hover:bg-white/25"
-                      })()
-                    )}
-                    style={(() => {
-                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
-                      const isExpired = expirationTime ? new Date() >= expirationTime : false
-                      const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
-                      return hasBonus
-                        ? {
-                            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
-                            boxShadow: '0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(147, 51, 234, 0.3)',
-                          }
-                        : undefined
-                    })()}
-                  >
-                    {(() => {
-                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
-                      const isExpired = expirationTime ? new Date() >= expirationTime : false
-                      const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
-                      return hasBonus ? "Top Up with Bonus" : "Top Up"
-                    })()}
-                    {(() => {
-                      const expirationTime = topupBonusEndTime ? new Date(topupBonusEndTime) : null
-                      const isExpired = expirationTime ? new Date() >= expirationTime : false
-                      const hasBonus = topupBonusEnabled && topupBonusPoints > 0 && !isExpired
-                      return hasBonus && (
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-                      )
-                    })()}
-                  </Button>
+                  <TopUpSubmitButton 
+                    topupBonusEnabled={topupBonusEnabled}
+                    topupBonusPoints={topupBonusPoints}
+                    topupBonusEndTime={topupBonusEndTime}
+                  />
                 </div>
               </div>
             </DialogContent>

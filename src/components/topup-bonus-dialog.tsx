@@ -183,7 +183,7 @@ export function TopUpBonusDialog({ open, onOpenChange, bonusPoints, bonusEndTime
                     boxShadow: '0 0 15px rgba(255, 215, 0, 0.5), 0 0 30px rgba(147, 51, 234, 0.3)',
                   }}
                 >
-                  <Link href="/wallet" onClick={() => onOpenChange(false)} className="relative z-10 flex items-center justify-center gap-2">
+                  <Link href="/wallet?openTopup=true" onClick={() => onOpenChange(false)} className="relative z-10 flex items-center justify-center gap-2">
                     <span className="text-white drop-shadow-lg">Top Up Now</span>
                     <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-white drop-shadow-lg animate-[arrow-bounce_1.5s_ease-in-out_infinite]" />
                     {/* Shimmer effect on button */}
