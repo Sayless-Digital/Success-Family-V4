@@ -3,7 +3,7 @@
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useFormStatus } from "react-dom"
-import { Coins, Wallet as WalletIcon, Eye, X, Gift } from "lucide-react"
+import { Coins, Wallet as WalletIcon, Eye, X, Gift, Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -214,7 +214,7 @@ function TopUpSubmitButton({
     >
       {pending ? (
         <>
-          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white mr-2" />
+          <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" />
           Submitting...
         </>
       ) : (
