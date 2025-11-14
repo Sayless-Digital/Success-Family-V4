@@ -7,3 +7,5 @@ WHERE id = 'dm-media';
 
 COMMENT ON COLUMN storage.buckets.file_size_limit IS 'Updated dm-media bucket to allow up to 50MB files (Supabase free tier maximum)';
 
+
+

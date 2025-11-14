@@ -9,3 +9,5 @@ ALTER TYPE public.dm_attachment_type ADD VALUE IF NOT EXISTS 'video';
 COMMENT ON TYPE public.dm_attachment_type IS 'Attachment types for direct messages: image, audio, file, video';
 
 
+
+

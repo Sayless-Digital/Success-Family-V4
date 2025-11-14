@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/page-header'
@@ -13,24 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import {
-  KanbanProvider,
-  KanbanBoard,
-  KanbanHeader,
-  KanbanCards,
-  KanbanCard as ShadcnKanbanCard,
-  type DragEndEvent,
-} from '@/components/ui/shadcn-io/kanban'
-import type { DragStartEvent } from '@dnd-kit/core'
 import { 
   Plus, 
   Edit, 
   Trash2, 
   Eye, 
-  List, 
-  LayoutGrid, 
   Mail, 
   Phone, 
   MessageSquare, 
@@ -42,13 +29,35 @@ import {
   MoreVertical,
   Search,
   FileText,
-  MessageCircle
+  MessageCircle,
+  List,
+  LayoutGrid
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
 import type { CrmLead, CrmStage, CrmLeadSource, CrmConversation, CrmConversationSession, CrmNote, CrmConversationChannel, CrmLeadContact, CrmContactType } from '@/types'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { CrmPageSkeleton } from '@/components/skeletons/crm-page-skeleton'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  useDroppable,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { cn } from '@/lib/utils'
 
 const formatCurrency = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "—"
@@ -95,10 +104,10 @@ export default function CrmPage() {
   const [leads, setLeads] = useState<CrmLead[]>([])
   const [stages, setStages] = useState<CrmStage[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'list' | 'kanban'>('kanban')
   const [searchQuery, setSearchQuery] = useState("")
   const [filteredLeads, setFilteredLeads] = useState<CrmLead[]>([])
   const [crmAverageValue, setCrmAverageValue] = useState<number>(50.00)
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban')
   
   // Dialogs
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
@@ -174,7 +183,8 @@ export default function CrmPage() {
           stage:crm_stages(*),
           contacts:crm_lead_contacts(*)
         `)
-        .order('created_at', { ascending: false })
+        .order('stage_id', { ascending: true })
+        .order('sort_order', { ascending: true })
 
       if (leadsError) throw leadsError
 
@@ -206,14 +216,44 @@ export default function CrmPage() {
     }
   }, [searchQuery, leads])
 
-  // Set up realtime subscriptions
+  // Set up realtime subscriptions with smart merging
   useEffect(() => {
     if (userProfile?.role !== 'admin') return
 
     const leadsChannel = supabase
       .channel('crm-leads')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, () => {
-        fetchData()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, (payload) => {
+        // Merge changes intelligently instead of full refetch to avoid jarring updates
+        if (payload.eventType === 'UPDATE' && payload.new) {
+          const updatedLead = payload.new as any
+          setLeads(prevLeads => {
+            // Check if this lead already has the same values (from our optimistic update)
+            const existingLead = prevLeads.find(l => l.id === updatedLead.id)
+            if (existingLead && 
+                existingLead.stage_id === updatedLead.stage_id && 
+                existingLead.sort_order === updatedLead.sort_order) {
+              // Already have this state, skip update to avoid jarring changes
+              return prevLeads
+            }
+            // Otherwise, merge the update
+            return prevLeads.map(l => 
+              l.id === updatedLead.id 
+                ? { ...l, ...updatedLead }
+                : l
+            )
+          })
+        } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+          // For insert/delete, we need to refetch to get full data with relations
+          fetchData()
+        } else {
+          // For other cases, merge update
+          const updatedLead = payload.new as any
+          setLeads(prevLeads => prevLeads.map(l => 
+            l.id === updatedLead.id 
+              ? { ...l, ...updatedLead }
+              : l
+          ))
+        }
       })
       .subscribe()
 
@@ -296,6 +336,13 @@ export default function CrmPage() {
         leadId = editingLead.id
         toast.success('Lead updated successfully')
       } else {
+        // For new leads, set sort_order to be the max in the stage + 1
+        const leadsInStage = leads.filter(l => l.stage_id === leadFormData.stage_id)
+        const maxSortOrder = leadsInStage.length > 0 
+          ? Math.max(...leadsInStage.map(l => l.sort_order))
+          : -1
+        leadData.sort_order = maxSortOrder + 1
+
         const { data, error } = await supabase
           .from('crm_leads')
           .insert(leadData)
@@ -442,17 +489,145 @@ export default function CrmPage() {
     }
   }
 
-  const handleMoveLead = async (leadId: string, newStageId: string) => {
+  const handleMoveLead = async (leadId: string, newStageId: string, newSortOrder?: number) => {
     try {
+      const lead = leads.find(l => l.id === leadId)
+      if (!lead) return
+
+      const updateData: any = { stage_id: newStageId }
+      if (newSortOrder !== undefined) {
+        updateData.sort_order = newSortOrder
+      }
+
+      // If moving to a new stage and sort_order not provided, find max sort_order in new stage
+      if (newStageId !== lead.stage_id && newSortOrder === undefined) {
+        const leadsInNewStage = leads.filter(l => l.stage_id === newStageId)
+        const maxSortOrder = leadsInNewStage.length > 0 
+          ? Math.max(...leadsInNewStage.map(l => l.sort_order))
+          : -1
+        updateData.sort_order = maxSortOrder + 1
+      }
+
       const { error } = await supabase
         .from('crm_leads')
-        .update({ stage_id: newStageId })
+        .update(updateData)
         .eq('id', leadId)
       if (error) throw error
-      fetchData()
+
+      // Optimistically update local state
+      const updatedLeads = leads.map(l => {
+        if (l.id === leadId) {
+          return { ...l, stage_id: newStageId, sort_order: updateData.sort_order }
+        }
+        return l
+      })
+      setLeads(updatedLeads)
+      
+      // Don't call fetchData() - let realtime subscription handle the update
+      // This prevents unnecessary reloads and keeps the UI smooth
     } catch (error) {
       console.error('Error moving lead:', error)
       toast.error('Failed to move lead')
+      // Only fetch on error to restore correct state
+      fetchData()
+    }
+  }
+
+  const handleReorderLeads = async (leadId: string, newStageId: string, targetSortOrder: number) => {
+    const lead = leads.find(l => l.id === leadId)
+    if (!lead) return
+
+    const isSameStage = lead.stage_id === newStageId
+    const leadsInTargetStage = leads
+      .filter(l => l.stage_id === newStageId && l.id !== leadId)
+      .sort((a, b) => a.sort_order - b.sort_order)
+
+    // Calculate new sort_order based on target position
+    const updates: Array<{ id: string; sort_order: number; stage_id?: string }> = []
+
+    if (isSameStage) {
+      // Reordering within same column
+      const oldLeadsInStage = leads
+        .filter(l => l.stage_id === lead.stage_id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+      const oldIndex = oldLeadsInStage.findIndex(l => l.id === leadId)
+
+      // Find target position in the sorted array
+      let newIndex = leadsInTargetStage.findIndex(l => {
+        if (targetSortOrder <= l.sort_order) {
+          return true
+        }
+        return false
+      })
+      if (newIndex === -1) {
+        newIndex = leadsInTargetStage.length
+      }
+
+      // Calculate which leads need to shift
+      if (oldIndex < newIndex) {
+        // Moving down - shift items between old and new position up
+        for (let i = oldIndex + 1; i <= newIndex; i++) {
+          const item = oldLeadsInStage[i]
+          updates.push({ id: item.id, sort_order: item.sort_order - 1 })
+        }
+        updates.push({ id: leadId, sort_order: (leadsInTargetStage[newIndex - 1]?.sort_order ?? -1) + 1 })
+      } else if (oldIndex > newIndex) {
+        // Moving up - shift items between new and old position down
+        for (let i = newIndex; i < oldIndex; i++) {
+          const item = oldLeadsInStage[i]
+          updates.push({ id: item.id, sort_order: item.sort_order + 1 })
+        }
+        updates.push({ id: leadId, sort_order: leadsInTargetStage[newIndex]?.sort_order ?? 0 })
+      } else {
+        // Same position, no update needed
+        return
+      }
+    } else {
+      // Moving to different column
+      // Shift leads in target stage that are at or after target position
+      const affectedLeads = leadsInTargetStage.filter(l => l.sort_order >= targetSortOrder)
+      for (const affectedLead of affectedLeads) {
+        updates.push({ id: affectedLead.id, sort_order: affectedLead.sort_order + 1 })
+      }
+      // Insert the moved lead at target position
+      updates.push({ 
+        id: leadId, 
+        sort_order: targetSortOrder,
+        stage_id: newStageId
+      })
+    }
+
+    // OPTIMISTIC UPDATE FIRST - update UI immediately
+    setLeads(prevLeads => {
+      const updated = prevLeads.map(l => {
+        const update = updates.find(u => u.id === l.id)
+        if (update) {
+          return { ...l, sort_order: update.sort_order, stage_id: update.stage_id ?? l.stage_id }
+        }
+        return l
+      })
+      return updated
+    })
+
+    // Then update database asynchronously
+    try {
+      for (const update of updates) {
+        const updateData: any = { sort_order: update.sort_order }
+        if (update.stage_id) {
+          updateData.stage_id = update.stage_id
+        }
+        const { error } = await supabase
+          .from('crm_leads')
+          .update(updateData)
+          .eq('id', update.id)
+        if (error) throw error
+      }
+      // Don't call fetchData - let realtime handle sync, but it will merge intelligently
+    } catch (error) {
+      console.error('Error reordering leads:', error)
+      toast.error('Failed to reorder leads')
+      // Only refetch on error to restore correct state
+      fetchData()
     }
   }
 
@@ -461,19 +636,13 @@ export default function CrmPage() {
     setLeadDetailOpen(true)
   }
 
-  // Group leads by stage for Kanban
-  const leadsByStage = stages.reduce((acc, stage) => {
-    acc[stage.id] = filteredLeads.filter(lead => lead.stage_id === stage.id)
-    return acc
-  }, {} as Record<string, CrmLead[]>)
-
   if (!user || userProfile?.role !== 'admin') {
     return null
   }
 
   return (
-    <div className="relative w-full overflow-x-hidden">
-      <div className="relative z-10 space-y-6">
+    <div className="relative w-full overflow-x-hidden h-full flex flex-col">
+      <div className="relative z-10 space-y-6 flex-shrink-0">
         {/* Search, Buttons, and View Toggle in one line */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           <div className="relative flex-1 max-w-md order-1 sm:order-1">
@@ -487,6 +656,32 @@ export default function CrmPage() {
           </div>
           
           <div className="flex items-center gap-2 flex-shrink-0 order-2 sm:order-2">
+            <div className="flex items-center gap-0.5 rounded-lg border border-white/20 bg-white/5 p-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('kanban')}
+                className={cn(
+                  "h-7 px-2 text-xs text-white/70 hover:text-white hover:bg-white/10",
+                  viewMode === 'kanban' && "bg-white/20 text-white"
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5 mr-1" />
+                Kanban
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className={cn(
+                  "h-7 px-2 text-xs text-white/70 hover:text-white hover:bg-white/10",
+                  viewMode === 'list' && "bg-white/20 text-white"
+                )}
+              >
+                <List className="h-3.5 w-3.5 mr-1" />
+                List
+              </Button>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -505,41 +700,11 @@ export default function CrmPage() {
             </Button>
           </div>
           
-          <div className="flex items-center gap-2 flex-shrink-0 order-3 sm:order-3">
-            <Button
-              variant={view === 'list' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setView('list')}
-              className={cn(
-                view === 'list' 
-                  ? "bg-white/20 border-white/30 text-white" 
-                  : "bg-white/10 border-white/20 text-white/70 hover:bg-white/20"
-              )}
-            >
-              <List className="h-4 w-4 mr-2 text-white/70" />
-              List
-            </Button>
-            <Button
-              variant={view === 'kanban' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setView('kanban')}
-              className={cn(
-                view === 'kanban' 
-                  ? "bg-white/20 border-white/30 text-white" 
-                  : "bg-white/10 border-white/20 text-white/70 hover:bg-white/20"
-              )}
-            >
-              <LayoutGrid className="h-4 w-4 mr-2 text-white/70" />
-              Kanban
-            </Button>
-          </div>
         </div>
 
         {loading ? (
-          <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-12 text-center">
-            <p className="text-white/80">Loading CRM data…</p>
-          </div>
-        ) : view === 'list' ? (
+          <CrmPageSkeleton />
+        ) : viewMode === 'list' ? (
           <ListView 
             leads={filteredLeads}
             stages={stages}
@@ -550,12 +715,12 @@ export default function CrmPage() {
           />
         ) : (
           <KanbanView
-            leadsByStage={leadsByStage}
+            leads={filteredLeads}
             stages={stages}
             onEdit={handleEditLead}
             onDelete={handleDeleteLead}
             onView={handleViewLead}
-            onMove={handleMoveLead}
+            onReorder={handleReorderLeads}
           />
         )}
 
@@ -1117,289 +1282,330 @@ function ListView({
 
 // Kanban View Component
 function KanbanView({
-  leadsByStage,
+  leads,
   stages,
   onEdit,
   onDelete,
   onView,
-  onMove
+  onReorder
 }: {
-  leadsByStage: Record<string, CrmLead[]>
+  leads: CrmLead[]
   stages: CrmStage[]
   onEdit: (lead: CrmLead) => void
   onDelete: (leadId: string) => void
   onView: (lead: CrmLead) => void
-  onMove: (leadId: string, newStageId: string) => void
+  onReorder: (leadId: string, newStageId: string, newSortOrder: number) => void
 }) {
-  // Transform data to match shadcn kanban format
-  const kanbanColumns = useMemo(() => stages.map(stage => ({
-    id: stage.id,
-    name: stage.name,
-    description: stage.description,
-  })), [stages])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
-  // Initial data from props
-  const initialKanbanData = useMemo(() => stages.flatMap(stage => {
-    const stageLeads = leadsByStage[stage.id] || []
-    return stageLeads.map(lead => ({
-      id: lead.id,
-      name: lead.name || 'Unnamed Lead',
-      column: stage.id,
-      lead: lead, // Store full lead object for access
-    }))
-  }), [stages, leadsByStage])
+  // Group leads by stage
+  const leadsByStage = stages.reduce((acc, stage) => {
+    acc[stage.id] = leads
+      .filter(lead => lead.stage_id === stage.id)
+      .sort((a, b) => a.sort_order - b.sort_order)
+    return acc
+  }, {} as Record<string, CrmLead[]>)
 
-  // Create a stable key to detect when data actually changes from external source
-  const dataKey = useMemo(() => {
-    // Create a stable key based on lead IDs and their columns
-    const sorted = [...initialKanbanData].sort((a, b) => a.id.localeCompare(b.id))
-    return sorted.map(item => `${item.id}:${item.column}`).join('|')
-  }, [initialKanbanData])
+  const [overColumnId, setOverColumnId] = useState<string | null>(null)
 
-  // Local state for kanban data that updates during drag
-  const [kanbanData, setKanbanData] = useState(initialKanbanData)
-  const [lastDataKey, setLastDataKey] = useState(dataKey)
-  const isDraggingRef = React.useRef(false)
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }
 
-  // Update local state when props change from external source (not from drag)
-  useEffect(() => {
-    // Always sync on mount or when data changes externally (not during drag)
-    if (dataKey !== lastDataKey && !isDraggingRef.current) {
-      setKanbanData(initialKanbanData)
-      setLastDataKey(dataKey)
-    }
-  }, [dataKey, lastDataKey, initialKanbanData])
-
-  // Track the active card for drag overlay
-  const [activeCard, setActiveCard] = useState<typeof kanbanData[0] | null>(null)
-
-  const handleDataChange = useCallback((newData: typeof kanbanData) => {
-    // Update local state immediately for visual feedback
-    setKanbanData(newData)
-  }, [])
-
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    isDraggingRef.current = true
-    const card = kanbanData.find(item => item.id === event.active.id)
-    if (card) {
-      setActiveCard(card)
-    }
-  }, [kanbanData])
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setActiveCard(null)
-    isDraggingRef.current = false
-    
+  const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event
-    
-    if (!over || active.id === over.id) {
-      // Reset to original data if dropped in invalid location
-      setKanbanData(initialKanbanData)
+    if (!over) {
+      setOverColumnId(null)
       return
     }
 
-    const leadId = active.id as string
-    
-    // Get the current item from kanbanData (which should have been updated by handleDataChange during dragOver)
-    const activeItem = kanbanData.find(item => item.id === active.id)
-    if (!activeItem) {
-      setKanbanData(initialKanbanData)
-      return
-    }
+    const activeId = active.id as string
+    const activeLead = leads.find(l => l.id === activeId)
+    if (!activeLead) return
 
-    // The kanbanData should already have the correct column from handleDataChange
-    // But we need to verify and update the database
-    const currentColumn = activeItem.column
+    const overId = over.id.toString()
     
-    // Determine target column from the drop event
-    // Priority: cards container > other card
-    // Note: Board is no longer droppable to avoid conflicts
-    let targetColumn: string | null = null
-    
-    // Check if over is a cards container (primary droppable)
-    const cardsContainerMatch = over.id.toString().match(/^(.+)-cards$/)
-    if (cardsContainerMatch) {
-      targetColumn = cardsContainerMatch[1]
+    // Check if hovering over a column droppable
+    if (overId.startsWith('column-')) {
+      const stageId = overId.replace('column-', '')
+      // Only highlight if it's a different column
+      if (stageId !== activeLead.stage_id) {
+        setOverColumnId(stageId)
+      } else {
+        setOverColumnId(null)
+      }
     } else {
-      // Check if over is another card
-      const overItem = kanbanData.find(item => item.id === over.id)
-      if (overItem) {
-        targetColumn = overItem.column
+      // Check if hovering over a card - get its column
+      const overLead = leads.find(l => l.id === overId)
+      if (overLead && overLead.stage_id !== activeLead.stage_id) {
+        // Different column - highlight the column
+        setOverColumnId(overLead.stage_id)
+      } else {
+        setOverColumnId(null)
+      }
+    }
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveId(null)
+    setOverColumnId(null)
+
+    if (!over) return
+
+    const activeId = active.id as string
+    const overId = over.id.toString()
+
+    // Find the lead being dragged
+    const activeLead = leads.find(l => l.id === activeId)
+    if (!activeLead) return
+
+    // Check if dropped on a stage column (droppable zone)
+    // Column droppable IDs are prefixed with "column-"
+    if (overId.startsWith('column-')) {
+      const stageId = overId.replace('column-', '')
+      const targetStage = stages.find(s => s.id === stageId)
+      if (targetStage) {
+        // Dropped on a column - move to end of that column
+        // Only move if it's a different column
+        if (stageId !== activeLead.stage_id) {
+          const leadsInTarget = leadsByStage[targetStage.id] || []
+          const maxSortOrder = leadsInTarget.length > 0
+            ? Math.max(...leadsInTarget.map(l => l.sort_order))
+            : -1
+          const newSortOrder = maxSortOrder + 1
+          onReorder(activeId, targetStage.id, newSortOrder)
+        }
+        return
       }
     }
 
-    // Update database if column changed
-    if (targetColumn && currentColumn !== targetColumn) {
-      // Update the local state immediately for better UX
-      setKanbanData(prev => {
-        const newData = [...prev]
-        const activeIndex = newData.findIndex(item => item.id === active.id)
-        if (activeIndex >= 0) {
-          newData[activeIndex] = { ...newData[activeIndex], column: targetColumn! }
-        }
-        return newData
-      })
+    // Check if dropped on another lead card
+    const overLead = leads.find(l => l.id === overId)
+    if (overLead) {
+      const targetStageId = overLead.stage_id
       
-      // Update database
-      onMove(leadId, targetColumn)
-      // Don't reset state - let the database update trigger a re-fetch
-    } else if (!targetColumn || currentColumn === targetColumn) {
-      // No change or couldn't determine target - keep current state
-      // The handleDataChange should have already updated it correctly
+      // If moving to a different column, always move
+      if (activeLead.stage_id !== targetStageId) {
+        const leadsInTarget = leadsByStage[targetStageId] || []
+        // Insert before the target lead
+        const newSortOrder = overLead.sort_order
+        onReorder(activeId, targetStageId, newSortOrder)
+        return
+      }
+      
+      // Same column - reorder within column
+      const leadsInTarget = leadsByStage[targetStageId] || []
+      const activeIndex = leadsInTarget.findIndex(l => l.id === activeId)
+      const overIndex = leadsInTarget.findIndex(l => l.id === overId)
+      
+      if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+        return
+      }
+      
+      let newSortOrder: number
+      if (activeIndex < overIndex) {
+        // Moving down - place after the target item
+        newSortOrder = overLead.sort_order + 1
+      } else {
+        // Moving up - place before the target item
+        newSortOrder = overLead.sort_order
+      }
+      
+      onReorder(activeId, targetStageId, newSortOrder)
+      return
     }
-  }, [kanbanData, stages, onMove, initialKanbanData])
+  }
 
-  if (stages.length === 0) {
+  if (leads.length === 0) {
     return (
       <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-12 text-center">
-        <LayoutGrid className="h-12 w-12 text-white/60 mx-auto mb-4" />
-        <p className="text-white/80">No pipeline stages configured</p>
-        <p className="text-white/60 text-sm mt-1">Create stages to organize your leads</p>
+        <FileText className="h-12 w-12 text-white/60 mx-auto mb-4" />
+        <p className="text-white/80">No leads found</p>
+        <p className="text-white/60 text-sm mt-1">Create your first lead to get started</p>
       </div>
     )
   }
 
-  // Calculate leads by stage from current kanban data
-  const currentLeadsByStage = useMemo(() => {
-    const result: Record<string, CrmLead[]> = {}
-    stages.forEach(stage => {
-      result[stage.id] = kanbanData
-        .filter(item => item.column === stage.id)
-        .map(item => item.lead as CrmLead)
-    })
-    return result
-  }, [kanbanData, stages])
 
   return (
-    <div className="w-full overflow-x-auto overflow-y-visible pb-4">
-      <div className="min-w-max">
-        <KanbanProvider
-          columns={kanbanColumns}
-          data={kanbanData}
-          onDataChange={handleDataChange}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          className="flex gap-4 min-w-max"
-        >
-          {(column) => {
-            const stage = stages.find(s => s.id === column.id)!
-            const stageLeads = currentLeadsByStage[column.id] || []
-            const totalRevenue = stageLeads.reduce((sum, lead) => sum + (lead.potential_revenue_ttd || 0), 0)
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {stages.map((stage) => {
+          const stageLeads = leadsByStage[stage.id] || []
+          return (
+            <KanbanColumn
+              key={stage.id}
+              stage={stage}
+              leads={stageLeads}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onView={onView}
+              isOver={overColumnId === stage.id}
+            />
+          )
+        })}
+      </div>
+      <DragOverlay>
+        {activeId ? (
+          <KanbanCard
+            lead={leads.find(l => l.id === activeId)!}
+            isDragging={true}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onView={onView}
+          />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  )
+}
 
-            return (
-              <KanbanBoard
-                id={column.id}
-                key={column.id}
-                className="flex-shrink-0 w-80 min-w-80 border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-lg overflow-hidden flex flex-col"
-              >
-                <KanbanHeader className="p-4 border-b border-white/20 bg-white/5">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-white text-base">{column.name}</h3>
-                    <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs font-medium">
-                      {stageLeads.length}
-                    </Badge>
-                  </div>
-                  {column.description && (
-                    <p className="text-xs text-white/60 mb-2 line-clamp-2">{column.description}</p>
-                  )}
-                  <div className="flex items-center gap-1.5 text-xs text-white/70 mt-2">
-                    <DollarSign className="h-3 w-3 text-white/70" />
-                    <span className="font-medium">{formatCurrency(totalRevenue)}</span>
-                  </div>
-                </KanbanHeader>
-                <KanbanCards id={column.id} className="min-h-[600px] max-h-[calc(100vh-280px)]">
-                  {(item) => {
-                    const lead = item.lead as CrmLead
-                    return (
-                      <ShadcnKanbanCard
-                        key={item.id}
-                        id={item.id}
-                        name={item.name}
-                        column={item.column}
-                        className="border-white/20 bg-white/5 hover:bg-white/10 transition-all cursor-grab active:cursor-grabbing"
-                      >
-                        <KanbanCardContent
-                          lead={lead}
-                          onEdit={onEdit}
-                          onDelete={onDelete}
-                          onView={onView}
-                        />
-                      </ShadcnKanbanCard>
-                    )
-                  }}
-                </KanbanCards>
-              </KanbanBoard>
-            )
-          }}
-        </KanbanProvider>
+// Kanban Column Component
+function KanbanColumn({
+  stage,
+  leads,
+  onEdit,
+  onDelete,
+  onView,
+  isOver: externalIsOver
+}: {
+  stage: CrmStage
+  leads: CrmLead[]
+  onEdit: (lead: CrmLead) => void
+  onDelete: (leadId: string) => void
+  onView: (lead: CrmLead) => void
+  isOver?: boolean
+}) {
+  const leadIds = leads.map(l => l.id)
+  const { setNodeRef, isOver: internalIsOver } = useDroppable({
+    id: `column-${stage.id}`,
+  })
+  
+  const isOver = externalIsOver || internalIsOver
+
+  return (
+    <div className="flex-shrink-0 w-80 flex flex-col">
+      <div className="flex items-center justify-between mb-4 px-2">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-white text-lg">{stage.name}</h3>
+          <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs">
+            {leads.length}
+          </Badge>
+        </div>
+      </div>
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "flex-1 min-h-[500px] rounded-lg bg-white/5 border border-white/20 p-3 transition-colors",
+          isOver && "border-white/40 bg-white/10 ring-2 ring-white/30"
+        )}
+      >
+        <SortableContext items={leadIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3">
+            {leads.length === 0 ? (
+              <div className="text-center py-8 text-white/40 text-sm h-full flex items-center justify-center">
+                {isOver ? "Drop here" : "No leads"}
+              </div>
+            ) : (
+              leads.map((lead) => (
+                <KanbanCard
+                  key={lead.id}
+                  lead={lead}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onView={onView}
+                />
+              ))
+            )}
+          </div>
+        </SortableContext>
       </div>
     </div>
   )
 }
 
-// Kanban Card Content Component
-function KanbanCardContent({
+// Kanban Card Component
+function KanbanCard({
   lead,
+  isDragging = false,
   onEdit,
   onDelete,
-  onView,
+  onView
 }: {
   lead: CrmLead
+  isDragging?: boolean
   onEdit: (lead: CrmLead) => void
   onDelete: (leadId: string) => void
   onView: (lead: CrmLead) => void
 }) {
-  const handleCardClick = useCallback((e: React.MouseEvent) => {
-    // Only open view dialog if clicking on the card itself, not on interactive elements
-    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('[data-interactive]')) {
-      return
-    }
-    onView(lead)
-  }, [lead, onView])
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isSortableDragging
+  } = useSortable({ id: lead.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isSortableDragging || isDragging ? 0.5 : 1,
+  }
+
+  const primaryContact = lead.contacts?.find(c => c.is_primary) || lead.contacts?.[0]
 
   return (
-    <div className="p-3 space-y-3" onClick={handleCardClick}>
-      <div className="flex items-start justify-between gap-2">
-        <h4 
-          className="font-medium text-white text-sm leading-tight flex-1 cursor-pointer hover:text-white/90 transition-colors"
-          onClick={() => onView(lead)}
-        >
-          {lead.name || 'Unnamed Lead'}
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "rounded-lg border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4 cursor-grab active:cursor-grabbing hover:border-white/30 transition-all",
+        (isSortableDragging || isDragging) && "ring-2 ring-white/40 shadow-lg"
+      )}
+    >
+      <div className="flex items-start justify-between mb-2">
+        <h4 className="font-semibold text-white text-sm line-clamp-2 flex-1">
+          {lead.name}
         </h4>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-6 w-6 p-0 flex-shrink-0 hover:bg-white/10"
-              data-interactive
-              onClick={(e) => e.stopPropagation()}
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 flex-shrink-0"
             >
-              <MoreVertical className="h-3.5 w-3.5 text-white/70" />
+              <MoreVertical className="h-3 w-3 text-white/70" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent 
-            align="end" 
-            className="bg-white/10 border-white/20 backdrop-blur-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <DropdownMenuItem 
-              onClick={() => onView(lead)} 
-              className="text-white focus:bg-white/20 cursor-pointer"
-            >
+          <DropdownMenuContent align="end" className="bg-white/10 border-white/20 backdrop-blur-md">
+            <DropdownMenuItem onClick={() => onView(lead)} className="text-white focus:bg-white/20">
               <Eye className="h-4 w-4 mr-2 text-white/70" />
-              View Details
+              View
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => onEdit(lead)} 
-              className="text-white focus:bg-white/20 cursor-pointer"
-            >
+            <DropdownMenuItem onClick={() => onEdit(lead)} className="text-white focus:bg-white/20">
               <Edit className="h-4 w-4 mr-2 text-white/70" />
               Edit
             </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => onDelete(lead.id)} 
-              className="text-red-400 focus:text-red-400 focus:bg-red-500/10 cursor-pointer"
+              className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
@@ -1407,49 +1613,35 @@ function KanbanCardContent({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      
-      {lead.contacts && lead.contacts.length > 0 && (
-        <div className="space-y-1.5">
-          {lead.contacts.slice(0, 2).map((contact) => (
-            <div 
-              key={contact.id} 
-              className="flex items-center gap-1.5 text-xs text-white/70"
-            >
-              {contact.contact_type === 'email' && <Mail className="h-3 w-3 text-white/70 flex-shrink-0" />}
-              {contact.contact_type === 'phone' && <Phone className="h-3 w-3 text-white/70 flex-shrink-0" />}
-              {(contact.contact_type === 'tiktok' || contact.contact_type === 'whatsapp' || contact.contact_type === 'instagram') && (
-                <MessageSquare className="h-3 w-3 text-white/70 flex-shrink-0" />
-              )}
-              <span className="truncate">
-                {contact.contact_type === 'tiktok' ? `@${contact.value}` : contact.value}
-              </span>
-            </div>
-          ))}
-          {lead.contacts.length > 2 && (
-            <span className="text-xs text-white/50">
-              +{lead.contacts.length - 2} more
-            </span>
+
+      {primaryContact && (
+        <div className="flex items-center gap-1.5 mb-2 text-xs text-white/70">
+          {primaryContact.contact_type === 'email' && <Mail className="h-3 w-3 text-white/70" />}
+          {primaryContact.contact_type === 'phone' && <Phone className="h-3 w-3 text-white/70" />}
+          {(primaryContact.contact_type === 'tiktok' || primaryContact.contact_type === 'whatsapp' || primaryContact.contact_type === 'instagram') && (
+            <MessageSquare className="h-3 w-3 text-white/70" />
           )}
+          <span className="truncate">
+            {primaryContact.contact_type === 'tiktok' ? `@${primaryContact.value}` : primaryContact.value}
+          </span>
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
-        <Badge 
-          variant="outline" 
-          className="bg-white/10 text-white border-white/20 text-xs capitalize font-normal"
-        >
+      <div className="flex items-center gap-2 mb-2">
+        <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs capitalize">
           {sourceLabels[lead.source]}
         </Badge>
-        {lead.potential_revenue_ttd && (
-          <span className="text-xs text-white/80 font-semibold">
-            {formatCurrency(lead.potential_revenue_ttd)}
-          </span>
-        )}
       </div>
+
+      {lead.potential_revenue_ttd && (
+        <div className="flex items-center gap-1 text-xs text-white/70 mt-2 pt-2 border-t border-white/10">
+          <DollarSign className="h-3 w-3 text-white/70" />
+          <span>{formatCurrency(lead.potential_revenue_ttd)}</span>
+        </div>
+      )}
     </div>
   )
 }
-
 
 // Lead Detail Dialog Component
 function LeadDetailDialog({

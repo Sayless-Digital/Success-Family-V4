@@ -551,6 +551,7 @@ export interface CrmLead {
   name: string
   source: CrmLeadSource
   stage_id: string
+  sort_order: number
   potential_revenue_ttd?: number
   close_date?: string
   close_revenue_ttd?: number

@@ -108,3 +108,5 @@ COMMENT ON FUNCTION public.sync_dm_thread_metadata_on_delete()
   IS 'Updates thread preview when a message is deleted to show the actual current last message, using [image] for image attachments';
 
 
+
+
