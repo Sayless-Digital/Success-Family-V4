@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/page-header'
@@ -15,6 +15,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import {
+  KanbanProvider,
+  KanbanBoard,
+  KanbanHeader,
+  KanbanCards,
+  KanbanCard as ShadcnKanbanCard,
+  type DragEndEvent,
+} from '@/components/ui/shadcn-io/kanban'
+import type { DragStartEvent } from '@dnd-kit/core'
 import { 
   Plus, 
   Edit, 
@@ -86,7 +95,7 @@ export default function CrmPage() {
   const [leads, setLeads] = useState<CrmLead[]>([])
   const [stages, setStages] = useState<CrmStage[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'list' | 'kanban'>('list')
+  const [view, setView] = useState<'list' | 'kanban'>('kanban')
   const [searchQuery, setSearchQuery] = useState("")
   const [filteredLeads, setFilteredLeads] = useState<CrmLead[]>([])
   const [crmAverageValue, setCrmAverageValue] = useState<number>(50.00)
@@ -465,8 +474,19 @@ export default function CrmPage() {
   return (
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-2">
+        {/* Search, Buttons, and View Toggle in one line */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+          <div className="relative flex-1 max-w-md order-1 sm:order-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60" />
+            <Input
+              placeholder="Search leads..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50"
+            />
+          </div>
+          
+          <div className="flex items-center gap-2 flex-shrink-0 order-2 sm:order-2">
             <Button
               variant="outline"
               size="sm"
@@ -484,21 +504,8 @@ export default function CrmPage() {
               New Lead
             </Button>
           </div>
-        </div>
-
-        {/* Search and View Toggle */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60" />
-            <Input
-              placeholder="Search leads..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50"
-            />
-          </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0 order-3 sm:order-3">
             <Button
               variant={view === 'list' ? 'default' : 'outline'}
               size="sm"
@@ -551,11 +558,10 @@ export default function CrmPage() {
             onMove={handleMoveLead}
           />
         )}
-      </div>
 
       {/* Lead Dialog */}
       <Dialog open={leadDialogOpen} onOpenChange={setLeadDialogOpen}>
-          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-4xl max-h-[95vh] p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full">
+          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-4xl max-h-[95vh] p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full [&>div]:!p-0">
             <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/20">
               <DialogHeader>
                 <DialogTitle className="text-white text-2xl font-semibold">
@@ -800,7 +806,7 @@ export default function CrmPage() {
 
         {/* Stage Management Dialog */}
         <Dialog open={stageManagementOpen} onOpenChange={setStageManagementOpen}>
-          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-4xl max-h-[90vh] p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full">
+          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-4xl max-h-[90vh] p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full [&>div]:!p-0">
             <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/20">
               <DialogHeader>
                 <DialogTitle className="text-white text-2xl font-semibold">Manage Pipeline Stages</DialogTitle>
@@ -891,7 +897,7 @@ export default function CrmPage() {
 
         {/* Stage Dialog */}
         <Dialog open={stageDialogOpen} onOpenChange={setStageDialogOpen}>
-          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-2xl p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full">
+          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-2xl p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full [&>div]:!p-0">
             <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/20">
               <DialogHeader>
                 <DialogTitle className="text-white text-2xl font-semibold">
@@ -973,6 +979,10 @@ export default function CrmPage() {
             onRefresh={fetchData}
           />
         )}
+      </div>
+    </div>
+  )
+}
 
 // List View Component
 function ListView({
@@ -1121,101 +1131,275 @@ function KanbanView({
   onView: (lead: CrmLead) => void
   onMove: (leadId: string, newStageId: string) => void
 }) {
+  // Transform data to match shadcn kanban format
+  const kanbanColumns = useMemo(() => stages.map(stage => ({
+    id: stage.id,
+    name: stage.name,
+    description: stage.description,
+  })), [stages])
+
+  // Initial data from props
+  const initialKanbanData = useMemo(() => stages.flatMap(stage => {
+    const stageLeads = leadsByStage[stage.id] || []
+    return stageLeads.map(lead => ({
+      id: lead.id,
+      name: lead.name || 'Unnamed Lead',
+      column: stage.id,
+      lead: lead, // Store full lead object for access
+    }))
+  }), [stages, leadsByStage])
+
+  // Create a stable key to detect when data actually changes from external source
+  const dataKey = useMemo(() => {
+    // Create a stable key based on lead IDs and their columns
+    const sorted = [...initialKanbanData].sort((a, b) => a.id.localeCompare(b.id))
+    return sorted.map(item => `${item.id}:${item.column}`).join('|')
+  }, [initialKanbanData])
+
+  // Local state for kanban data that updates during drag
+  const [kanbanData, setKanbanData] = useState(initialKanbanData)
+  const [lastDataKey, setLastDataKey] = useState(dataKey)
+  const isDraggingRef = React.useRef(false)
+
+  // Update local state when props change from external source (not from drag)
+  useEffect(() => {
+    // Always sync on mount or when data changes externally (not during drag)
+    if (dataKey !== lastDataKey && !isDraggingRef.current) {
+      setKanbanData(initialKanbanData)
+      setLastDataKey(dataKey)
+    }
+  }, [dataKey, lastDataKey, initialKanbanData])
+
+  // Track the active card for drag overlay
+  const [activeCard, setActiveCard] = useState<typeof kanbanData[0] | null>(null)
+
+  const handleDataChange = useCallback((newData: typeof kanbanData) => {
+    // Update local state immediately for visual feedback
+    setKanbanData(newData)
+  }, [])
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    isDraggingRef.current = true
+    const card = kanbanData.find(item => item.id === event.active.id)
+    if (card) {
+      setActiveCard(card)
+    }
+  }, [kanbanData])
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveCard(null)
+    isDraggingRef.current = false
+    
+    const { active, over } = event
+    
+    if (!over || active.id === over.id) {
+      // Reset to original data if dropped in invalid location
+      setKanbanData(initialKanbanData)
+      return
+    }
+
+    const leadId = active.id as string
+    
+    // Get the current item from kanbanData (which should have been updated by handleDataChange during dragOver)
+    const activeItem = kanbanData.find(item => item.id === active.id)
+    if (!activeItem) {
+      setKanbanData(initialKanbanData)
+      return
+    }
+
+    // The kanbanData should already have the correct column from handleDataChange
+    // But we need to verify and update the database
+    const currentColumn = activeItem.column
+    
+    // Determine target column from the drop event
+    // Priority: cards container > other card
+    // Note: Board is no longer droppable to avoid conflicts
+    let targetColumn: string | null = null
+    
+    // Check if over is a cards container (primary droppable)
+    const cardsContainerMatch = over.id.toString().match(/^(.+)-cards$/)
+    if (cardsContainerMatch) {
+      targetColumn = cardsContainerMatch[1]
+    } else {
+      // Check if over is another card
+      const overItem = kanbanData.find(item => item.id === over.id)
+      if (overItem) {
+        targetColumn = overItem.column
+      }
+    }
+
+    // Update database if column changed
+    if (targetColumn && currentColumn !== targetColumn) {
+      // Update the local state immediately for better UX
+      setKanbanData(prev => {
+        const newData = [...prev]
+        const activeIndex = newData.findIndex(item => item.id === active.id)
+        if (activeIndex >= 0) {
+          newData[activeIndex] = { ...newData[activeIndex], column: targetColumn! }
+        }
+        return newData
+      })
+      
+      // Update database
+      onMove(leadId, targetColumn)
+      // Don't reset state - let the database update trigger a re-fetch
+    } else if (!targetColumn || currentColumn === targetColumn) {
+      // No change or couldn't determine target - keep current state
+      // The handleDataChange should have already updated it correctly
+    }
+  }, [kanbanData, stages, onMove, initialKanbanData])
+
+  if (stages.length === 0) {
+    return (
+      <div className="rounded-lg bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-12 text-center">
+        <LayoutGrid className="h-12 w-12 text-white/60 mx-auto mb-4" />
+        <p className="text-white/80">No pipeline stages configured</p>
+        <p className="text-white/60 text-sm mt-1">Create stages to organize your leads</p>
+      </div>
+    )
+  }
+
+  // Calculate leads by stage from current kanban data
+  const currentLeadsByStage = useMemo(() => {
+    const result: Record<string, CrmLead[]> = {}
+    stages.forEach(stage => {
+      result[stage.id] = kanbanData
+        .filter(item => item.column === stage.id)
+        .map(item => item.lead as CrmLead)
+    })
+    return result
+  }, [kanbanData, stages])
+
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-      {stages.map((stage) => {
-        const stageLeads = leadsByStage[stage.id] || []
-        const totalRevenue = stageLeads.reduce((sum, lead) => sum + (lead.potential_revenue_ttd || 0), 0)
-        
-        return (
-          <div
-            key={stage.id}
-            className="flex-shrink-0 w-80 rounded-lg border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md p-4"
-          >
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-white">{stage.name}</h3>
-                <Badge variant="outline" className="bg-white/10 text-white border-white/20">
-                  {stageLeads.length}
-                </Badge>
-              </div>
-              {stage.description && (
-                <p className="text-sm text-white/60 mb-2">{stage.description}</p>
-              )}
-              <div className="flex items-center gap-2 text-xs text-white/70">
-                <DollarSign className="h-3 w-3 text-white/70" />
-                <span>Total: {formatCurrency(totalRevenue)}</span>
-              </div>
-            </div>
-            
-            <ScrollArea className="h-[calc(100vh-300px)]">
-              <div className="space-y-2">
-                {stageLeads.map((lead) => (
-                  <KanbanCard
-                    key={lead.id}
-                    lead={lead}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onView={onView}
-                    stages={stages}
-                    onMove={onMove}
-                  />
-                ))}
-                {stageLeads.length === 0 && (
-                  <div className="text-center py-8 text-white/50 text-sm">
-                    No leads in this stage
+    <div className="w-full overflow-x-auto overflow-y-visible pb-4">
+      <div className="min-w-max">
+        <KanbanProvider
+          columns={kanbanColumns}
+          data={kanbanData}
+          onDataChange={handleDataChange}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          className="flex gap-4 min-w-max"
+        >
+          {(column) => {
+            const stage = stages.find(s => s.id === column.id)!
+            const stageLeads = currentLeadsByStage[column.id] || []
+            const totalRevenue = stageLeads.reduce((sum, lead) => sum + (lead.potential_revenue_ttd || 0), 0)
+
+            return (
+              <KanbanBoard
+                id={column.id}
+                key={column.id}
+                className="flex-shrink-0 w-80 min-w-80 border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-lg overflow-hidden flex flex-col"
+              >
+                <KanbanHeader className="p-4 border-b border-white/20 bg-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-white text-base">{column.name}</h3>
+                    <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs font-medium">
+                      {stageLeads.length}
+                    </Badge>
                   </div>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-        )
-      })}
+                  {column.description && (
+                    <p className="text-xs text-white/60 mb-2 line-clamp-2">{column.description}</p>
+                  )}
+                  <div className="flex items-center gap-1.5 text-xs text-white/70 mt-2">
+                    <DollarSign className="h-3 w-3 text-white/70" />
+                    <span className="font-medium">{formatCurrency(totalRevenue)}</span>
+                  </div>
+                </KanbanHeader>
+                <KanbanCards id={column.id} className="min-h-[600px] max-h-[calc(100vh-280px)]">
+                  {(item) => {
+                    const lead = item.lead as CrmLead
+                    return (
+                      <ShadcnKanbanCard
+                        key={item.id}
+                        id={item.id}
+                        name={item.name}
+                        column={item.column}
+                        className="border-white/20 bg-white/5 hover:bg-white/10 transition-all cursor-grab active:cursor-grabbing"
+                      >
+                        <KanbanCardContent
+                          lead={lead}
+                          onEdit={onEdit}
+                          onDelete={onDelete}
+                          onView={onView}
+                        />
+                      </ShadcnKanbanCard>
+                    )
+                  }}
+                </KanbanCards>
+              </KanbanBoard>
+            )
+          }}
+        </KanbanProvider>
+      </div>
     </div>
   )
 }
 
-// Kanban Card Component
-function KanbanCard({
+// Kanban Card Content Component
+function KanbanCardContent({
   lead,
   onEdit,
   onDelete,
   onView,
-  stages,
-  onMove
 }: {
   lead: CrmLead
   onEdit: (lead: CrmLead) => void
   onDelete: (leadId: string) => void
   onView: (lead: CrmLead) => void
-  stages: CrmStage[]
-  onMove: (leadId: string, newStageId: string) => void
 }) {
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    // Only open view dialog if clicking on the card itself, not on interactive elements
+    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('[data-interactive]')) {
+      return
+    }
+    onView(lead)
+  }, [lead, onView])
+
   return (
-    <div
-      className="rounded-lg border border-white/20 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition-colors"
-      onClick={() => onView(lead)}
-    >
-      <div className="flex items-start justify-between mb-2">
-        <h4 className="font-medium text-white text-sm">{lead.name}</h4>
+    <div className="p-3 space-y-3" onClick={handleCardClick}>
+      <div className="flex items-start justify-between gap-2">
+        <h4 
+          className="font-medium text-white text-sm leading-tight flex-1 cursor-pointer hover:text-white/90 transition-colors"
+          onClick={() => onView(lead)}
+        >
+          {lead.name || 'Unnamed Lead'}
+        </h4>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-              <MoreVertical className="h-3 w-3 text-white/70" />
+          <DropdownMenuTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 w-6 p-0 flex-shrink-0 hover:bg-white/10"
+              data-interactive
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="h-3.5 w-3.5 text-white/70" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-white/10 border-white/20 backdrop-blur-md">
-            <DropdownMenuItem onClick={() => onView(lead)} className="text-white focus:bg-white/20">
+          <DropdownMenuContent 
+            align="end" 
+            className="bg-white/10 border-white/20 backdrop-blur-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DropdownMenuItem 
+              onClick={() => onView(lead)} 
+              className="text-white focus:bg-white/20 cursor-pointer"
+            >
               <Eye className="h-4 w-4 mr-2 text-white/70" />
-              View
+              View Details
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEdit(lead)} className="text-white focus:bg-white/20">
+            <DropdownMenuItem 
+              onClick={() => onEdit(lead)} 
+              className="text-white focus:bg-white/20 cursor-pointer"
+            >
               <Edit className="h-4 w-4 mr-2 text-white/70" />
               Edit
             </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => onDelete(lead.id)} 
-              className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
+              className="text-red-400 focus:text-red-400 focus:bg-red-500/10 cursor-pointer"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
@@ -1224,57 +1408,48 @@ function KanbanCard({
         </DropdownMenu>
       </div>
       
-      <div className="space-y-1 mb-2">
-        {lead.contacts && lead.contacts.length > 0 ? (
-          lead.contacts.slice(0, 2).map((contact) => (
-            <div key={contact.id} className="flex items-center gap-1 text-xs text-white/70">
-              {contact.contact_type === 'email' && <Mail className="h-3 w-3 text-white/70" />}
-              {contact.contact_type === 'phone' && <Phone className="h-3 w-3 text-white/70" />}
+      {lead.contacts && lead.contacts.length > 0 && (
+        <div className="space-y-1.5">
+          {lead.contacts.slice(0, 2).map((contact) => (
+            <div 
+              key={contact.id} 
+              className="flex items-center gap-1.5 text-xs text-white/70"
+            >
+              {contact.contact_type === 'email' && <Mail className="h-3 w-3 text-white/70 flex-shrink-0" />}
+              {contact.contact_type === 'phone' && <Phone className="h-3 w-3 text-white/70 flex-shrink-0" />}
               {(contact.contact_type === 'tiktok' || contact.contact_type === 'whatsapp' || contact.contact_type === 'instagram') && (
-                <MessageSquare className="h-3 w-3 text-white/70" />
+                <MessageSquare className="h-3 w-3 text-white/70 flex-shrink-0" />
               )}
-              <span>
+              <span className="truncate">
                 {contact.contact_type === 'tiktok' ? `@${contact.value}` : contact.value}
               </span>
             </div>
-          ))
-        ) : (
-          <span className="text-white/60 text-xs">No contacts</span>
-        )}
-      </div>
-      
-      <div className="flex items-center justify-between mb-2">
-        <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs capitalize">
+          ))}
+          {lead.contacts.length > 2 && (
+            <span className="text-xs text-white/50">
+              +{lead.contacts.length - 2} more
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+        <Badge 
+          variant="outline" 
+          className="bg-white/10 text-white border-white/20 text-xs capitalize font-normal"
+        >
           {sourceLabels[lead.source]}
         </Badge>
         {lead.potential_revenue_ttd && (
-          <span className="text-xs text-white/80 font-medium">
+          <span className="text-xs text-white/80 font-semibold">
             {formatCurrency(lead.potential_revenue_ttd)}
           </span>
         )}
       </div>
-      
-      <Select
-        value={lead.stage_id}
-        onValueChange={(value) => {
-          onMove(lead.id, value)
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SelectTrigger className="w-full h-7 bg-white/10 border-white/20 text-white text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="bg-white/10 border-white/20 backdrop-blur-md">
-          {stages.map((stage) => (
-            <SelectItem key={stage.id} value={stage.id} className="text-white focus:bg-white/20">
-              {stage.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   )
 }
+
 
 // Lead Detail Dialog Component
 function LeadDetailDialog({
@@ -1425,7 +1600,7 @@ function LeadDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-5xl max-h-[95vh] p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full">
+      <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-5xl max-h-[95vh] p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full [&>div]:!p-0">
         <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/20">
           <DialogHeader>
             <div className="flex items-start justify-between">
@@ -1698,10 +1873,12 @@ function LeadDetailDialog({
             </TabsContent>
           </Tabs>
         )}
+      </DialogContent>
+      </Dialog>
 
-        {/* Session Dialog */}
-        <Dialog open={sessionDialogOpen} onOpenChange={setSessionDialogOpen}>
-          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-2xl p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full">
+      {/* Session Dialog */}
+      <Dialog open={sessionDialogOpen} onOpenChange={setSessionDialogOpen}>
+          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-2xl p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full [&>div]:!p-0">
             <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/20">
               <DialogHeader>
                 <DialogTitle className="text-white text-2xl font-semibold">Add Conversation Session</DialogTitle>
@@ -1769,7 +1946,7 @@ function LeadDetailDialog({
 
         {/* Note Dialog */}
         <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
-          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-2xl p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full">
+          <DialogContent className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-white/20 text-white sm:max-w-2xl p-0 [&>div]:!flex [&>div]:!flex-col [&>div]:!h-full [&>div]:!p-0">
             <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-white/20">
               <DialogHeader>
                 <DialogTitle className="text-white text-2xl font-semibold">Add Note</DialogTitle>
@@ -1814,7 +1991,6 @@ function LeadDetailDialog({
             </form>
           </DialogContent>
         </Dialog>
-      </div>
-    </div>
+    </>
   )
 }

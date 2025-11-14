@@ -24,10 +24,12 @@ interface ClientLayoutWrapperProps {
 
 export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const pathname = usePathname()
-  const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 768 : false
-  const [isSidebarOpen, setIsSidebarOpen] = useState(isDesktop)
-  const [isSidebarPinned, setIsSidebarPinned] = useState(isDesktop)
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : true)
+  // Initialize with false to match server-side rendering, then update in useEffect
+  const [isMobile, setIsMobile] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+  const isDesktop = !isMobile && isMounted
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const fullscreenTargetRef = useRef<HTMLDivElement | null>(null)
   
@@ -93,22 +95,37 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     }
   }, [isMobile, onlineUsersSidebarConfig, pathname])
 
+  // Set mounted state and initial mobile/desktop state after hydration
   useEffect(() => {
+    setIsMounted(true)
     const checkMobile = () => {
       const mobile = window.innerWidth < 768
-      const wasFirstRun = isMobile === true && isSidebarPinned === false && isSidebarOpen === false
-      
       setIsMobile(mobile)
       
-      if (wasFirstRun) {
-        if (mobile) {
-          setIsSidebarPinned(false)
-          setIsSidebarOpen(false)
-        } else {
-          setIsSidebarPinned(true)
-          setIsSidebarOpen(true)
-        }
-      } else if (mobile && !isMobile) {
+      // Set initial sidebar state based on screen size
+      if (mobile) {
+        setIsSidebarPinned(false)
+        setIsSidebarOpen(false)
+      } else {
+        setIsSidebarPinned(true)
+        setIsSidebarOpen(true)
+      }
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // Handle screen size changes after initial mount
+  useEffect(() => {
+    if (!isMounted) return
+    
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      
+      if (mobile && !isMobile) {
         // Switching to mobile - close both sidebars
         setIsSidebarPinned(false)
         setIsSidebarOpen(false)
@@ -123,7 +140,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
-  }, [isMobile, isSidebarPinned, isSidebarOpen])
+  }, [isMobile, isMounted])
 
   useEffect(() => {
     if (typeof document === "undefined") return

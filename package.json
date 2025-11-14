@@ -15,6 +15,9 @@
   },
   "packageManager": "pnpm@10.16.0",
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@inboundemail/sdk": "^4.4.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.10",
@@ -58,7 +61,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "three": "^0.181.0"
+    "three": "^0.181.0",
+    "tunnel-rat": "^0.1.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

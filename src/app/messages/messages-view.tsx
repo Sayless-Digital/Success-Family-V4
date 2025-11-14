@@ -1270,11 +1270,9 @@ export default function MessagesView({
       heif: "image/heif",
       avif: "image/avif",
       // Audio
-      webm: "audio/webm",
       ogg: "audio/ogg",
       mp3: "audio/mpeg",
       mpeg: "audio/mpeg",
-      mp4: "audio/mp4",
       wav: "audio/wav",
       aac: "audio/aac",
       flac: "audio/flac",
@@ -2849,7 +2847,7 @@ export default function MessagesView({
                               <span className="text-white/90">Audio File</span>
                             </DropdownMenuItem>
                             <input
-                              ref={(el) => (fileInputRefs.current.audio = el)}
+                              ref={(el) => { fileInputRefs.current.audio = el }}
                               type="file"
                               accept="audio/*"
                               className="hidden"
@@ -2883,7 +2881,7 @@ export default function MessagesView({
                               <span className="text-white/90">Document</span>
                             </DropdownMenuItem>
                             <input
-                              ref={(el) => (fileInputRefs.current.document = el)}
+                              ref={(el) => { fileInputRefs.current.document = el }}
                               type="file"
                               accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,application/rtf"
                               className="hidden"

@@ -13,13 +13,10 @@ const ContextMenuTrigger = ContextMenuPrimitive.Trigger
 
 const ContextMenuGroup = ContextMenuPrimitive.Group
 
-const ContextMenuPortal = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.Portal>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Portal>
->((props, ref) => {
+const ContextMenuPortal = (props: React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Portal>) => {
   const container = useFullscreenPortal()
-  return <ContextMenuPrimitive.Portal ref={ref} container={container} {...props} />
-})
+  return <ContextMenuPrimitive.Portal container={container} {...props} />
+}
 ContextMenuPortal.displayName = ContextMenuPrimitive.Portal.displayName
 
 const ContextMenuSub = ContextMenuPrimitive.Sub
