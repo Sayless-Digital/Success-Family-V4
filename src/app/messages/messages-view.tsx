@@ -7,15 +7,19 @@ import type { RealtimeChannel } from "@supabase/supabase-js"
 import {
   ArrowLeft,
   ChevronDown,
+  Download,
+  FileText,
   Image as ImageIcon,
   Loader2,
   MessageCircle,
   Mic,
+  Paperclip,
   Pause,
   Play,
   Search,
   Send,
   Trash2,
+  Video,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -31,12 +35,13 @@ import {
 import type { DirectMessageParticipant, DirectMessageThread } from "@/types"
 import { cn, formatRelativeTime, linkifyText } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
+import { VoiceNotePlayer } from "@/components/voice-note-player"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useUnreadMessagesPerThread } from "@/hooks/use-unread-messages-per-thread"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MessageImageLightbox } from "@/components/message-image-lightbox"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -52,7 +57,7 @@ type ViewerProfile = {
 type AttachmentState = {
   id: string
   fileName: string
-  mediaType: "image" | "audio" | "file"
+  mediaType: "image" | "audio" | "file" | "video"
   status: "uploading" | "ready" | "error"
   previewUrl?: string
   storagePath?: string
@@ -133,20 +138,42 @@ export default function MessagesView({
   const [composerValue, setComposerValue] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [attachments, setAttachments] = useState<AttachmentState[]>([])
+  
+  // Debug: Log attachments state changes
+  useEffect(() => {
+    console.log('[Attachments State] State changed:', {
+      count: attachments.length,
+      attachments: attachments.map(a => ({
+        id: a.id,
+        fileName: a.fileName,
+        mediaType: a.mediaType,
+        status: a.status,
+        hasPreviewUrl: !!a.previewUrl
+      }))
+    })
+  }, [attachments])
+  
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false)
   const [typingIndicators, setTypingIndicators] = useState<Record<string, { userId: string; expiresAt: number }>>({})
   const [displayTypingIndicators, setDisplayTypingIndicators] = useState<Record<string, boolean>>({})
   const [presenceMap, setPresenceMap] = useState<Record<string, boolean>>({})
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, { url: string; expiresAt: number }>>({})
+  const [conversationImagePreviews, setConversationImagePreviews] = useState<Record<string, { url: string; expiresAt: number }>>({})
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<"list" | "conversation">("list")
   const [isClient, setIsClient] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
-  const [audioProgress, setAudioProgress] = useState<Record<string, { current: number; duration: number }>>({})
+  const [playingVideo, setPlayingVideo] = useState<string | null>(null)
   const [longPressMenuOpen, setLongPressMenuOpen] = useState<string | null>(null)
-  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxImages, setLightboxImages] = useState<Array<{ id: string; url: string }>>([])
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -162,6 +189,7 @@ export default function MessagesView({
 
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const threadsChannelRef = useRef<RealtimeChannel | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const typingBroadcastCooldownRef = useRef<NodeJS.Timeout | null>(null)
   const typingDisplayTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
@@ -182,11 +210,7 @@ export default function MessagesView({
           URL.revokeObjectURL(attachment.previewUrl)
         }
       })
-      // Cleanup audio elements
-      Object.values(audioRefs.current).forEach(audio => {
-        audio.pause()
-        audio.src = ''
-      })
+      // Voice note audio elements are cleaned up by VoiceNotePlayer component
     }
   }, [])
 
@@ -204,6 +228,108 @@ export default function MessagesView({
   )
 
   const selectedMessages = selectedThreadId ? messagesByThread[selectedThreadId] ?? [] : []
+
+  // Compute live previews from actual messages in threads
+  const liveMessagePreviews = useMemo(() => {
+    const previews: Record<string, { content: string; senderId: string | null; timestamp: string | null; hasImage: boolean }> = {}
+    
+    Object.entries(messagesByThread).forEach(([threadId, messages]) => {
+      if (messages && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1]
+        const imageAttachments = lastMessage.attachments?.filter(a => a.media_type === "image") ?? []
+        const hasImage = imageAttachments.length > 0
+        previews[threadId] = {
+          content: lastMessage.content ?? (hasImage ? "[image]" : (lastMessage.attachments?.length ? "[attachment]" : "")),
+          senderId: lastMessage.sender_id,
+          timestamp: lastMessage.created_at,
+          hasImage,
+        }
+      }
+    })
+    
+    return previews
+  }, [messagesByThread])
+
+  // Fetch image previews for conversations with image attachments
+  useEffect(() => {
+    const fetchImagePreviews = async () => {
+      const now = Date.now()
+      const threadsToFetch: string[] = []
+
+      // Check which conversations need image previews
+      conversations.forEach((conversation) => {
+        const threadId = conversation.thread_id
+        const existing = conversationImagePreviews[threadId]
+        
+        // Skip if we already have a valid URL
+        if (existing && existing.expiresAt > now + SIGNED_URL_REFRESH_THRESHOLD * 1000) {
+          return
+        }
+
+        // Check if this conversation has an image in the last message
+        const livePreview = liveMessagePreviews[threadId]
+        const hasImage = livePreview?.hasImage || false
+        
+        // Also check if the preview text indicates an image
+        const previewText = livePreview?.content || conversation.last_message_preview || ""
+        const isImageMessage = previewText === "[image]" || previewText === "[attachment]"
+        
+        if (hasImage || isImageMessage) {
+          threadsToFetch.push(threadId)
+        }
+      })
+
+      if (threadsToFetch.length === 0) return
+
+      // Fetch the last message with image attachments for each thread
+      await Promise.all(
+        threadsToFetch.map(async (threadId) => {
+          try {
+            const { data: lastMessage } = await supabase
+              .from("dm_messages")
+              .select("id")
+              .eq("thread_id", threadId)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            if (!lastMessage) return
+
+            const { data: imageAttachments } = await supabase
+              .from("dm_message_media")
+              .select("id, storage_path, media_type")
+              .eq("message_id", lastMessage.id)
+              .eq("media_type", "image")
+              .limit(1)
+
+            if (!imageAttachments || imageAttachments.length === 0) return
+
+            const imageAttachment = imageAttachments[0]
+            const objectPath = storagePathToObjectPath(imageAttachment.storage_path)
+            if (!objectPath) return
+
+            const { data: signedUrlData } = await supabase.storage
+              .from("dm-media")
+              .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS)
+
+            if (signedUrlData?.signedUrl) {
+              setConversationImagePreviews((prev) => ({
+                ...prev,
+                [threadId]: {
+                  url: signedUrlData.signedUrl,
+                  expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
+                },
+              }))
+            }
+          } catch (error) {
+            console.error(`[fetchImagePreviews] Error fetching preview for thread ${threadId}:`, error)
+          }
+        }),
+      )
+    }
+
+    fetchImagePreviews()
+  }, [conversations, liveMessagePreviews, conversationImagePreviews])
 
   useEffect(() => {
     setIsClient(true)
@@ -322,61 +448,7 @@ export default function MessagesView({
     ensureAttachmentUrls(selectedMessages.flatMap((message) => message.attachments ?? []))
   }, [selectedMessages, ensureAttachmentUrls])
 
-  // Preload audio metadata to get duration immediately
-  useEffect(() => {
-    if (!selectedMessages.length) return
-    
-    const audioAttachments = selectedMessages.flatMap(m =>
-      (m.attachments ?? []).filter(a => a.media_type === 'audio')
-    )
-
-    audioAttachments.forEach((attachment) => {
-      const signedUrl = attachmentUrls[attachment.id]?.url
-      if (!signedUrl || audioRefs.current[attachment.id]) return
-
-      const audio = new Audio(signedUrl)
-      
-      audio.addEventListener('loadedmetadata', () => {
-        setAudioProgress(prev => ({
-          ...prev,
-          [attachment.id]: {
-            current: 0,
-            duration: audio.duration || 0
-          }
-        }))
-      })
-      
-      audio.addEventListener('timeupdate', () => {
-        setAudioProgress(prev => ({
-          ...prev,
-          [attachment.id]: {
-            current: audio.currentTime,
-            duration: audio.duration || 0
-          }
-        }))
-      })
-      
-      audio.addEventListener('ended', () => {
-        setPlayingAudio(null)
-        setAudioProgress(prev => ({
-          ...prev,
-          [attachment.id]: {
-            current: 0,
-            duration: prev[attachment.id]?.duration || 0
-          }
-        }))
-      })
-      
-      audio.addEventListener('pause', () => {
-        if (audio.ended) {
-          setPlayingAudio(null)
-        }
-      })
-      
-      audioRefs.current[attachment.id] = audio
-      audio.load()
-    })
-  }, [selectedMessages, attachmentUrls])
+  // Voice note audio elements are now managed by VoiceNotePlayer component
 
   useEffect(() => {
     if (selectedThreadId) return
@@ -788,6 +860,18 @@ export default function MessagesView({
     }
   }, [])
 
+  const cleanupThreadsChannel = useCallback(() => {
+    if (threadsChannelRef.current) {
+      try {
+        supabase.removeChannel(threadsChannelRef.current)
+      } catch (error) {
+        console.error("[cleanupThreadsChannel] Error removing channel:", error)
+      } finally {
+        threadsChannelRef.current = null
+      }
+    }
+  }, [])
+
   useEffect(() => {
     cleanupChannel()
     if (!selectedThreadId || !selectedConversation) return
@@ -824,7 +908,7 @@ export default function MessagesView({
 
           const { data: attachmentsData } = await supabase
             .from("dm_message_media")
-            .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, created_at")
+            .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at")
             .eq("message_id", newMessage.id)
 
           const enrichedMessage: MessageResult = {
@@ -837,6 +921,7 @@ export default function MessagesView({
             [selectedThreadId]: [...(prev[selectedThreadId] ?? []), enrichedMessage],
           }))
 
+          const hasImage = enrichedMessage.attachments?.some(a => a.media_type === "image") ?? false
           setConversations((prev) =>
             prev
               .map((item) =>
@@ -844,7 +929,7 @@ export default function MessagesView({
                   ? {
                       ...item,
                       last_message_at: enrichedMessage.created_at,
-                      last_message_preview: enrichedMessage.content ?? (enrichedMessage.attachments?.length ? "[attachment]" : ""),
+                      last_message_preview: enrichedMessage.content ?? (hasImage ? "[image]" : (enrichedMessage.attachments?.length ? "[attachment]" : "")),
                       last_message_sender_id: enrichedMessage.sender_id,
                       updated_at: new Date().toISOString(),
                     }
@@ -910,6 +995,126 @@ export default function MessagesView({
       cleanupChannel()
     }
   }, [cleanupChannel, ensureAttachmentUrls, selectedConversation, selectedThreadId, viewer.id])
+
+  // Subscribe to dm_threads updates to refresh conversation previews when messages change
+  useEffect(() => {
+    cleanupThreadsChannel()
+
+    const threadsChannel = supabase
+      .channel("dm-threads-updates", {
+        config: {
+          broadcast: { self: false },
+        },
+      })
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "dm_threads",
+        },
+        async (payload) => {
+          const updatedThread = payload.new as {
+            id: string
+            last_message_at: string | null
+            last_message_preview: string | null
+            last_message_sender_id: string | null
+            updated_at: string
+          }
+
+          if (!updatedThread) return
+
+          // Check if this thread is in our conversations list
+          const existingConversation = conversationsRef.current.find(
+            (c) => c.thread_id === updatedThread.id
+          )
+
+          if (!existingConversation) {
+            // Thread not in our list, might be a new conversation - refresh the list
+            refreshConversations().catch((error) => {
+              console.error("[threadsChannel] Error refreshing conversations:", error)
+            })
+            return
+          }
+
+          // Update the conversation in our list with the new preview
+          setConversations((prev) =>
+            prev
+              .map((item) =>
+                item.thread_id === updatedThread.id
+                  ? {
+                      ...item,
+                      last_message_at: updatedThread.last_message_at,
+                      last_message_preview: updatedThread.last_message_preview,
+                      last_message_sender_id: updatedThread.last_message_sender_id,
+                      updated_at: updatedThread.updated_at,
+                    }
+                  : item,
+              )
+              .sort((a, b) => {
+                const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
+                const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
+                return bTime - aTime
+              }),
+          )
+
+          // If this thread has messages loaded, also update liveMessagePreviews
+          if (messagesRef.current[updatedThread.id]) {
+            // Fetch the actual last message to ensure preview is accurate
+            const { data: lastMessageData } = await supabase
+              .from("dm_messages")
+              .select("id, content, created_at, sender_id")
+              .eq("thread_id", updatedThread.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            if (lastMessageData) {
+              const { data: attachmentsData } = await supabase
+                .from("dm_message_media")
+                .select("id")
+                .eq("message_id", lastMessageData.id)
+                .limit(1)
+
+              const hasAttachments = (attachmentsData?.length ?? 0) > 0
+              const previewContent =
+                lastMessageData.content ?? (hasAttachments ? "[attachment]" : "")
+
+              // Update messagesByThread if the last message changed
+              setMessagesByThread((prev) => {
+                const existingMessages = prev[updatedThread.id] ?? []
+                if (existingMessages.length === 0) return prev
+
+                const currentLast = existingMessages[existingMessages.length - 1]
+                if (currentLast.id === lastMessageData.id) {
+                  // Same message, just update the preview in conversations
+                  return prev
+                }
+
+                // Last message changed (might have been deleted), refresh messages for this thread
+                // This will be handled by the user opening the thread or by prefetch
+                return prev
+              })
+            }
+          }
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          // Channel subscribed successfully
+        } else if (status === "CHANNEL_ERROR") {
+          console.error("[threadsChannel] Channel error detected")
+        } else if (status === "TIMED_OUT") {
+          console.error("[threadsChannel] Channel timed out")
+        }
+      })
+
+    threadsChannelRef.current = threadsChannel
+
+    return () => {
+      cleanupThreadsChannel()
+    }
+  }, [cleanupThreadsChannel, refreshConversations])
 
   useEffect(() => {
     if (!selectedThreadId) return
@@ -1077,6 +1282,21 @@ export default function MessagesView({
       opus: "audio/opus",
       // Documents
       pdf: "application/pdf",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ppt: "application/vnd.ms-powerpoint",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      txt: "text/plain",
+      rtf: "application/rtf",
+      // Videos
+      mp4: "video/mp4",
+      webm: "video/webm",
+      mov: "video/quicktime",
+      avi: "video/x-msvideo",
+      mkv: "video/x-matroska",
+      m4v: "video/x-m4v",
     }
     
     const ext = extension.toLowerCase()
@@ -1100,6 +1320,14 @@ export default function MessagesView({
         console.log(`[MIME Detection] Using detected audio MIME type: ${detectedType}`)
         return detectedType
       }
+      if (mediaType === "video" && detectedType.startsWith("video/")) {
+        console.log(`[MIME Detection] Using detected video MIME type: ${detectedType}`)
+        return detectedType
+      }
+      if (mediaType === "file" && (detectedType.startsWith("application/") || detectedType.startsWith("text/"))) {
+        console.log(`[MIME Detection] Using detected document MIME type: ${detectedType}`)
+        return detectedType
+      }
       if (detectedType === "application/pdf") {
         console.log(`[MIME Detection] Using detected PDF MIME type: ${detectedType}`)
         return detectedType
@@ -1114,34 +1342,120 @@ export default function MessagesView({
     if (mediaType === "audio") {
       return "audio/webm" // Default to WebM for audio
     }
+    if (mediaType === "video") {
+      return "video/mp4" // Default to MP4 for video
+    }
+    if (mediaType === "file") {
+      return "application/octet-stream" // Default for documents
+    }
     
     return "application/octet-stream"
   }, [])
 
   const handleAddFiles = useCallback(
     async (files: File[] | null, mediaType: AttachmentState["mediaType"]) => {
-      if (!files || files.length === 0) return
+      console.log('[handleAddFiles] CALLED with:', {
+        filesCount: files?.length || 0,
+        mediaType,
+        currentAttachmentsCount: attachmentsRef.current.length,
+        files: files?.map(f => ({ name: f.name, type: f.type, size: f.size }))
+      })
+      
+      if (!files || files.length === 0) {
+        console.log('[handleAddFiles] No files provided, returning early')
+        return
+      }
+      
       const remainingSlots = MAX_ATTACHMENTS - attachmentsRef.current.length
+      console.log('[handleAddFiles] Remaining slots:', remainingSlots)
+      
       if (remainingSlots <= 0) {
+        console.log('[handleAddFiles] No remaining slots, showing error')
         toast.error(`You can attach up to ${MAX_ATTACHMENTS} files per message.`)
         return
       }
 
-      const selected = files.slice(0, remainingSlots)
+      // Validate file sizes before processing
+      const MAX_FILE_SIZE_VIDEO = 50 * 1024 * 1024 // 50MB for videos
+      const MAX_FILE_SIZE_OTHER = 25 * 1024 * 1024 // 25MB for other file types
+      
+      const validFiles: File[] = []
+      for (const file of files) {
+        const maxSize = mediaType === "video" ? MAX_FILE_SIZE_VIDEO : MAX_FILE_SIZE_OTHER
+        if (file.size > maxSize) {
+          const maxSizeMB = mediaType === "video" ? 50 : 25
+          const fileSizeMB = (file.size / 1024 / 1024).toFixed(2)
+          toast.error(`${mediaType === "video" ? "Video" : "File"} "${file.name}" is too large (max ${maxSizeMB}MB). Your file is ${fileSizeMB}MB`)
+          continue // Skip this file but continue with others
+        }
+        validFiles.push(file)
+      }
+      
+      if (validFiles.length === 0) {
+        console.log('[handleAddFiles] No valid files after size validation')
+        return
+      }
 
-      for (const file of selected) {
+      const selected = validFiles.slice(0, remainingSlots)
+
+      // Create all pending attachments first
+      const pendingAttachments: AttachmentState[] = selected.map((file) => {
         const id = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
-        const previewUrl = mediaType === "image" ? URL.createObjectURL(file) : undefined
+        // Create preview URL for images and videos immediately
+        const previewUrl = (mediaType === "image" || mediaType === "video") ? URL.createObjectURL(file) : undefined
 
-        const pendingAttachment: AttachmentState = {
+        return {
           id,
           fileName: file.name,
           mediaType,
-          previewUrl,
-          status: "uploading",
+          previewUrl: previewUrl || undefined, // Ensure it's explicitly set
+          status: "uploading" as const,
         }
+      })
 
-        setAttachments((prev) => [...prev, pendingAttachment])
+      // Add all attachments at once so they show up immediately
+      console.log('[handleAddFiles] About to call setAttachments with:', {
+        pendingAttachmentsCount: pendingAttachments.length,
+        pendingAttachments: pendingAttachments.map(a => ({
+          id: a.id,
+          fileName: a.fileName,
+          mediaType: a.mediaType,
+          status: a.status,
+          hasPreviewUrl: !!a.previewUrl
+        })),
+        currentAttachmentsCount: attachments.length
+      })
+      
+      setAttachments((prev) => {
+        console.log('[handleAddFiles] setAttachments callback - prev state:', {
+          prevCount: prev.length,
+          prevAttachments: prev.map(a => ({ id: a.id, fileName: a.fileName }))
+        })
+        
+        const updated = [...prev, ...pendingAttachments]
+        // Update ref immediately
+        attachmentsRef.current = updated
+        
+        console.log('[handleAddFiles] setAttachments callback - new state:', {
+          updatedCount: updated.length,
+          updatedAttachments: updated.map(a => ({
+            id: a.id,
+            fileName: a.fileName,
+            mediaType: a.mediaType,
+            status: a.status,
+            hasPreviewUrl: !!a.previewUrl
+          }))
+        })
+        
+        return updated
+      })
+      
+      console.log('[handleAddFiles] setAttachments called, attachments state should update')
+
+      // Process each file for upload
+      for (const file of selected) {
+        const pendingAttachment = pendingAttachments.find(a => a.fileName === file.name)
+        if (!pendingAttachment) continue
 
         try {
           // Extract file extension more robustly
@@ -1170,12 +1484,21 @@ export default function MessagesView({
             // Audio
             "audio/webm", "audio/ogg", "audio/mpeg", "audio/mp3", "audio/mp4",
             "audio/wav", "audio/aac", "audio/flac", "audio/opus",
+            // Videos
+            "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+            "video/x-matroska", "video/x-m4v",
             // Documents
-            "application/pdf"
+            "application/pdf", "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "text/plain", "application/rtf"
           ]
           
           if (!allowedMimeTypes.includes(mimeType)) {
-            throw new Error(`File type ${mimeType} is not supported. Supported formats: JPEG, PNG, WebP, GIF, BMP, SVG, TIFF, HEIC, HEIF, AVIF, or audio files (WebM, MP3, WAV, AAC, FLAC, Opus).`)
+            throw new Error(`File type ${mimeType} is not supported. Supported formats: Images (JPEG, PNG, WebP, GIF, etc.), Audio (WebM, MP3, WAV, etc.), Video (MP4, WebM, MOV, etc.), or Documents (PDF, DOC, DOCX, etc.).`)
           }
           
           const { bucket, objectPath, storagePath } = buildDmMediaStoragePath(viewer.id, extension)
@@ -1247,7 +1570,8 @@ export default function MessagesView({
             } else if ((error as any).statusCode === "409" || (error as any).status === 409 || errorMsg.includes("already exists") || errorMsg.includes("duplicate")) {
               errorMessage = "File already exists"
             } else if ((error as any).statusCode === "413" || (error as any).status === 413 || errorMsg.includes("too large") || errorMsg.includes("file_size_limit") || errorMsg.includes("file size")) {
-              errorMessage = `File is too large (max 25MB). Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`
+              const maxSizeMB = mediaType === "video" ? 50 : 25
+              errorMessage = `File is too large (max ${maxSizeMB}MB for ${mediaType} files). Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`
             } else if ((error as any).statusCode === "403" || (error as any).status === 403 || errorMsg.includes("permission") || errorMsg.includes("forbidden") || errorMsg.includes("access denied")) {
               errorMessage = "Permission denied. Please check your account permissions."
             } else {
@@ -1262,7 +1586,7 @@ export default function MessagesView({
 
           setAttachments((prev) =>
             prev.map((item) =>
-              item.id === id
+              item.id === pendingAttachment.id
                 ? {
                     ...item,
                     status: "ready",
@@ -1270,6 +1594,7 @@ export default function MessagesView({
                     objectPath,
                     mimeType: mimeType,
                     fileSize: file.size,
+                    fileName: file.name, // Preserve original file name
                   }
                 : item,
             ),
@@ -1280,7 +1605,7 @@ export default function MessagesView({
           toast.error(`Failed to upload ${file.name}: ${errorMessage}`)
           setAttachments((prev) =>
             prev.map((item) =>
-              item.id === id
+              item.id === pendingAttachment.id
                 ? {
                     ...item,
                     status: "error",
@@ -1368,6 +1693,7 @@ export default function MessagesView({
             mimeType: attachment.mimeType,
             fileSize: attachment.fileSize,
             durationSeconds: attachment.durationSeconds,
+            fileName: attachment.fileName,
           })),
         }),
       })
@@ -1391,6 +1717,7 @@ export default function MessagesView({
           ...prev,
           [normalizedThreadId]: [...(prev[normalizedThreadId] ?? []), withAttachments],
         }))
+        const hasImage = withAttachments.attachments?.some(a => a.media_type === "image") ?? false
         setConversations((prev) =>
           prev
             .map((item) =>
@@ -1398,7 +1725,7 @@ export default function MessagesView({
                 ? {
                     ...item,
                     last_message_at: withAttachments.created_at,
-                    last_message_preview: withAttachments.content ?? (withAttachments.attachments?.length ? "[attachment]" : ""),
+                    last_message_preview: withAttachments.content ?? (hasImage ? "[image]" : (withAttachments.attachments?.length ? "[attachment]" : "")),
                     last_message_sender_id: viewer.id,
                     updated_at: new Date().toISOString(),
                   }
@@ -1497,10 +1824,45 @@ export default function MessagesView({
       }
 
       // Remove message from local state
+      const wasLastMessage = messagesByThread[selectedThreadId]?.length > 0 &&
+        messagesByThread[selectedThreadId][messagesByThread[selectedThreadId].length - 1]?.id === messageId
+
       setMessagesByThread((prev) => ({
         ...prev,
         [selectedThreadId]: (prev[selectedThreadId] ?? []).filter((m) => m.id !== messageId),
       }))
+
+      // If we deleted the last message, refresh the thread metadata from the database
+      // The database trigger should have updated the thread's last_message_preview
+      if (wasLastMessage) {
+        const { data: threadData } = await supabase
+          .from("dm_threads")
+          .select("last_message_at, last_message_preview, last_message_sender_id, updated_at")
+          .eq("id", selectedThreadId)
+          .single()
+
+        if (threadData) {
+          setConversations((prev) =>
+            prev
+              .map((item) =>
+                item.thread_id === selectedThreadId
+                  ? {
+                      ...item,
+                      last_message_at: threadData.last_message_at,
+                      last_message_preview: threadData.last_message_preview,
+                      last_message_sender_id: threadData.last_message_sender_id,
+                      updated_at: threadData.updated_at,
+                    }
+                  : item,
+              )
+              .sort((a, b) => {
+                const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
+                const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
+                return bTime - aTime
+              }),
+          )
+        }
+      }
 
       toast.success("Message deleted")
     } catch (error) {
@@ -1509,38 +1871,36 @@ export default function MessagesView({
     } finally {
       setDeletingMessageId(null)
     }
-  }, [selectedThreadId, deletingMessageId])
+  }, [selectedThreadId, deletingMessageId, messagesByThread])
 
-  const formatAudioTime = useCallback((seconds: number) => {
-    if (!isFinite(seconds) || isNaN(seconds)) return "0:00"
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }, [])
+  // Voice note playback is now handled by VoiceNotePlayer component
 
-  const handleAudioPlay = useCallback((audioId: string) => {
-    // Stop any OTHER currently playing audio
-    Object.keys(audioRefs.current).forEach(key => {
-      if (key !== audioId) {
-        const audio = audioRefs.current[key]
-        if (audio && !audio.paused) {
-          audio.pause()
-          audio.currentTime = 0
+  const handleVideoPlay = useCallback((videoId: string) => {
+    // Stop any OTHER currently playing video
+    Object.keys(videoRefs.current).forEach(key => {
+      if (key !== videoId) {
+        const video = videoRefs.current[key]
+        if (video && !video.paused) {
+          video.pause()
+          video.currentTime = 0
         }
       }
     })
 
-    const audio = audioRefs.current[audioId]
-    if (!audio) return
+    // Stop any currently playing audio (voice notes)
+    setPlayingAudio(null)
+
+    const video = videoRefs.current[videoId]
+    if (!video) return
     
-    if (playingAudio === audioId) {
-      audio.pause()
-      setPlayingAudio(null)
+    if (playingVideo === videoId) {
+      video.pause()
+      setPlayingVideo(null)
     } else {
-      audio.play()
-      setPlayingAudio(audioId)
+      video.play()
+      setPlayingVideo(videoId)
     }
-  }, [playingAudio])
+  }, [playingVideo])
 
   const handleLoadOlderMessages = useCallback(async () => {
     const normalizedThreadId = selectedThreadId?.trim()
@@ -1623,7 +1983,7 @@ export default function MessagesView({
               </div>
             </div>
             <ScrollArea className="flex-1">
-              <div className="p-2 space-y-2">
+              <div className="p-2 space-y-2 min-w-0">
                 {conversationsToRender.length === 0 && (
                   <div className="px-3 py-8 text-center text-white/50 text-sm">
                     No conversations found yet. Follow someone and start a chat!
@@ -1636,7 +1996,7 @@ export default function MessagesView({
                   const avatarImage = otherProfile?.profile_picture ?? undefined
                   // Only show selected state on desktop - on mobile, the list is hidden when viewing a conversation
                   const selected = !isMobile && conversation.thread_id === selectedThreadId
-                  const lastMessagePreview = conversation.last_message_preview || (conversation.last_message_sender_id ? "[attachment]" : "No messages yet")
+                  const lastMessagePreview = liveMessagePreviews[conversation.thread_id]?.content || conversation.last_message_preview || (conversation.last_message_sender_id ? "[attachment]" : "No messages yet")
                   const unread =
                     conversation.last_message_sender_id &&
                     conversation.last_message_sender_id !== viewer.id &&
@@ -1659,31 +2019,56 @@ export default function MessagesView({
                         }
                       }}
                       className={cn(
-                        "w-full rounded-xl border transition-all text-left backdrop-blur-md cursor-pointer",
+                        "w-full max-w-full box-border rounded-xl border transition-all text-left backdrop-blur-md cursor-pointer overflow-hidden",
                         "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20",
                         selected && "bg-white/10 border-white/20 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.6)]",
                       )}
                     >
-                      <div className="px-3 py-3 flex items-start gap-3">
-                        <Avatar className="h-11 w-11 border-4 border-white/20" userId={otherProfile?.id} isOnline={presenceMap[conversation.thread_id] || false}>
+                      <div className="px-3 py-3 flex items-start gap-3 w-full overflow-hidden">
+                        <Avatar className="h-11 w-11 border-4 border-white/20 flex-shrink-0" userId={otherProfile?.id} isOnline={presenceMap[conversation.thread_id] || false}>
                           <AvatarImage src={avatarImage} alt={displayName} />
                           <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
                             {initials}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-white/80 font-medium truncate">{displayName}</p>
+                        <div className="flex-1 min-w-0 w-0 overflow-hidden">
+                          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                            <p className="text-white/80 font-medium truncate flex-shrink">{displayName}</p>
                             {typingForConversation && (
-                              <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-100">Typing</Badge>
+                              <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-100 flex-shrink-0">Typing</Badge>
                             )}
                           </div>
-                          <p className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}>
-                            {typingForConversation ? "Typing…" : lastMessagePreview}
-                          </p>
+                          {typingForConversation ? (
+                            <p className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}>
+                              Typing…
+                            </p>
+                          ) : conversationImagePreviews[conversation.thread_id]?.url ? (
+                            <div className="flex items-center gap-2">
+                              <div className="h-4 w-4 rounded border border-white/20 overflow-hidden flex-shrink-0 bg-white/5">
+                                <Image
+                                  src={conversationImagePreviews[conversation.thread_id].url}
+                                  alt="Image preview"
+                                  width={16}
+                                  height={16}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                              {lastMessagePreview && lastMessagePreview !== "[image]" && lastMessagePreview !== "[attachment]" && (
+                                <p className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}>
+                                  {lastMessagePreview}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <p
+                              className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}
+                            >
+                              {lastMessagePreview}
+                            </p>
+                          )}
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <span className="text-[11px] text-white/50" suppressHydrationWarning>
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          <span className="text-[11px] text-white/50 whitespace-nowrap" suppressHydrationWarning>
                             {conversation.last_message_at
                               ? formatRelativeTime(conversation.last_message_at)
                               : formatRelativeTime(conversation.updated_at)}
@@ -1793,7 +2178,9 @@ export default function MessagesView({
                             <div
                               className={cn(
                                 "rounded-2xl backdrop-blur-sm relative",
-                                "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
+                                isAudioOnly 
+                                  ? "w-[280px] sm:w-[320px]"
+                                  : "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
                                 isImageOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
                                 isOwn
                                   ? "bg-gradient-to-br from-black/40 to-black/60 text-white"
@@ -1853,30 +2240,46 @@ export default function MessagesView({
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               )}
-                             <div className={cn(isImageOnly ? "" : "space-y-1.5 pr-12 sm:pr-14")}>
-                                {message.content && (
-                                  <p className={cn(
-                                    "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words",
-                                    hasImages && "pr-12 sm:pr-14"
-                                  )}>{linkifyText(message.content)}</p>
-                                )}
+                             <div className={cn(isImageOnly ? "" : "space-y-1.5", !hasImages && !isAudioOnly && "pr-12 sm:pr-14")}>
                                 {attachmentsForMessage.length > 0 && (
-                                  <div className={cn(isImageOnly ? "" : "space-y-2", message.content && "mt-1.5")}>
+                                  <div className={cn(isImageOnly ? "" : "space-y-2", message.content && "mb-1.5")}>
                                   {attachmentsForMessage.map((attachment, attachmentIndex) => {
                                     const signedUrl = attachmentUrls[attachment.id]?.url
                                     if (attachment.media_type === "image") {
+                                      // Get all image attachments for this message for lightbox navigation
+                                      const imageAttachments = attachmentsForMessage.filter(a => a.media_type === "image")
+                                      const imageIndex = imageAttachments.findIndex(a => a.id === attachment.id)
+                                      
+                                      const handleImageClick = () => {
+                                        // Build array of image URLs for lightbox
+                                        const images = imageAttachments.map(img => ({
+                                          id: img.id,
+                                          url: attachmentUrls[img.id]?.url || ""
+                                        })).filter(img => img.url) // Only include images with URLs
+                                        
+                                        if (images.length > 0) {
+                                          setLightboxImages(images)
+                                          setLightboxIndex(imageIndex >= 0 ? imageIndex : 0)
+                                          setLightboxOpen(true)
+                                        }
+                                      }
+                                      
                                       return (
-                                        <div key={`${message.id}-${attachment.id}-${attachmentIndex}`} className={cn(
-                                          "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0",
-                                          isImageOnly ? "rounded-2xl" : "rounded-lg"
-                                        )}>
+                                        <div 
+                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`} 
+                                          className={cn(
+                                            "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity",
+                                            isImageOnly ? "rounded-2xl" : "rounded-lg"
+                                          )}
+                                          onClick={handleImageClick}
+                                        >
                                           {signedUrl ? (
                                             <Image
                                               src={signedUrl}
                                               alt="Shared image"
                                               width={640}
                                               height={640}
-                                              className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block"
+                                              className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block pointer-events-none"
                                               style={{ maxHeight: '280px' }}
                                             />
                                           ) : (
@@ -1888,6 +2291,9 @@ export default function MessagesView({
                                       )
                                     }
                                     if (attachment.media_type === "audio") {
+                                      const signedUrl = attachmentUrls[attachment.id]?.url
+                                      if (!signedUrl) return null
+                                      
                                       const senderProfile = isOwn ? viewer : peerProfile
                                       const senderAvatar = isOwn ? viewer.profile_picture : peerAvatar
                                       const senderInitials = isOwn ? getInitials(viewer) : peerInitials
@@ -1895,93 +2301,161 @@ export default function MessagesView({
                                       const senderId = isOwn ? viewer.id : peerProfile?.id
                                       
                                       return (
+                                        <VoiceNotePlayer
+                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`}
+                                          audioUrl={signedUrl}
+                                          attachmentId={attachment.id}
+                                          senderId={senderId}
+                                          senderAvatar={senderAvatar}
+                                          senderInitials={senderInitials}
+                                          senderName={senderName}
+                                          isPlaying={playingAudio === attachment.id}
+                                          onPlayStateChange={(attachmentId, isPlaying) => {
+                                            setPlayingAudio(isPlaying ? attachmentId : null)
+                                          }}
+                                          onStopOthers={(currentId) => {
+                                            // Stop any currently playing video
+                                            Object.keys(videoRefs.current).forEach(key => {
+                                              const video = videoRefs.current[key]
+                                              if (video && !video.paused) {
+                                                video.pause()
+                                                video.currentTime = 0
+                                              }
+                                            })
+                                            setPlayingVideo(null)
+                                            // Stop other audio (from other voice note players)
+                                            if (playingAudio && playingAudio !== currentId) {
+                                              setPlayingAudio(null)
+                                            }
+                                          }}
+                                        />
+                                      )
+                                    }
+                                    if (attachment.media_type === "video") {
+                                      const signedUrl = attachmentUrls[attachment.id]?.url
+                                      
+                                      return (
                                         <div
                                           key={`${message.id}-${attachment.id}-${attachmentIndex}`}
-                                          className="w-full"
+                                          className={cn(
+                                            "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity rounded-lg",
+                                            isImageOnly ? "rounded-2xl" : "rounded-lg"
+                                          )}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            if (signedUrl) {
+                                              handleVideoPlay(attachment.id)
+                                            }
+                                          }}
                                         >
-                                          <div className="p-3 space-y-2">
-                                            <div className="flex items-center gap-3">
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  handleAudioPlay(attachment.id)
-                                                }}
-                                                className="flex-shrink-0 relative"
-                                              >
-                                                <div className="relative">
-                                                  <div className={cn(
-                                                    "transition-transform",
-                                                    playingAudio === attachment.id && "animate-spin"
-                                                  )}
-                                                  style={{
-                                                    animationDuration: playingAudio === attachment.id ? '2s' : 'none'
-                                                  }}
-                                                  >
-                                                    <Avatar className="h-10 w-10 border-2 border-white/20" userId={senderId}>
-                                                      <AvatarImage src={senderAvatar ?? undefined} alt={senderName} />
-                                                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm uppercase">
-                                                        {senderInitials}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                  </div>
-                                                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                    {playingAudio === attachment.id ? (
-                                                      <Pause className="h-5 w-5 text-white/90 drop-shadow-lg" />
-                                                    ) : (
-                                                      <Play className="h-5 w-5 text-white/90 drop-shadow-lg" />
-                                                    )}
-                                                  </div>
-                                                </div>
-                                              </button>
-                                              <div className="flex-1" />
-                                              <div className="font-mono text-sm text-white/80">
-                                                {audioProgress[attachment.id]?.duration
-                                                  ? `${formatAudioTime(audioProgress[attachment.id].current || 0)} / ${formatAudioTime(audioProgress[attachment.id].duration)}`
-                                                  : `0:00 / —`
-                                                }
-                                              </div>
-                                            </div>
-                                            <div
-                                              className="w-full h-2 bg-white/10 rounded-full mt-2 cursor-pointer relative group backdrop-blur-sm overflow-visible"
-                                              onClick={(e) => {
-                                                const audio = audioRefs.current[attachment.id]
-                                                if (!audio || !audioProgress[attachment.id]?.duration) return
-                                                
-                                                const rect = e.currentTarget.getBoundingClientRect()
-                                                const clickX = e.clientX - rect.left
-                                                const percentage = clickX / rect.width
-                                                const newTime = percentage * audioProgress[attachment.id].duration
-                                                
-                                                audio.currentTime = Math.max(0, Math.min(newTime, audio.duration))
-                                                setAudioProgress(prev => ({
-                                                  ...prev,
-                                                  [attachment.id]: {
-                                                    current: audio.currentTime,
-                                                    duration: prev[attachment.id]?.duration || 0
+                                          {signedUrl ? (
+                                            <>
+                                              <video
+                                                ref={(el) => {
+                                                  if (el) {
+                                                    videoRefs.current[attachment.id] = el
+                                                    // Set up event listeners
+                                                    el.addEventListener('play', () => setPlayingVideo(attachment.id))
+                                                    el.addEventListener('pause', () => {
+                                                      if (el.paused) {
+                                                        setPlayingVideo(null)
+                                                      }
+                                                    })
+                                                    el.addEventListener('ended', () => {
+                                                      setPlayingVideo(null)
+                                                    })
                                                   }
-                                                }))
-                                              }}
-                                            >
-                                              <div
-                                                className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
-                                                style={{
-                                                  width: audioProgress[attachment.id]?.duration
-                                                    ? `${(audioProgress[attachment.id].current / audioProgress[attachment.id].duration) * 100}%`
-                                                    : '0%'
                                                 }}
-                                              >
-                                                <div
-                                                  className={cn(
-                                                    "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none",
-                                                    playingAudio === attachment.id && "animate-edge-glow"
-                                                  )}
-                                                  style={{
-                                                    transform: 'translate(50%, -50%)'
-                                                  }}
-                                                />
+                                                src={signedUrl}
+                                                className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block"
+                                                style={{ maxHeight: '280px' }}
+                                                muted={false}
+                                                playsInline
+                                                preload="metadata"
+                                              />
+                                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none z-10">
+                                                {playingVideo === attachment.id ? (
+                                                  <Pause className="h-8 w-8 text-white/90 drop-shadow-lg fill-white/90" />
+                                                ) : (
+                                                  <Play className="h-8 w-8 text-white/90 drop-shadow-lg fill-white/90" />
+                                                )}
                                               </div>
+                                            </>
+                                          ) : (
+                                            <div className="h-32 flex items-center justify-center text-white/50 text-xs bg-white/5">
+                                              <Video className="h-8 w-8 text-white/50" />
                                             </div>
+                                          )}
+                                        </div>
+                                      )
+                                    }
+                                    if (attachment.media_type === "file") {
+                                      const signedUrl = attachmentUrls[attachment.id]?.url
+                                      // Use file_name from database (original file name), fallback to storage path for old records
+                                      const fileName = attachment.file_name ?? attachment.storage_path?.split('/').pop() ?? 'file'
+                                      
+                                      const handleDownload = async () => {
+                                        if (downloadingAttachmentId === attachment.id) return // Prevent double clicks
+                                        
+                                        try {
+                                          setDownloadingAttachmentId(attachment.id)
+                                          
+                                          // Use API route to download (hides Supabase URL and ensures proper download)
+                                          const response = await fetch(`/api/dm/download/${attachment.id}`)
+                                          
+                                          if (!response.ok) {
+                                            throw new Error("Download failed")
+                                          }
+                                          
+                                          // Get file blob
+                                          const blob = await response.blob()
+                                          
+                                          // Create download link
+                                          const url = window.URL.createObjectURL(blob)
+                                          const link = document.createElement('a')
+                                          link.href = url
+                                          link.download = fileName
+                                          link.style.display = 'none'
+                                          document.body.appendChild(link)
+                                          link.click()
+                                          
+                                          // Cleanup
+                                          document.body.removeChild(link)
+                                          window.URL.revokeObjectURL(url)
+                                        } catch (error) {
+                                          console.error("Download error:", error)
+                                          toast.error("Failed to download file")
+                                        } finally {
+                                          setDownloadingAttachmentId(null)
+                                        }
+                                      }
+                                      
+                                      return (
+                                        <div
+                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`}
+                                          className="bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-white/75 text-xs"
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <FileText className="h-4 w-4 text-white/70 flex-shrink-0" />
+                                            <span className="flex-1 truncate min-w-0" title={fileName}>
+                                              {fileName}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleDownload()
+                                              }}
+                                              disabled={downloadingAttachmentId === attachment.id}
+                                              className="flex-shrink-0 p-1 rounded hover:bg-white/10 text-white/70 hover:text-white/90 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                              title={downloadingAttachmentId === attachment.id ? "Downloading..." : "Download file"}
+                                            >
+                                              {downloadingAttachmentId === attachment.id ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                              ) : (
+                                                <Download className="h-3.5 w-3.5" />
+                                              )}
+                                            </button>
                                           </div>
                                         </div>
                                       )
@@ -2000,11 +2474,18 @@ export default function MessagesView({
                                     })}
                                   </div>
                                 )}
+                                {message.content && (
+                                  <p className={cn(
+                                    "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words pr-12 sm:pr-14"
+                                  )}>{linkifyText(message.content)}</p>
+                                )}
                               </div>
                               <div className={cn(
                                 "absolute text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded",
                                 isImageOnly
                                   ? "bottom-1.5 right-1.5 bg-black/60 text-white/90 backdrop-blur-sm"
+                                  : isAudioOnly
+                                  ? "bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 text-white/40 px-1"
                                   : "bottom-1.5 right-1.5 text-white/40 px-1"
                               )}>
                                 {formatTimestamp(message.created_at)}
@@ -2013,6 +2494,13 @@ export default function MessagesView({
                           </div>
                         )
                       })}
+                      
+                      <MessageImageLightbox
+                        images={lightboxImages}
+                        initialIndex={lightboxIndex}
+                        open={lightboxOpen}
+                        onOpenChange={setLightboxOpen}
+                      />
                       
                       {typingActive && (
                         <div className="flex gap-1.5 sm:gap-2 justify-start">
@@ -2069,9 +2557,34 @@ export default function MessagesView({
                         </div>
                       </div>
                     )}
-                    {attachments.length > 0 && (
+                    {(() => {
+                      const shouldRender = attachments.length > 0
+                      console.log('[Render] Attachments section check:', {
+                        attachmentsLength: attachments.length,
+                        shouldRender,
+                        attachments: attachments.map(a => ({ 
+                          id: a.id, 
+                          fileName: a.fileName, 
+                          mediaType: a.mediaType, 
+                          status: a.status, 
+                          hasPreview: !!a.previewUrl 
+                        })),
+                        selectedThreadId,
+                        composerDisabled
+                      })
+                      return shouldRender
+                    })() && (
                       <div className="flex flex-wrap gap-2">
-                        {attachments.map((attachment, index) => (
+                        {attachments.map((attachment, index) => {
+                          console.log('[Render] Rendering attachment item:', {
+                            index,
+                            id: attachment.id,
+                            fileName: attachment.fileName,
+                            mediaType: attachment.mediaType,
+                            status: attachment.status,
+                            hasPreviewUrl: !!attachment.previewUrl
+                          })
+                          return (
                           <div
                             key={`upload-${attachment.id}-${index}`}
                             className={cn(
@@ -2081,7 +2594,7 @@ export default function MessagesView({
                                 : "border-white/20 text-white/75 bg-white/10",
                             )}
                           >
-                            {attachment.previewUrl && (
+                            {attachment.mediaType === "image" && attachment.previewUrl ? (
                               <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0">
                                 <Image
                                   src={attachment.previewUrl}
@@ -2091,20 +2604,91 @@ export default function MessagesView({
                                   className="h-full w-full object-cover"
                                 />
                               </div>
+                            ) : attachment.mediaType === "video" && attachment.previewUrl ? (
+                              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0 relative">
+                                <video
+                                  src={attachment.previewUrl}
+                                  className="h-full w-full object-cover"
+                                  muted
+                                  playsInline
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                  <Video className="h-4 w-4 text-white/80" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg border border-white/20 bg-white/5 flex items-center justify-center flex-shrink-0">
+                                {attachment.mediaType === "audio" && (
+                                  <Mic className="h-4 w-4 text-white/70" />
+                                )}
+                                {attachment.mediaType === "video" && (
+                                  <Video className="h-4 w-4 text-white/70" />
+                                )}
+                                {attachment.mediaType === "file" && (
+                                  <FileText className="h-4 w-4 text-white/70" />
+                                )}
+                                {attachment.mediaType === "image" && (
+                                  <ImageIcon className="h-4 w-4 text-white/70" />
+                                )}
+                              </div>
                             )}
-                            <div className="max-w-[160px] truncate">{attachment.fileName}</div>
-                            {attachment.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-white/60" />}
-                            {attachment.status === "error" && <span className="text-rose-200 text-[10px]">Upload failed</span>}
+                            <div className="flex-1 min-w-0">
+                              <div className="max-w-[160px] truncate" title={attachment.fileName}>
+                                {attachment.fileName}
+                              </div>
+                            </div>
+                            {attachment.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-white/60 flex-shrink-0" />}
+                            {attachment.status === "error" && <span className="text-rose-200 text-[10px] flex-shrink-0">Upload failed</span>}
+                            {attachment.mediaType === "file" && attachment.status === "ready" && attachment.storagePath && (
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  try {
+                                    // For files in composer, we need to get the attachment ID from the message
+                                    // For now, download directly from storage if we have the path
+                                    if (attachment.previewUrl) {
+                                      // Use preview URL (object URL) for local files
+                                      const link = document.createElement('a')
+                                      link.href = attachment.previewUrl
+                                      link.download = attachment.fileName
+                                      link.style.display = 'none'
+                                      document.body.appendChild(link)
+                                      link.click()
+                                      document.body.removeChild(link)
+                                    } else {
+                                      toast.error("File not available for download")
+                                    }
+                                  } catch (error) {
+                                    console.error("Download error:", error)
+                                    toast.error("Failed to download file")
+                                  }
+                                }}
+                                className="flex-shrink-0 p-1 rounded hover:bg-white/10 text-white/70 hover:text-white/90 transition"
+                                title="Download file"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleRemoveAttachment(attachment.id)}
-                              className="ml-1 rounded-full bg-white/10 hover:bg-white/20 p-1 text-white/60 hover:text-white/90 transition"
+                              className="ml-1 rounded-full bg-white/10 hover:bg-white/20 p-1 text-white/60 hover:text-white/90 transition flex-shrink-0"
                             >
                               <X className="h-3 w-3" />
                             </button>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
+                    )}
+                    {isVoiceRecorderOpen && (
+                      <VoiceNoteRecorder
+                        onRecordingComplete={handleVoiceNoteComplete}
+                        onCancel={handleVoiceNoteCancel}
+                        maxDurationMinutes={5}
+                        autoStart={true}
+                      />
                     )}
                     <div
                       className={cn(
@@ -2113,24 +2697,224 @@ export default function MessagesView({
                       )}
                     >
                       <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                        <label
-                          className="rounded-full bg-white/10 border border-white/20 text-white/70 hover:text-white/90 hover:bg-white/15 cursor-pointer transition flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center"
-                          title="Attach images"
-                        >
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(event) => handleAddFiles(event.target.files ? Array.from(event.target.files) : null, "image")}
-                          />
-                          <ImageIcon className="h-4 w-4" />
-                        </label>
+                        <DropdownMenu open={attachMenuOpen} onOpenChange={setAttachMenuOpen}>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
+                              title="Attach file"
+                            >
+                              <Paperclip className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="start"
+                            side="top"
+                            sideOffset={8}
+                            className="bg-white/10 border border-white/20 backdrop-blur-xl"
+                          >
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                console.log('[DropdownMenuItem] Image selected, triggering file input')
+                                const input = fileInputRefs.current.image
+                                console.log('[DropdownMenuItem] File input ref:', {
+                                  exists: !!input,
+                                  type: input?.type,
+                                  accept: input?.accept
+                                })
+                                if (input) {
+                                  input.click()
+                                  console.log('[DropdownMenuItem] File input click() called')
+                                } else {
+                                  console.error('[DropdownMenuItem] File input ref is null!')
+                                }
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <ImageIcon className="h-4 w-4 text-white/70 mr-2" />
+                              <span className="text-white/90">Image</span>
+                            </DropdownMenuItem>
+                            <input
+                              ref={(el) => {
+                                fileInputRefs.current.image = el
+                                console.log('[File Input Ref] Image input ref set:', {
+                                  exists: !!el,
+                                  type: el?.type,
+                                  accept: el?.accept
+                                })
+                              }}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(event) => {
+                                console.log('[File Input] Image onChange triggered:', {
+                                  hasFiles: !!event.target.files,
+                                  filesCount: event.target.files?.length || 0,
+                                  files: event.target.files ? Array.from(event.target.files).map(f => ({
+                                    name: f.name,
+                                    type: f.type,
+                                    size: f.size
+                                  })) : null
+                                })
+                                
+                                const files = event.target.files ? Array.from(event.target.files) : null
+                                
+                                if (files && files.length > 0) {
+                                  console.log('[File Input] Calling handleAddFiles for images')
+                                  handleAddFiles(files, "image")
+                                } else {
+                                  console.log('[File Input] No files to add')
+                                }
+                                
+                                setAttachMenuOpen(false)
+                                event.target.value = ""
+                              }}
+                              multiple
+                            />
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                console.log('[DropdownMenuItem] Video selected, triggering file input')
+                                const input = fileInputRefs.current.video
+                                console.log('[DropdownMenuItem] File input ref:', {
+                                  exists: !!input,
+                                  type: input?.type,
+                                  accept: input?.accept
+                                })
+                                if (input) {
+                                  input.click()
+                                  console.log('[DropdownMenuItem] File input click() called')
+                                } else {
+                                  console.error('[DropdownMenuItem] File input ref is null!')
+                                }
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Video className="h-4 w-4 text-white/70 mr-2" />
+                              <span className="text-white/90">Video</span>
+                            </DropdownMenuItem>
+                            <input
+                              ref={(el) => {
+                                fileInputRefs.current.video = el
+                                console.log('[File Input Ref] Video input ref set:', {
+                                  exists: !!el,
+                                  type: el?.type,
+                                  accept: el?.accept
+                                })
+                              }}
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={async (event) => {
+                                console.log('[File Input] Video onChange triggered:', {
+                                  hasFiles: !!event.target.files,
+                                  filesCount: event.target.files?.length || 0,
+                                  files: event.target.files ? Array.from(event.target.files).map(f => ({
+                                    name: f.name,
+                                    type: f.type,
+                                    size: f.size
+                                  })) : null
+                                })
+                                
+                                const files = event.target.files ? Array.from(event.target.files) : null
+                                
+                                if (files && files.length > 0) {
+                                  console.log('[File Input] Calling handleAddFiles for videos')
+                                  try {
+                                    await handleAddFiles(files, "video")
+                                  } catch (error) {
+                                    console.error('[File Input] Error in handleAddFiles for video:', error)
+                                  }
+                                } else {
+                                  console.log('[File Input] No files to add')
+                                }
+                                
+                                setAttachMenuOpen(false)
+                                event.target.value = ""
+                              }}
+                              multiple
+                            />
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                console.log('[DropdownMenuItem] Audio selected')
+                                fileInputRefs.current.audio?.click()
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Mic className="h-4 w-4 text-white/70 mr-2" />
+                              <span className="text-white/90">Audio File</span>
+                            </DropdownMenuItem>
+                            <input
+                              ref={(el) => (fileInputRefs.current.audio = el)}
+                              type="file"
+                              accept="audio/*"
+                              className="hidden"
+                              onChange={(event) => {
+                                console.log('[File Input] Audio onChange triggered:', {
+                                  hasFiles: !!event.target.files,
+                                  filesCount: event.target.files?.length || 0
+                                })
+                                
+                                const files = event.target.files ? Array.from(event.target.files) : null
+                                
+                                if (files && files.length > 0) {
+                                  console.log('[File Input] Calling handleAddFiles for audio')
+                                  handleAddFiles(files, "audio")
+                                }
+                                
+                                setAttachMenuOpen(false)
+                                event.target.value = ""
+                              }}
+                              multiple
+                            />
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                console.log('[DropdownMenuItem] Document selected')
+                                fileInputRefs.current.document?.click()
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <FileText className="h-4 w-4 text-white/70 mr-2" />
+                              <span className="text-white/90">Document</span>
+                            </DropdownMenuItem>
+                            <input
+                              ref={(el) => (fileInputRefs.current.document = el)}
+                              type="file"
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,application/rtf"
+                              className="hidden"
+                              onChange={(event) => {
+                                console.log('[File Input] Document onChange triggered:', {
+                                  hasFiles: !!event.target.files,
+                                  filesCount: event.target.files?.length || 0
+                                })
+                                
+                                const files = event.target.files ? Array.from(event.target.files) : null
+                                
+                                if (files && files.length > 0) {
+                                  console.log('[File Input] Calling handleAddFiles for documents')
+                                  handleAddFiles(files, "file")
+                                }
+                                
+                                setAttachMenuOpen(false)
+                                event.target.value = ""
+                              }}
+                              multiple
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
                           onClick={() => setIsVoiceRecorderOpen(true)}
+                          disabled={isVoiceRecorderOpen}
+                          title="Record voice note"
                         >
                           <Mic className="h-4 w-4" />
                         </Button>
@@ -2197,19 +2981,6 @@ export default function MessagesView({
           </div>
         </div>
       </div>
-
-      <Dialog open={isVoiceRecorderOpen} onOpenChange={setIsVoiceRecorderOpen}>
-        <DialogContent className="bg-white/10 border border-white/20 backdrop-blur-xl text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-white/90">Record a voice note</DialogTitle>
-            <DialogDescription className="sr-only">
-              Capture an audio message to share in this conversation.
-            </DialogDescription>
-          </DialogHeader>
-          <VoiceNoteRecorder onRecordingComplete={handleVoiceNoteComplete} onCancel={handleVoiceNoteCancel} autoStart />
-        </DialogContent>
-      </Dialog>
-
     </div>
   )
 }

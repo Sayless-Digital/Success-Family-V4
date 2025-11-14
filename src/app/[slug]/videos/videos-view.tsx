@@ -348,7 +348,8 @@ export default function CommunityVideosView({
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={isOwner} 
-          isMember={isMember} 
+          isMember={isMember}
+          communityOwnerId={community.owner_id}
         />
 
         <Tabs

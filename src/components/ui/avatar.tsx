@@ -83,6 +83,10 @@ const AvatarImage = React.forwardRef<
       "absolute inset-0 h-full w-full object-cover object-center rounded-full",
       className
     )}
+    style={{
+      transformOrigin: 'center center',
+      ...props.style,
+    }}
     {...props}
   />
 ))
@@ -98,6 +102,10 @@ const AvatarFallback = React.forwardRef<
       "absolute inset-0 flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground backdrop-blur-md",
       className
     )}
+    style={{
+      transformOrigin: 'center center',
+      ...props.style,
+    }}
     {...props}
   />
 ))

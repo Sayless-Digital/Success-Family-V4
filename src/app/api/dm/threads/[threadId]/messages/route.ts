@@ -12,10 +12,11 @@ function errorResponse(message: string, status = 400) {
 
 interface AttachmentPayload {
   storagePath?: string
-  mediaType?: "image" | "audio" | "file"
+  mediaType?: "image" | "audio" | "file" | "video"
   mimeType?: string
   fileSize?: number
   durationSeconds?: number
+  fileName?: string
 }
 
 export async function GET(
@@ -109,9 +110,10 @@ export async function POST(
       mimeType: item.mimeType,
       fileSize: item.fileSize,
       durationSeconds: item.durationSeconds,
+      fileName: typeof item.fileName === "string" ? item.fileName : undefined,
     }))
 
-    const allowedMediaTypes = new Set(["image", "audio", "file"])
+    const allowedMediaTypes = new Set(["image", "audio", "file", "video"])
 
     // Validate attachments with detailed error messages
     for (const attachment of attachments) {
@@ -139,10 +141,11 @@ export async function POST(
 
     const normalizedAttachments = attachments.map((attachment) => ({
       storagePath: attachment.storagePath,
-      mediaType: attachment.mediaType as "image" | "audio" | "file",
+      mediaType: attachment.mediaType as "image" | "audio" | "file" | "video",
       mimeType: attachment.mimeType,
       fileSize: attachment.fileSize,
       durationSeconds: attachment.durationSeconds,
+      fileName: attachment.fileName,
     }))
 
     const message = await appendMessage(supabase, {

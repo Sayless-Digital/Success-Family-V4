@@ -97,7 +97,12 @@ export default function CommunityPlaylistsView({
     <TooltipProvider>
       <div className="relative w-full overflow-x-hidden">
         <div className="relative z-10 space-y-6">
-        <CommunityNavigation slug={community.slug} isOwner={isOwner} isMember={isMember} />
+        <CommunityNavigation 
+          slug={community.slug} 
+          isOwner={isOwner} 
+          isMember={isMember}
+          communityOwnerId={community.owner_id}
+        />
 
         <div className="flex justify-end">
           {canManage && (

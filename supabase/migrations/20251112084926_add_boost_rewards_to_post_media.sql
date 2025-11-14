@@ -14,3 +14,4 @@ CREATE INDEX IF NOT EXISTS idx_post_media_requires_boost ON public.post_media(re
 COMMENT ON COLUMN public.post_media.requires_boost IS 'If true, this media item requires a boost to access. Currently used for voice notes.';
 
 
+

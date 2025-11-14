@@ -62,6 +62,7 @@ export interface MessageInput {
     mimeType?: string
     fileSize?: number
     durationSeconds?: number
+    fileName?: string
   }>
   replyToMessageId?: string | null
 }
@@ -291,6 +292,7 @@ export async function listMessages(
           mime_type,
           file_size,
           duration_seconds,
+          file_name,
           created_at
         )
       `,
@@ -378,6 +380,7 @@ export async function appendMessage(
       mime_type: item.mimeType ?? null,
       file_size: item.fileSize ?? null,
       duration_seconds: item.durationSeconds ?? null,
+      file_name: item.fileName ?? null,
     }))
 
     const { data: attachmentData, error: attachmentError } = await client

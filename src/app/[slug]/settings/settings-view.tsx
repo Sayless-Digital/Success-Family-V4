@@ -351,7 +351,8 @@ export default function CommunitySettingsView({ community, isOwner }: CommunityS
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={isOwner} 
-          isMember={false} 
+          isMember={false}
+          communityOwnerId={community.owner_id}
         />
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">

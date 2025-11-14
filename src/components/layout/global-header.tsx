@@ -306,7 +306,9 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
 
           if (isMobile) {
             try {
-              await element.requestFullscreen({ navigationUI: "show" })
+              // Use "auto" to keep navigation UI visible (notch area) on mobile
+              // This allows the background to stretch while content respects safe areas
+              await element.requestFullscreen({ navigationUI: "auto" })
               return true
             } catch (err) {
               // Fallback to default request if options unsupported
@@ -367,7 +369,19 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
 
   return (
     <>
-    <header className="fixed top-0 left-0 right-0 z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-b-lg border-b border-white/20">
+    <header 
+      className={cn(
+        "fixed z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md",
+        // In fullscreen mode on mobile: rounded on all edges, border all around, spaced from edges
+        isFullscreen && isMobile 
+          ? "rounded-lg border border-white/20 left-2 right-2"
+          : "left-0 right-0 rounded-b-lg border-b border-white/20"
+      )}
+      style={{
+        // In fullscreen mode on mobile, push header down to respect notch area + 8px spacing
+        top: isFullscreen && isMobile ? "calc(env(safe-area-inset-top, 0) + 8px)" : "0",
+      }}
+    >
       <div className="h-full px-1 flex items-center justify-between">
         {/* Left side - Menu Button (desktop only) and Logo */}
         <div className="flex items-center gap-2">

@@ -168,7 +168,7 @@ export default function AdminTransactionsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden">
       <PageHeader
         title="Transactions"
         subtitle="All platform transactions. Review and verify receipts where provided."
@@ -185,8 +185,8 @@ export default function AdminTransactionsPage() {
           <p className="text-white/60 text-sm mt-1">There are no transactions to display yet</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="rounded-lg border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md overflow-hidden w-full">
+          <div className="overflow-x-auto overflow-y-hidden scrollbar-hide scroll-smooth w-full" style={{ maxWidth: '100%' }}>
             <table className="w-full md:w-auto caption-bottom text-sm" style={{ minWidth: 'max-content' }}>
             <TableHeader>
               <TableRow>

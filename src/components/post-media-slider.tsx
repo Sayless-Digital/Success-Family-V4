@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight, Mic, Play, Pause, Lock } from "lucide-react"
+import { ChevronLeft, ChevronRight, Mic, Play, Pause, Lock, Video } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import type { PostMedia, PostAuthorSummary } from "@/types"
 import { PostMediaLightbox } from "@/components/post-media-lightbox"
@@ -22,12 +22,15 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
   const [imageUrls, setImageUrls] = React.useState<Record<string, string>>({})
+  const [videoUrls, setVideoUrls] = React.useState<Record<string, string>>({})
   const [audioUrls, setAudioUrls] = React.useState<Record<string, string>>({})
   const [playingAudio, setPlayingAudio] = React.useState<string | null>(null)
+  const [playingVideo, setPlayingVideo] = React.useState<string | null>(null)
   const [audioProgress, setAudioProgress] = React.useState<Record<string, { current: number; duration: number }>>({})
   const [lightboxOpen, setLightboxOpen] = React.useState(false)
   const [lightboxIndex, setLightboxIndex] = React.useState(0)
   const audioRefs = React.useRef<Record<string, HTMLAudioElement>>({})
+  const videoRefs = React.useRef<Record<string, HTMLVideoElement>>({})
 
   // Sort media by display_order and separate audio from images
   const sortedMedia = React.useMemo(() => {
@@ -47,13 +50,18 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
   }, [voiceNote, userHasBoosted, authorId, currentUserId])
 
   const images = React.useMemo(() => {
-    return sortedMedia.filter(m => m.media_type !== 'audio')
+    return sortedMedia.filter(m => m.media_type === 'image')
+  }, [sortedMedia])
+
+  const videos = React.useMemo(() => {
+    return sortedMedia.filter(m => m.media_type === 'video')
   }, [sortedMedia])
 
   // Fetch public URLs for all media
   React.useEffect(() => {
     const fetchUrls = async () => {
       const imgUrls: Record<string, string> = {}
+      const vidUrls: Record<string, string> = {}
       const audUrls: Record<string, string> = {}
       
       for (const item of sortedMedia) {
@@ -64,6 +72,8 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
         if (data?.publicUrl) {
           if (item.media_type === 'audio') {
             audUrls[item.id] = data.publicUrl
+          } else if (item.media_type === 'video') {
+            vidUrls[item.id] = data.publicUrl
           } else {
             imgUrls[item.id] = data.publicUrl
           }
@@ -71,6 +81,7 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
       }
       
       setImageUrls(imgUrls)
+      setVideoUrls(vidUrls)
       setAudioUrls(audUrls)
     }
 
@@ -192,9 +203,55 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
     }
   }
 
+  const handleVideoPlay = (videoId: string) => {
+    // Stop any OTHER currently playing video
+    Object.keys(videoRefs.current).forEach(key => {
+      if (key !== videoId) {
+        const video = videoRefs.current[key]
+        if (video && !video.paused) {
+          video.pause()
+          video.currentTime = 0
+        }
+      }
+    })
+
+    // Stop any currently playing audio
+    Object.keys(audioRefs.current).forEach(key => {
+      const audio = audioRefs.current[key]
+      if (audio && !audio.paused) {
+        audio.pause()
+        audio.currentTime = 0
+      }
+    })
+    setPlayingAudio(null)
+
+    const video = videoRefs.current[videoId]
+    if (!video) return
+    
+    if (playingVideo === videoId) {
+      video.pause()
+      setPlayingVideo(null)
+    } else {
+      video.play()
+      setPlayingVideo(videoId)
+    }
+  }
+
+  React.useEffect(() => {
+    // Cleanup video elements on unmount
+    return () => {
+      Object.values(videoRefs.current).forEach(video => {
+        if (video) {
+          video.pause()
+          video.src = ''
+        }
+      })
+    }
+  }, [])
+
   React.useEffect(() => {
     updateScrollButtons()
-  }, [images])
+  }, [images, videos])
 
   const handleImageClick = (index: number) => {
     setLightboxIndex(index)
@@ -242,17 +299,19 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
                   }}
                   disabled={isVoiceNoteLocked}
                   className={cn(
-                    "flex-shrink-0 relative",
+                    "flex-shrink-0 relative h-10 w-10 cursor-pointer",
                     isVoiceNoteLocked && "opacity-50 cursor-not-allowed"
                   )}
+                  style={{ transformOrigin: 'center center' }}
                 >
-                  <div className="relative">
+                  <div className="relative h-10 w-10" style={{ transformOrigin: 'center center' }}>
                     <div className={cn(
-                      "transition-transform",
+                      "transition-transform h-10 w-10",
                       playingAudio === voiceNote.id && "animate-spin"
                     )}
                     style={{
-                      animationDuration: playingAudio === voiceNote.id ? '2s' : 'none'
+                      animationDuration: playingAudio === voiceNote.id ? '2s' : 'none',
+                      transformOrigin: 'center center'
                     }}
                     >
                       <Avatar className="h-10 w-10 border-2 border-white/20" userId={author?.id}>
@@ -262,11 +321,11 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
                         </AvatarFallback>
                       </Avatar>
                     </div>
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                       {playingAudio === voiceNote.id ? (
-                        <Pause className="h-5 w-5 text-white/90 drop-shadow-lg" />
+                        <Pause className="h-5 w-5 text-white/90 drop-shadow-lg fill-white/90" />
                       ) : (
-                        <Play className="h-5 w-5 text-white/90 drop-shadow-lg" />
+                        <Play className="h-5 w-5 text-white/90 drop-shadow-lg fill-white/90" />
                       )}
                     </div>
                   </div>
@@ -329,10 +388,10 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
                     : '0%'
                 }}
               >
-                <div 
+                <div
                   className={cn(
-                    "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none",
-                    playingAudio === voiceNote.id && "animate-edge-glow"
+                    "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none transition-opacity",
+                    playingAudio === voiceNote.id ? "animate-edge-glow opacity-100" : "opacity-0"
                   )}
                   style={{
                     transform: 'translate(50%, -50%)'
@@ -344,9 +403,9 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
         </div>
       )}
 
-      {/* Images Slider - Below Voice Note */}
-      {images.length > 0 && (
-        <div className="relative">
+      {/* Videos and Images Slider - Below Voice Note */}
+      {(images.length > 0 || videos.length > 0) && (
+        <div className="relative" style={{ transformOrigin: 'center center' }}>
           {/* Left Navigation Button */}
           {canScrollLeft && (
             <button
@@ -368,8 +427,63 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
             className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {images.map((item, index) => {
-              // Find original index for lightbox
+            {/* Render videos first */}
+            {videos.map((item) => {
+              const originalIndex = sortedMedia.findIndex(m => m.id === item.id)
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "relative flex-shrink-0 rounded-lg bg-white/10 border border-white/20 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity aspect-square",
+                    "w-[calc((100%-0.5rem)/2)] md:w-[calc((100%-3*0.5rem)/4)]"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleVideoPlay(item.id)
+                  }}
+                >
+                  {videoUrls[item.id] ? (
+                    <>
+                      <video
+                        ref={(el) => {
+                          if (el) {
+                            videoRefs.current[item.id] = el
+                            // Set up event listeners
+                            el.addEventListener('play', () => setPlayingVideo(item.id))
+                            el.addEventListener('pause', () => {
+                              if (el.paused) {
+                                setPlayingVideo(null)
+                              }
+                            })
+                            el.addEventListener('ended', () => {
+                              setPlayingVideo(null)
+                            })
+                          }
+                        }}
+                        src={videoUrls[item.id]}
+                        className="w-full h-full object-cover"
+                        muted={false}
+                        playsInline
+                        preload="metadata"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none z-10">
+                        {playingVideo === item.id ? (
+                          <Pause className="h-8 w-8 text-white/90 drop-shadow-lg fill-white/90" />
+                        ) : (
+                          <Play className="h-8 w-8 text-white/90 drop-shadow-lg fill-white/90" />
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-black/20">
+                      <Video className="h-8 w-8 text-white/50" />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {/* Render images */}
+            {images.map((item) => {
               const originalIndex = sortedMedia.findIndex(m => m.id === item.id)
               return (
                 <div
@@ -380,17 +494,17 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
                   )}
                   onClick={() => handleImageClick(originalIndex)}
                 >
-            {imageUrls[item.id] ? (
-              <img
-                src={imageUrls[item.id]}
-                alt={item.file_name}
-                className="w-full h-full object-cover"
-                draggable={false}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="animate-pulse bg-white/20 w-full h-full" />
-              </div>
+                  {imageUrls[item.id] ? (
+                    <img
+                      src={imageUrls[item.id]}
+                      alt={item.file_name}
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="animate-pulse bg-white/20 w-full h-full" />
+                    </div>
                   )}
                 </div>
               )

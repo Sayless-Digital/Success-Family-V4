@@ -13,10 +13,13 @@ const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 
 const DropdownMenuGroup = DropdownMenuPrimitive.Group
 
-const DropdownMenuPortal = (props: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Portal>) => {
+const DropdownMenuPortal = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Portal>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Portal>
+>((props, ref) => {
   const container = useFullscreenPortal()
-  return <DropdownMenuPrimitive.Portal container={container} {...props} />
-}
+  return <DropdownMenuPrimitive.Portal ref={ref} container={container} {...props} />
+})
 DropdownMenuPortal.displayName = DropdownMenuPrimitive.Portal.displayName
 
 const DropdownMenuSub = DropdownMenuPrimitive.Sub

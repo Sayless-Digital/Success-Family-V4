@@ -7,7 +7,7 @@ VALUES (
   'dm-media',
   'dm-media',
   false,
-  26214400, -- 25 MB
+  52428800, -- 50 MB (Supabase free tier max)
   ARRAY[
     -- Images - All major formats
     'image/jpeg',
@@ -40,7 +40,7 @@ VALUES (
 ON CONFLICT (id) DO UPDATE
 SET
   public = false,
-  file_size_limit = 26214400,
+  file_size_limit = 52428800, -- 50 MB (Supabase free tier max)
   allowed_mime_types = ARRAY[
     -- Images - All major formats (including both image/jpeg and image/jpg)
     'image/jpeg',

@@ -117,3 +117,4 @@ END $$;
 COMMENT ON FUNCTION public.generate_personalized_email IS 'Generates a personalized email address from first name and last initial (first letter of last name), appending numbers if duplicate';
 
 
+

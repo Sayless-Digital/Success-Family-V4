@@ -153,7 +153,8 @@ export default function CommunityView({
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={isOwner} 
-          isMember={isMember} 
+          isMember={isMember}
+          communityOwnerId={community.owner_id}
         />
 
         {/* Community Header */}

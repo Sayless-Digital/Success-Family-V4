@@ -508,6 +508,59 @@
     }
   }
 
+  /* Fix ALL spinning elements to rotate from center - HIGHEST PRIORITY */
+  .animate-spin,
+  [class*="animate-spin"],
+  .animate-spin *,
+  [class*="animate-spin"] * {
+    transform-origin: center center !important;
+  }
+  
+  /* Fix ALL nested divs and elements within animate-spin */
+  .animate-spin > *,
+  .animate-spin > * > *,
+  .animate-spin > * > * > *,
+  [class*="animate-spin"] > *,
+  [class*="animate-spin"] > * > *,
+  [class*="animate-spin"] > * > * > * {
+    transform-origin: center center !important;
+  }
+  
+  /* Ensure avatars and their children spin from center */
+  .avatar-enforce-square,
+  .avatar-online-ripple,
+  [data-radix-avatar-root],
+  [data-radix-avatar-image],
+  [data-radix-avatar-fallback],
+  .avatar-enforce-square *,
+  .avatar-online-ripple *,
+  [data-radix-avatar-root] *,
+  [data-radix-avatar-image] *,
+  [data-radix-avatar-fallback] * {
+    transform-origin: center center !important;
+  }
+  
+
+  /* Fix avatar wrappers and containers when they have animate-spin */
+  .avatar-online-ripple.animate-spin,
+  .avatar-enforce-square.animate-spin,
+  div:has(> [data-radix-avatar-root]).animate-spin,
+  span:has(> [data-radix-avatar-root]).animate-spin,
+  button:has(> div.animate-spin),
+  button:has(.animate-spin),
+  div.relative:has(.animate-spin),
+  div.relative.animate-spin {
+    transform-origin: center center !important;
+  }
+  
+  /* Ensure all avatar-related elements maintain center transform origin */
+  [data-radix-avatar-root] *,
+  .avatar-enforce-square *,
+  .avatar-online-ripple * {
+    transform-origin: center center !important;
+  }
+
+
   .avatar-online-ripple {
     position: relative;
     display: inline-flex;
@@ -1219,28 +1272,6 @@ body:has(:-ms-fullscreen) [data-radix-tooltip-content] {
   opacity: 1 !important;
 }
 
-/* Preserve safe area insets (notch) in fullscreen mode on mobile */
-/* When an element goes fullscreen, override its height to account for safe area insets */
-:fullscreen,
-:-webkit-full-screen,
-:-moz-full-screen,
-:-ms-fullscreen {
-  /* Override height to exclude safe area insets */
-  height: calc(100vh - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0)) !important;
-  width: calc(100vw - env(safe-area-inset-left, 0) - env(safe-area-inset-right, 0)) !important;
-  /* Position to account for safe areas */
-  margin-top: env(safe-area-inset-top, 0) !important;
-  margin-bottom: env(safe-area-inset-bottom, 0) !important;
-  margin-left: env(safe-area-inset-left, 0) !important;
-  margin-right: env(safe-area-inset-right, 0) !important;
-  /* Add padding for inner content spacing */
-  padding-top: env(safe-area-inset-top, 0) !important;
-  padding-bottom: env(safe-area-inset-bottom, 0) !important;
-  padding-left: env(safe-area-inset-left, 0) !important;
-  padding-right: env(safe-area-inset-right, 0) !important;
-  box-sizing: border-box !important;
-}
-
 /* 404 Page Animations */
 @keyframes glow-pulse {
   0%, 100% {
@@ -1299,3 +1330,42 @@ body:has(:-ms-fullscreen) [data-radix-tooltip-content] {
 .animate-fade-in-up {
   animation: fade-in-up 0.8s ease-out both;
 }
+
+  /* Fix avatar wrappers and containers when they have animate-spin */
+  .avatar-online-ripple.animate-spin,
+  .avatar-enforce-square.animate-spin,
+  div:has(> [data-radix-avatar-root]).animate-spin,
+  span:has(> [data-radix-avatar-root]).animate-spin {
+    transform-origin: center center !important;
+  }
+  
+  /* Ensure all avatar-related elements maintain center transform origin */
+  [data-radix-avatar-root] *,
+  .avatar-enforce-square *,
+  .avatar-online-ripple * {
+    transform-origin: center center !important;
+  }
+
+  /* Additional rules for voice note avatar spinning */
+  .animate-spin[style*="animationDuration"] {
+    transform-origin: center center !important;
+  }
+  
+  /* Voice note specific containers */
+  button:has(> div.relative > div.animate-spin) {
+    transform-origin: center center !important;
+  }
+  
+  button div.relative:has(> div.animate-spin) {
+    transform-origin: center center !important;
+  }
+  
+  button div.relative div.animate-spin {
+    transform-origin: center center !important;
+  }
+  
+  /* Ensure avatar inside animate-spin maintains center */
+  .animate-spin > [data-radix-avatar-root],
+  .animate-spin [data-radix-avatar-root] {
+    transform-origin: center center !important;
+  }

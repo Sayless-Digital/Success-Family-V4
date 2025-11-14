@@ -1837,7 +1837,8 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={currentUserId === community.owner_id} 
-          isMember={isMember} 
+          isMember={isMember}
+          communityOwnerId={community.owner_id}
         />
         {/* New Posts Notification - Sticky at top when visible */}
         {newPostsCount > 0 && (

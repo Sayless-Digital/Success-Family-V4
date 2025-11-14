@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift, TrendingUp, Wallet, Mail, HelpCircle } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift, TrendingUp, Wallet, Mail, HelpCircle, Briefcase } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -43,6 +43,7 @@ const adminNavigationItems = [
   { icon: TrendingUp, label: "Revenue", href: "/admin/revenue" },
   { icon: Wallet, label: "Withdrawals", href: "/admin/withdrawals" },
   { icon: Users, label: "Manage Users", href: "/admin/users" },
+  { icon: Briefcase, label: "CRM", href: "/admin/crm" },
   { icon: Shield, label: "Roles & Permissions", href: "/admin/roles" },
   { icon: Database, label: "Database", href: "/admin/database" },
   { icon: FileText, label: "Reports", href: "/admin/reports" },

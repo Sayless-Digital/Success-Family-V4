@@ -15,6 +15,7 @@ interface CommunityMembersViewProps {
     name: string
     slug: string
     description?: string
+    owner_id: string
   }
   members: Array<{
     id: string
@@ -69,7 +70,8 @@ export default function CommunityMembersView({
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={isOwner} 
-          isMember={!!userMembership} 
+          isMember={!!userMembership}
+          communityOwnerId={community.owner_id}
         />
 
         {/* Search Bar */}

@@ -686,7 +686,8 @@ export default function CommunityEventsView({
         <CommunityNavigation 
           slug={community.slug} 
           isOwner={isOwner} 
-          isMember={isMember} 
+          isMember={isMember}
+          communityOwnerId={community.owner_id}
         />
 
         {isOwner && (

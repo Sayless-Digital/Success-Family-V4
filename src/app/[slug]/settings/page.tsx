@@ -316,6 +316,7 @@ export default function CommunitySettingsPage() {
         <CommunityNavigation
           slug={community.slug}
           isOwner={isOwner}
+          communityOwnerId={community.owner_id}
         />
 
         {/* Banner Section */}

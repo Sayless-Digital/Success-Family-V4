@@ -11,10 +11,13 @@ const Dialog = DialogPrimitive.Root
 
 const DialogTrigger = DialogPrimitive.Trigger
 
-const DialogPortal = (props: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>) => {
+const DialogPortal = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Portal>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>
+>((props, ref) => {
   const container = useFullscreenPortal()
-  return <DialogPrimitive.Portal container={container} {...props} />
-}
+  return <DialogPrimitive.Portal ref={ref} container={container} {...props} />
+})
 DialogPortal.displayName = DialogPrimitive.Portal.displayName
 
 const DialogClose = DialogPrimitive.Close

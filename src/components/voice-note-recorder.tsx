@@ -31,6 +31,7 @@ export function VoiceNoteRecorder({
   const timerIntervalRef = React.useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = React.useRef<number>(0)
   const pausedTimeRef = React.useRef<number>(0)
+  const isCancelledRef = React.useRef<boolean>(false)
 
   const maxDuration = maxDurationMinutes * 60 * 1000
 
@@ -63,6 +64,7 @@ export function VoiceNoteRecorder({
       mediaRecorderRef.current = mediaRecorder
 
       audioChunksRef.current = []
+      isCancelledRef.current = false
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -71,9 +73,12 @@ export function VoiceNoteRecorder({
       }
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        onRecordingComplete(audioBlob)
-        setRecordingComplete(true)
+        // Only complete the recording if it wasn't cancelled
+        if (!isCancelledRef.current) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+          onRecordingComplete(audioBlob)
+          setRecordingComplete(true)
+        }
         
         // Stop all tracks
         if (streamRef.current) {
@@ -135,6 +140,8 @@ export function VoiceNoteRecorder({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      // Not cancelled - this is a normal stop
+      isCancelledRef.current = false
       mediaRecorderRef.current.stop()
       setIsRecording(false)
       setIsPaused(false)
@@ -143,6 +150,9 @@ export function VoiceNoteRecorder({
   }
 
   const handleCancel = () => {
+    // Mark as cancelled before stopping
+    isCancelledRef.current = true
+    
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
     }
@@ -151,6 +161,10 @@ export function VoiceNoteRecorder({
       streamRef.current = null
     }
     stopTimer()
+    setIsRecording(false)
+    setIsPaused(false)
+    setElapsedTime(0)
+    setRecordingComplete(false)
     onCancel()
   }
 

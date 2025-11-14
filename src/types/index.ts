@@ -321,7 +321,7 @@ export interface HierarchicalPost extends PostWithAuthor {
 
 export type DMParticipantStatus = 'pending' | 'active' | 'blocked' | 'archived'
 export type DMMessageType = 'text' | 'system'
-export type DMAttachmentType = 'image' | 'audio' | 'file'
+export type DMAttachmentType = 'image' | 'audio' | 'file' | 'video'
 
 export interface DirectMessageThread {
   id: string
@@ -372,6 +372,7 @@ export interface DirectMessageAttachment {
   mime_type?: string | null
   file_size?: number | null
   duration_seconds?: number | null
+  file_name?: string | null
   created_at: string
 }
 
@@ -518,6 +519,81 @@ export interface UserStorage {
   last_calculated_at: string
   created_at: string
   updated_at: string
+}
+
+// CRM types
+export type CrmLeadSource = 'tiktok' | 'whatsapp' | 'instagram' | 'email' | 'referral' | 'website' | 'other'
+export type CrmConversationChannel = 'tiktok' | 'whatsapp' | 'instagram' | 'email' | 'phone' | 'other'
+export type CrmContactType = 'email' | 'phone' | 'tiktok' | 'whatsapp' | 'instagram' | 'other'
+
+export interface CrmStage {
+  id: string
+  name: string
+  description?: string
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CrmLeadContact {
+  id: string
+  lead_id: string
+  contact_type: CrmContactType
+  value: string
+  is_primary: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CrmLead {
+  id: string
+  name: string
+  source: CrmLeadSource
+  stage_id: string
+  potential_revenue_ttd?: number
+  close_date?: string
+  close_revenue_ttd?: number
+  contacted_date?: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  // Joined fields
+  stage?: CrmStage
+  created_by_user?: User
+  contacts?: CrmLeadContact[]
+}
+
+export interface CrmConversation {
+  id: string
+  lead_id: string
+  created_at: string
+  updated_at: string
+  // Joined fields
+  sessions?: CrmConversationSession[]
+}
+
+export interface CrmConversationSession {
+  id: string
+  conversation_id: string
+  channel: CrmConversationChannel
+  notes?: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  // Joined fields
+  created_by_user?: User
+}
+
+export interface CrmNote {
+  id: string
+  lead_id: string
+  content: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  // Joined fields
+  created_by_user?: User
 }
 
 // Database types

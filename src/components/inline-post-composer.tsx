@@ -874,10 +874,10 @@ export function InlinePostComposer({
                           : '0%'
                       }}
                     >
-                      <div 
+                      <div
                         className={cn(
-                          "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none",
-                          playingAudio === voiceNote.preview && "animate-edge-glow"
+                          "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none transition-opacity",
+                          playingAudio === voiceNote.preview ? "animate-edge-glow opacity-100" : "opacity-0"
                         )}
                         style={{
                           transform: 'translate(50%, -50%)'

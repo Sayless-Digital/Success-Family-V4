@@ -368,9 +368,12 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   return (
     <div
       ref={fullscreenTargetRef}
-      className="h-screen bg-background flex flex-col relative overflow-hidden"
+      className="bg-background flex flex-col relative overflow-hidden"
       style={{
-        height: "100dvh",
+        // In fullscreen mode, use 100vh to fill the fullscreen viewport
+        // Otherwise use 100dvh for normal viewport
+        height: isFullscreen && isMobile ? "100vh" : "100dvh",
+        minHeight: isFullscreen && isMobile ? "100vh" : "100dvh",
         paddingTop: "env(safe-area-inset-top, 0)",
         paddingBottom: isFullscreen && isMobile
           ? "calc(env(safe-area-inset-bottom, 0) + 64px)"
@@ -381,7 +384,18 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
     >
       {/* Silk Background - On all pages */}
       {!isStreamPage && (
-        <div className="fixed inset-0 z-0 overflow-hidden w-full h-full opacity-100">
+        <div 
+          className="fixed z-0 overflow-hidden opacity-100"
+          style={{
+            // In fullscreen mode, background should stretch to full viewport including notch area
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: "100%",
+            height: "100%",
+          }}
+        >
           <div className="w-full h-full">
             <Silk
               key={pathname}
@@ -450,6 +464,12 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         )}
         style={{
           marginRight: contentRightMargin,
+          // In fullscreen mode on mobile, ensure main fills the full viewport height
+          // Account for header height (3rem = 48px) + safe area top + 8px spacing
+          ...(isFullscreen && isMobile ? {
+            height: "calc(100vh - env(safe-area-inset-top, 0) - 8px - 3rem)",
+            minHeight: "calc(100vh - env(safe-area-inset-top, 0) - 8px - 3rem)",
+          } : {}),
         }}
       >
         {isStreamPage ? (
@@ -461,7 +481,10 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
               isMobile ? "pb-16" : "pb-4" // Extra padding on mobile for bottom nav (48px nav + 16px spacing = 64px)
             )}
             style={{
-              top: '3rem', // Start below header
+              // In fullscreen mode on mobile, account for header being pushed down by notch + 8px spacing
+              top: isFullscreen && isMobile 
+                ? 'calc(env(safe-area-inset-top, 0) + 8px + 3rem)' 
+                : '3rem', // Start below header
               paddingTop: '12px', // Reduced content padding
             }}
           >
