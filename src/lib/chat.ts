@@ -99,7 +99,7 @@ export async function getConversationSummaries(
   if (userIds.length > 0) {
     const profileQuery = await client
       .from("users")
-      .select("id, username, first_name, last_name, profile_picture")
+      .select("id, username, first_name, last_name, profile_picture, bio")
       .in("id", userIds)
 
     if (profileQuery.error) {
@@ -115,6 +115,7 @@ export async function getConversationSummaries(
           first_name: profile.first_name,
           last_name: profile.last_name,
           profile_picture: profile.profile_picture,
+          bio: profile.bio,
         },
       ]),
     )
@@ -293,7 +294,9 @@ export async function listMessages(
           file_size,
           duration_seconds,
           file_name,
-          created_at
+          created_at,
+          source_storage_path,
+          source_bucket
         ),
         read_receipts:dm_message_reads(
           id,

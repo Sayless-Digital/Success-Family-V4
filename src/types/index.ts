@@ -309,7 +309,7 @@ export interface PostMedia {
   created_at?: string
 }
 
-export type PostAuthorSummary = Pick<User, 'id' | 'username' | 'first_name' | 'last_name' | 'profile_picture'>
+export type PostAuthorSummary = Pick<User, 'id' | 'username' | 'first_name' | 'last_name' | 'profile_picture' | 'bio'>
 
 export interface PostWithAuthor extends Post {
   author: PostAuthorSummary

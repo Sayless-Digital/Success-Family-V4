@@ -51,6 +51,8 @@ export function EditPostDialog({
   const [showBoostRewardsDialog, setShowBoostRewardsDialog] = React.useState(false)
   const [editingMediaId, setEditingMediaId] = React.useState<string | null>(null)
   const [boostRewardMessage, setBoostRewardMessage] = React.useState<string>("")
+  const [boostRewardAttachments, setBoostRewardAttachments] = React.useState<Array<{ file: File; preview: string; type: 'image' | 'document' }>>([])
+  const [existingBoostRewardAttachments, setExistingBoostRewardAttachments] = React.useState<Array<{ id: string; preview: string; type: 'image' | 'document'; storagePath: string; fileName: string }>>([])
   const [playingAudio, setPlayingAudio] = React.useState<string | null>(null)
   const [audioProgress, setAudioProgress] = React.useState<Record<string, { current: number; duration: number }>>({})
   const audioRefs = React.useRef<Record<string, HTMLAudioElement>>({})
@@ -70,11 +72,36 @@ export function EditPostDialog({
       setExistingMedia(existing)
       setContent(post.content)
       setBoostRewardMessage(post.boost_reward_message || "")
+      
+      // Load existing boost reward attachments
+      supabase
+        .from('boost_reward_attachments')
+        .select('*')
+        .eq('post_id', post.id)
+        .order('display_order')
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('Error loading boost reward attachments:', error)
+            return
+          }
+          if (data) {
+            const existingAttachments = data.map(att => ({
+              id: att.id,
+              preview: supabase.storage.from('post-media').getPublicUrl(att.storage_path).data.publicUrl,
+              type: att.media_type as 'image' | 'document',
+              storagePath: att.storage_path,
+              fileName: att.file_name
+            }))
+            setExistingBoostRewardAttachments(existingAttachments)
+          }
+        })
     }
   }, [open, post])
 
   const reset = () => {
     setMediaFiles([])
+    boostRewardAttachments.forEach(att => URL.revokeObjectURL(att.preview))
+    setBoostRewardAttachments([])
     setError(null)
     setShowVoiceRecorder(false)
     setPlayingAudio(null)
@@ -298,15 +325,19 @@ export function EditPostDialog({
 
     try {
       const hasBoostRewardMessage = boostRewardMessage.trim().length > 0
+      const hasBoostRewardAttachments = boostRewardAttachments.length > 0 || existingBoostRewardAttachments.length > 0
+      const hasBoostReward = hasBoostRewardMessage || hasBoostRewardAttachments
       const originalMessage = post.boost_reward_message || ""
       const isAddingOrChangingMessage = hasBoostRewardMessage && boostRewardMessage.trim() !== originalMessage.trim()
+      const isAddingAttachments = boostRewardAttachments.length > 0
+      const isAddingOrChangingBoostReward = isAddingOrChangingMessage || isAddingAttachments
       
-      // Check balance for boost reward message if adding/changing (skip for admins)
+      // Check balance for boost reward message/attachments if adding/changing (skip for admins)
       const isAdmin = userProfile?.role === 'admin'
-      if (isAddingOrChangingMessage && !isAdmin) {
+      if (isAddingOrChangingBoostReward && !isAdmin) {
         const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
         if (availableBalance < 1) {
-          toast.error("You need at least 1 point to add a boost reward message")
+          toast.error("You need at least 1 point to add a boost reward message or attachment")
           setSubmitting(false)
           return
         }
@@ -324,15 +355,61 @@ export function EditPostDialog({
 
       if (updateError) throw updateError
 
-      // Deduct points for boost reward message if adding/changing (admins bypass this)
-      if (isAddingOrChangingMessage && !isAdmin) {
+      // Upload new boost reward attachments
+      if (boostRewardAttachments.length > 0) {
+        let displayOrder = existingBoostRewardAttachments.length
+        
+        for (const attachment of boostRewardAttachments) {
+          const { file, type } = attachment
+          const fileExt = file.name.split('.').pop()
+          const timestamp = Date.now()
+          const random = Math.random().toString(36).slice(2, 10)
+          const fileName = `${timestamp}-${random}.${fileExt}`
+          const filePath = `${user.id}/${post.id}/boost-reward/${fileName}`
+
+          // Upload to storage
+          const { error: uploadError } = await supabase.storage
+            .from('post-media')
+            .upload(filePath, file, {
+              contentType: file.type,
+              cacheControl: '0',
+              upsert: false
+            })
+
+          if (uploadError) {
+            console.error('Boost reward attachment upload error:', uploadError)
+            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`)
+          }
+
+          // Insert into boost_reward_attachments table
+          const { error: attachmentError } = await supabase
+            .from('boost_reward_attachments')
+            .insert({
+              post_id: post.id,
+              media_type: type,
+              storage_path: filePath,
+              file_name: file.name,
+              file_size: file.size,
+              mime_type: file.type,
+              display_order: displayOrder++
+            })
+
+          if (attachmentError) {
+            console.error('Boost reward attachment record error:', attachmentError)
+            throw new Error(`Failed to create attachment record: ${attachmentError.message}`)
+          }
+        }
+      }
+
+      // Deduct points for boost reward message/attachments if adding/changing (admins bypass this)
+      if (isAddingOrChangingBoostReward && !isAdmin) {
         const { error: pointsError } = await supabase.rpc('deduct_points_for_voice_notes', {
           p_user_id: user.id,
           p_point_cost: 1
         })
 
         if (pointsError) {
-          console.error('Points deduction error for boost reward message:', pointsError)
+          console.error('Points deduction error for boost reward:', pointsError)
           throw new Error(`Failed to deduct points: ${pointsError.message}`)
         }
 
@@ -728,7 +805,16 @@ export function EditPostDialog({
         }
         boostRewardMessage={boostRewardMessage}
         onBoostRewardMessageChange={setBoostRewardMessage}
+        boostRewardAttachments={boostRewardAttachments}
+        onBoostRewardAttachmentsChange={setBoostRewardAttachments}
         mediaType={editingMediaId ? "audio" : undefined}
+        hasVoiceNote={
+          editingMediaId
+            ? editingMediaId.startsWith('new-')
+              ? mediaFiles[parseInt(editingMediaId.replace('new-', ''))]?.type === 'audio'
+              : existingMedia.find(m => m.id === editingMediaId)?.type === 'audio'
+            : false
+        }
       />
     </Dialog>
   )

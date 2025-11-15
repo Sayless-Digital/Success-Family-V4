@@ -63,7 +63,8 @@ export default async function HomePage() {
             username,
             first_name,
             last_name,
-            profile_picture
+            profile_picture,
+            bio
           ),
           community:communities!posts_community_id_fkey(
             id,

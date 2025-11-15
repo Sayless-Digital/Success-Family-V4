@@ -16,6 +16,7 @@ export interface ConversationListItem extends DirectMessageConversationSummary {
     first_name?: string | null
     last_name?: string | null
     profile_picture?: string | null
+    bio?: string | null
   } | null
 }
 

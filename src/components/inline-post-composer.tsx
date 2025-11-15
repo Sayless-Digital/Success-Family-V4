@@ -115,6 +115,7 @@ export function InlinePostComposer({
   const [submitting, setSubmitting] = React.useState(false)
   const [showBoostRewardsDialog, setShowBoostRewardsDialog] = React.useState(false)
   const [boostRewardMessage, setBoostRewardMessage] = React.useState<string>("")
+  const [boostRewardAttachments, setBoostRewardAttachments] = React.useState<Array<{ file: File; preview: string; type: 'image' | 'document' }>>([])
   const [uploadProgress, setUploadProgress] = React.useState<{ current: number; total: number } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [showVoiceRecorder, setShowVoiceRecorder] = React.useState(false)
@@ -145,6 +146,8 @@ export function InlinePostComposer({
     setVoiceNote(null)
     setImageFiles([])
     setBoostRewardMessage("")
+    boostRewardAttachments.forEach(att => URL.revokeObjectURL(att.preview))
+    setBoostRewardAttachments([])
     setUploadProgress(null)
     setError(null)
     setIsExpanded(initialExpandedState)
@@ -530,6 +533,57 @@ export function InlinePostComposer({
     setUploadProgress(null)
   }
 
+  const uploadBoostRewardAttachments = async (postId: string): Promise<void> => {
+    if (boostRewardAttachments.length === 0) return
+
+    console.log(`Uploading ${boostRewardAttachments.length} boost reward attachments for post ${postId}`)
+
+    let displayOrder = 0
+
+    for (const attachment of boostRewardAttachments) {
+      const { file, type } = attachment
+      const fileExt = file.name.split('.').pop()
+      const timestamp = Date.now()
+      const random = Math.random().toString(36).slice(2, 10)
+      const fileName = `${timestamp}-${random}.${fileExt}`
+      const filePath = `${user!.id}/${postId}/boost-reward/${fileName}`
+
+      // Upload to storage (use post-media bucket)
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('post-media')
+        .upload(filePath, file, {
+          contentType: file.type,
+          cacheControl: '0',
+          upsert: false
+        })
+
+      if (uploadError) {
+        console.error('Boost reward attachment upload error:', uploadError)
+        throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`)
+      }
+
+      // Insert into boost_reward_attachments table
+      const { error: attachmentError } = await supabase
+        .from('boost_reward_attachments')
+        .insert({
+          post_id: postId,
+          media_type: type,
+          storage_path: filePath,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+          display_order: displayOrder++
+        })
+
+      if (attachmentError) {
+        console.error('Boost reward attachment record error:', attachmentError)
+        throw new Error(`Failed to create attachment record: ${attachmentError.message}`)
+      }
+    }
+
+    console.log('All boost reward attachments uploaded successfully')
+  }
+
   const handleCreate = async () => {
     if (!user) {
       setError("Please sign in to create a post.")
@@ -559,13 +613,15 @@ export function InlinePostComposer({
     try {
       const contentToSave = currentTrimmedContent.length > 0 ? currentTrimmedContent : ""
       const hasBoostRewardMessage = boostRewardMessage.trim().length > 0
+      const hasBoostRewardAttachments = boostRewardAttachments.length > 0
+      const hasBoostReward = hasBoostRewardMessage || hasBoostRewardAttachments
       
-      // Check balance for boost reward message (skip for admins)
+      // Check balance for boost reward message/attachments (skip for admins)
       const isAdmin = userProfile?.role === 'admin'
-      if (hasBoostRewardMessage && !isAdmin) {
+      if (hasBoostReward && !isAdmin) {
         const availableBalance = (walletBalance ?? 0) + (walletEarningsBalance ?? 0)
         if (availableBalance < 1) {
-          setError("You need at least 1 point to add a boost reward message")
+          setError("You need at least 1 point to add a boost reward message or attachment")
           setSubmitting(false)
           return
         }
@@ -604,8 +660,8 @@ export function InlinePostComposer({
         throw new Error(`Failed to create post: ${postError.message}`)
       }
 
-      // Deduct points for boost reward message if present (admins bypass this)
-      if (hasBoostRewardMessage && user) {
+      // Deduct points for boost reward message/attachments if present (admins bypass this)
+      if (hasBoostReward && user) {
         const isAdmin = userProfile?.role === 'admin'
         if (!isAdmin) {
           const { error: pointsError } = await supabase.rpc('deduct_points_for_voice_notes', {
@@ -614,7 +670,7 @@ export function InlinePostComposer({
           })
 
           if (pointsError) {
-            console.error('Points deduction error for boost reward message:', pointsError)
+            console.error('Points deduction error for boost reward:', pointsError)
             throw new Error(`Failed to deduct points: ${pointsError.message}`)
           }
 
@@ -625,6 +681,11 @@ export function InlinePostComposer({
       // Upload media if any
       if ((resolvedAllowVoiceNote && voiceNote) || (resolvedAllowImages && imageFiles.length > 0)) {
         await uploadMedia(insertedPost.id)
+      }
+
+      // Upload boost reward attachments if any
+      if (hasBoostRewardAttachments) {
+        await uploadBoostRewardAttachments(insertedPost.id)
       }
 
       let createdPost = insertedPost
@@ -1056,7 +1117,10 @@ export function InlinePostComposer({
         }}
         boostRewardMessage={boostRewardMessage}
         onBoostRewardMessageChange={setBoostRewardMessage}
+        boostRewardAttachments={boostRewardAttachments}
+        onBoostRewardAttachmentsChange={setBoostRewardAttachments}
         mediaType={voiceNote ? "audio" : undefined}
+        hasVoiceNote={!!voiceNote}
       />
     </Card>
   )

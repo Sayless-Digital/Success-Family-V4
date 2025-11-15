@@ -373,7 +373,8 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
               username,
               first_name,
               last_name,
-              profile_picture
+              profile_picture,
+              bio
             ),
             media:post_media(
               id,
@@ -991,6 +992,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
       decay: 0.94,
       startVelocity: 30,
       scalar: 1.2,
+      zIndex: 10000, // Ensure confetti appears above sidebar (z-9000)
     })
 
     // Add extra sparkle burst
@@ -1005,6 +1007,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
         decay: 0.9,
         startVelocity: 20,
         scalar: 0.8,
+        zIndex: 10000, // Ensure confetti appears above sidebar (z-9000)
       })
     }, 150)
   }
@@ -1900,18 +1903,26 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                 {/* Post Header */}
                 <div className="flex gap-4 mb-3">
                   {/* Author Avatar */}
-                  <Link 
-                    href={`/profile/${post.author.username}`}
+                  <div 
                     onClick={(e) => e.stopPropagation()}
                     className="flex-shrink-0"
                   >
-                    <Avatar className="h-10 w-10 border-4 border-white/20" userId={post.author.id}>
+                    <Avatar 
+                      className="h-10 w-10 border-4 border-white/20" 
+                      userId={post.author.id}
+                      showHoverCard={true}
+                      username={post.author.username}
+                      firstName={post.author.first_name}
+                      lastName={post.author.last_name}
+                      profilePicture={post.author.profile_picture}
+                      bio={post.author.bio}
+                    >
                       <AvatarImage src={post.author.profile_picture} alt={`${post.author.first_name} ${post.author.last_name}`} />
                       <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
                         {post.author.first_name[0]}{post.author.last_name[0]}
                       </AvatarFallback>
                     </Avatar>
-                  </Link>
+                  </div>
 
                   {/* Post Info */}
                   <div className="flex items-center gap-2 flex-1">
@@ -1997,9 +2008,16 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                     </Badge>
                   )}
                   {post.boost_reward_message && (
-                    <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
-                      <Crown className="h-3 w-3 mr-1" />
-                      Reward
+                    <Badge 
+                      variant="outline" 
+                      className="text-white border-yellow-400/50 relative overflow-hidden"
+                      style={{
+                        background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                        boxShadow: '0 0 10px rgba(255, 215, 0, 0.5), 0 0 20px rgba(147, 51, 234, 0.3)',
+                      }}
+                    >
+                      <Crown className="h-3 w-3 mr-1 relative z-10 drop-shadow-lg" />
+                      <span className="relative z-10 drop-shadow-lg font-semibold">Boost for Reward</span>
                     </Badge>
                   )}
                 </div>
@@ -2422,16 +2440,27 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                 >
                     <div className="relative mt-2 border border-white/10 bg-white/5 p-4 space-y-3 rounded-lg shadow-[0_0_30px_rgba(255,255,255,0.25)] ring-1 ring-white/20">
                       <div className="flex items-start gap-3">
-                        <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0" userId={post.author?.id}>
-                          <AvatarImage
-                            src={post.author?.profile_picture || ""}
-                            alt={`${post.author?.first_name} ${post.author?.last_name}`}
-                          />
-                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                            {post.author?.first_name?.[0]}
-                            {post.author?.last_name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Avatar 
+                            className="h-9 w-9 border-2 border-white/20 flex-shrink-0" 
+                            userId={post.author?.id}
+                            showHoverCard={true}
+                            username={post.author?.username}
+                            firstName={post.author?.first_name}
+                            lastName={post.author?.last_name}
+                            profilePicture={post.author?.profile_picture}
+                            bio={post.author?.bio}
+                          >
+                            <AvatarImage
+                              src={post.author?.profile_picture || ""}
+                              alt={`${post.author?.first_name} ${post.author?.last_name}`}
+                            />
+                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                              {post.author?.first_name?.[0]}
+                              {post.author?.last_name?.[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
                         <div className="flex flex-col">
                           <Link
                             href={`/profile/${post.author.username}`}
@@ -2563,16 +2592,27 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                             >
                               <div className="space-y-3">
                                 <div className="flex items-start gap-3">
-                                  <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0" userId={comment.author?.id}>
-                                    <AvatarImage
-                                      src={comment.author?.profile_picture || ""}
-                                      alt={`${comment.author?.first_name} ${comment.author?.last_name}`}
-                                    />
-                                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                                      {comment.author?.first_name?.[0]}
-                                      {comment.author?.last_name?.[0]}
-                                    </AvatarFallback>
-                                  </Avatar>
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <Avatar 
+                                      className="h-9 w-9 border-2 border-white/20 flex-shrink-0" 
+                                      userId={comment.author?.id}
+                                      showHoverCard={true}
+                                      username={comment.author?.username}
+                                      firstName={comment.author?.first_name}
+                                      lastName={comment.author?.last_name}
+                                      profilePicture={comment.author?.profile_picture}
+                                      bio={comment.author?.bio}
+                                    >
+                                      <AvatarImage
+                                        src={comment.author?.profile_picture || ""}
+                                        alt={`${comment.author?.first_name} ${comment.author?.last_name}`}
+                                      />
+                                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                                        {comment.author?.first_name?.[0]}
+                                        {comment.author?.last_name?.[0]}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  </div>
                                   <div className="flex flex-col">
                                     <Link
                                       href={`/profile/${comment.author?.username}`}
@@ -2722,16 +2762,27 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                                         {(comment.replies ?? []).map((reply) => (
                                           <div key={reply.id} className="space-y-2">
                                             <div className="flex items-start gap-3">
-                                              <Avatar className="h-8 w-8 border border-white/20 flex-shrink-0" userId={reply.author?.id}>
-                                                <AvatarImage
-                                                  src={reply.author?.profile_picture || ""}
-                                                  alt={`${reply.author?.first_name} ${reply.author?.last_name}`}
-                                                />
-                                                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs">
-                                                  {reply.author?.first_name?.[0]}
-                                                  {reply.author?.last_name?.[0]}
-                                                </AvatarFallback>
-                                              </Avatar>
+                                              <div onClick={(e) => e.stopPropagation()}>
+                                                <Avatar 
+                                                  className="h-8 w-8 border border-white/20 flex-shrink-0" 
+                                                  userId={reply.author?.id}
+                                                  showHoverCard={true}
+                                                  username={reply.author?.username}
+                                                  firstName={reply.author?.first_name}
+                                                  lastName={reply.author?.last_name}
+                                                  profilePicture={reply.author?.profile_picture}
+                                                  bio={reply.author?.bio}
+                                                >
+                                                  <AvatarImage
+                                                    src={reply.author?.profile_picture || ""}
+                                                    alt={`${reply.author?.first_name} ${reply.author?.last_name}`}
+                                                  />
+                                                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs">
+                                                    {reply.author?.first_name?.[0]}
+                                                    {reply.author?.last_name?.[0]}
+                                                  </AvatarFallback>
+                                                </Avatar>
+                                              </div>
                                               <div className="flex flex-col">
                                                 <Link
                                                   href={`/profile/${reply.author?.username}`}

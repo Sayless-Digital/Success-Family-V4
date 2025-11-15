@@ -151,6 +151,44 @@ export default function DiscoveryFeedView({
     return sortedPosts.slice(0, 50)
   }, [sortedPosts])
 
+  const fireGoldConfetti = (element: HTMLElement | null) => {
+    if (!element) return
+    
+    const rect = element.getBoundingClientRect()
+    const x = (rect.left + rect.width / 2) / window.innerWidth
+    const y = (rect.top + rect.height / 2) / window.innerHeight
+
+    // Fire confetti from button position
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { x, y },
+      colors: ['#FFD700', '#FFA500', '#FFFF00', '#FFE55C'], // Gold colors
+      ticks: 200,
+      gravity: 1.2,
+      decay: 0.94,
+      startVelocity: 30,
+      scalar: 1.2,
+      zIndex: 10000, // Ensure confetti appears above sidebar (z-9000)
+    })
+
+    // Add extra sparkle burst
+    setTimeout(() => {
+      confetti({
+        particleCount: 30,
+        spread: 100,
+        origin: { x, y },
+        colors: ['#FFD700', '#FFFF00'],
+        ticks: 100,
+        gravity: 0.8,
+        decay: 0.9,
+        startVelocity: 20,
+        scalar: 0.8,
+        zIndex: 10000, // Ensure confetti appears above sidebar (z-9000)
+      })
+    }, 150)
+  }
+
   // Handle boost toggle
   const handleBoostToggle = async (postId: string, authorId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -175,12 +213,24 @@ export default function DiscoveryFeedView({
 
     // Optimistic update
     setBoostingPosts(prev => new Set(prev).add(postId))
-    setAnimatingBoosts(prev => new Set(prev).add(postId))
     
     // Boosts are now irreversible - prevent unboosting
     if (wasBoosted) {
       toast.error("Boosts are permanent and cannot be reversed")
       return
+    }
+
+    // Fire confetti and set animation BEFORE optimistic update (matching community feed)
+    if (!wasBoosted) {
+      fireGoldConfetti(e.currentTarget as HTMLElement)
+      setAnimatingBoosts(prev => new Set(prev).add(postId))
+      setTimeout(() => {
+        setAnimatingBoosts(prev => {
+          const next = new Set(prev)
+          next.delete(postId)
+          return next
+        })
+      }, 600)
     }
 
     setPosts(prevPosts =>
@@ -207,12 +257,6 @@ export default function DiscoveryFeedView({
       await refreshWalletBalance()
 
       toast.success("🚀 Creator boosted! You made their day!")
-      // Confetti effect
-      confetti({
-        particleCount: 50,
-        spread: 70,
-        origin: { y: 0.6 }
-      })
     } catch (error: any) {
       console.error('Error toggling boost:', error)
       
@@ -241,13 +285,6 @@ export default function DiscoveryFeedView({
         next.delete(postId)
         return next
       })
-      setTimeout(() => {
-        setAnimatingBoosts(prev => {
-          const next = new Set(prev)
-          next.delete(postId)
-          return next
-        })
-      }, 1000)
     }
   }
 
@@ -1190,18 +1227,26 @@ export default function DiscoveryFeedView({
                       {/* Post Header */}
                       <div className="flex gap-4 mb-3">
                         {/* Author Avatar */}
-                        <Link 
-                          href={`/profile/${post.author.username}`}
+                        <div 
                           onClick={(e) => e.stopPropagation()}
                           className="flex-shrink-0"
                         >
-                          <Avatar className="h-10 w-10 border-4 border-white/20" userId={post.author.id}>
+                          <Avatar 
+                            className="h-10 w-10 border-4 border-white/20" 
+                            userId={post.author.id}
+                            showHoverCard={true}
+                            username={post.author.username}
+                            firstName={post.author.first_name}
+                            lastName={post.author.last_name}
+                            profilePicture={post.author.profile_picture}
+                            bio={post.author.bio}
+                          >
                             <AvatarImage src={post.author.profile_picture} alt={`${post.author.first_name} ${post.author.last_name}`} />
                             <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
                               {post.author.first_name[0]}{post.author.last_name[0]}
                             </AvatarFallback>
                           </Avatar>
-                        </Link>
+                        </div>
 
                         {/* Post Info */}
                         <div className="flex items-start gap-2 flex-1">
@@ -1306,9 +1351,16 @@ export default function DiscoveryFeedView({
                           </Badge>
                         )}
                         {post.boost_reward_message && (
-                          <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20 text-xs">
-                            <Crown className="h-3 w-3 mr-1" />
-                            Reward
+                          <Badge 
+                            variant="outline" 
+                            className="text-white border-yellow-400/50 relative overflow-hidden text-xs"
+                            style={{
+                              background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                              boxShadow: '0 0 10px rgba(255, 215, 0, 0.5), 0 0 20px rgba(147, 51, 234, 0.3)',
+                            }}
+                          >
+                            <Crown className="h-3 w-3 mr-1 relative z-10 drop-shadow-lg" />
+                            <span className="relative z-10 drop-shadow-lg font-semibold">Boost for Reward</span>
                           </Badge>
                         )}
                       </div>
@@ -1550,16 +1602,27 @@ export default function DiscoveryFeedView({
                 >
                   <div className="relative mt-2 border border-white/10 bg-white/5 p-4 space-y-3 rounded-lg shadow-[0_0_30px_rgba(255,255,255,0.25)] ring-1 ring-white/20">
                     <div className="flex items-start gap-3">
-                      <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0" userId={post.author?.id}>
-                        <AvatarImage
-                          src={post.author?.profile_picture || ""}
-                          alt={`${post.author?.first_name} ${post.author?.last_name}`}
-                        />
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                          {post.author?.first_name?.[0]}
-                          {post.author?.last_name?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Avatar 
+                          className="h-9 w-9 border-2 border-white/20 flex-shrink-0" 
+                          userId={post.author?.id}
+                          showHoverCard={true}
+                          username={post.author?.username}
+                          firstName={post.author?.first_name}
+                          lastName={post.author?.last_name}
+                          profilePicture={post.author?.profile_picture}
+                          bio={post.author?.bio}
+                        >
+                          <AvatarImage
+                            src={post.author?.profile_picture || ""}
+                            alt={`${post.author?.first_name} ${post.author?.last_name}`}
+                          />
+                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                            {post.author?.first_name?.[0]}
+                            {post.author?.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
                       <div className="flex flex-col">
                         <Link
                           href={`/profile/${post.author.username}`}
@@ -1689,16 +1752,27 @@ export default function DiscoveryFeedView({
                         >
                           <div className="space-y-3">
                             <div className="flex items-start gap-3">
-                              <Avatar className="h-9 w-9 border-2 border-white/20 flex-shrink-0" userId={comment.author?.id}>
-                                <AvatarImage
-                                  src={comment.author?.profile_picture || ""}
-                                  alt={`${comment.author?.first_name} ${comment.author?.last_name}`}
-                                />
-                                <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                                  {comment.author?.first_name?.[0]}
-                                  {comment.author?.last_name?.[0]}
-                                </AvatarFallback>
-                              </Avatar>
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <Avatar 
+                                  className="h-9 w-9 border-2 border-white/20 flex-shrink-0" 
+                                  userId={comment.author?.id}
+                                  showHoverCard={true}
+                                  username={comment.author?.username}
+                                  firstName={comment.author?.first_name}
+                                  lastName={comment.author?.last_name}
+                                  profilePicture={comment.author?.profile_picture}
+                                  bio={comment.author?.bio}
+                                >
+                                  <AvatarImage
+                                    src={comment.author?.profile_picture || ""}
+                                    alt={`${comment.author?.first_name} ${comment.author?.last_name}`}
+                                  />
+                                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                                    {comment.author?.first_name?.[0]}
+                                    {comment.author?.last_name?.[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
                               <div className="flex flex-col">
                                 <Link
                                   href={`/profile/${comment.author?.username}`}

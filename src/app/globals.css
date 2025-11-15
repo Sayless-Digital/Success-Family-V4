@@ -398,6 +398,15 @@
     animation: boost-count 0.6s ease-out;
     color: #10b981 !important;
   }
+  
+  /* Confetti canvas z-index - ensure it appears above sidebars (z-9000) */
+  /* canvas-confetti creates canvas elements as direct children of body */
+  /* Only apply to fixed-position canvases (which confetti uses) */
+  body > canvas[style*="position: fixed"],
+  body > canvas[style*="position:fixed"] {
+    z-index: 10000 !important;
+    pointer-events: none !important;
+  }
 }
 
 @layer components {

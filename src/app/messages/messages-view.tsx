@@ -430,12 +430,41 @@ export default function MessagesView({
       const now = Date.now()
 
       await Promise.all(
-        attachmentsToEnsure.map(async (attachment) => {
+        attachmentsToEnsure.map(async (attachment: any) => {
           const existing = attachmentUrls[attachment.id]
           
           // Skip if URL exists and hasn't expired (unless force refresh)
           if (!forceRefresh && existing && existing.expiresAt > now + SIGNED_URL_REFRESH_THRESHOLD * 1000) {
             return
+          }
+
+          // If attachment has source_storage_path, it needs to be copied first
+          if (attachment.source_storage_path && attachment.source_bucket) {
+            // Find the message ID to copy the file
+            const messageId = attachment.message_id
+            if (messageId) {
+              try {
+                await fetch("/api/dm/copy-boost-attachments", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ messageId }),
+                })
+                // Wait a bit for the copy to complete
+                await new Promise(resolve => setTimeout(resolve, 500))
+                // Re-fetch the attachment to get updated storage_path
+                const { data: updatedAttachment } = await supabase
+                  .from("dm_message_media")
+                  .select("storage_path")
+                  .eq("id", attachment.id)
+                  .single()
+                if (updatedAttachment) {
+                  attachment.storage_path = updatedAttachment.storage_path
+                }
+              } catch (error) {
+                console.error("Error copying boost reward attachment:", error)
+                return
+              }
+            }
           }
 
           const objectPath = storagePathToObjectPath(attachment.storage_path)
@@ -1065,13 +1094,28 @@ export default function MessagesView({
           const [attachmentsResult, readReceiptsResult] = await Promise.all([
             supabase
               .from("dm_message_media")
-              .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at")
+              .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at, source_storage_path, source_bucket")
               .eq("message_id", newMessage.id),
             supabase
               .from("dm_message_reads")
               .select("id, message_id, user_id, read_at")
               .eq("message_id", newMessage.id),
           ])
+
+          // If this is a boost reward message with attachments that need copying, copy them
+          if (newMessage.metadata?.boost_reward && attachmentsResult.data) {
+            const needsCopying = attachmentsResult.data.some((a: any) => a.source_storage_path && a.source_bucket)
+            if (needsCopying) {
+              // Copy files from post-media to dm-media bucket
+              fetch("/api/dm/copy-boost-attachments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageId: newMessage.id }),
+              }).catch((error) => {
+                console.error("Error copying boost reward attachments:", error)
+              })
+            }
+          }
 
           const enrichedMessage: MessageResult = {
             id: newMessage.id,
@@ -2495,12 +2539,24 @@ export default function MessagesView({
                       )}
                     >
                       <div className="px-3 py-3 flex items-start gap-3 w-full overflow-hidden">
-                        <Avatar className="h-11 w-11 border-4 border-white/20 flex-shrink-0" userId={otherProfile?.id} isOnline={presenceMap[conversation.thread_id] || false}>
-                          <AvatarImage src={avatarImage} alt={displayName} />
-                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
-                            {initials}
-                          </AvatarFallback>
-                        </Avatar>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Avatar 
+                            className="h-11 w-11 border-4 border-white/20 flex-shrink-0" 
+                            userId={otherProfile?.id} 
+                            isOnline={presenceMap[conversation.thread_id] || false}
+                            showHoverCard={true}
+                            username={otherProfile?.username || undefined}
+                            firstName={otherProfile?.first_name || undefined}
+                            lastName={otherProfile?.last_name || undefined}
+                            profilePicture={otherProfile?.profile_picture || undefined}
+                            bio={otherProfile?.bio || undefined}
+                          >
+                            <AvatarImage src={avatarImage} alt={displayName} />
+                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
+                              {initials}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
                         <div className="flex-1 min-w-0 w-0 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0 overflow-hidden">
                             <p className="text-white/80 font-medium truncate flex-shrink">{displayName}</p>
@@ -2585,12 +2641,24 @@ export default function MessagesView({
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
                     )}
-                    <Avatar className="h-11 w-11 border-4 border-white/20" userId={peerProfile?.id} isOnline={isPeerOnline}>
-                      <AvatarImage src={peerAvatar ?? undefined} alt={peerName} />
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
-                        {peerInitials}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Avatar 
+                        className="h-11 w-11 border-4 border-white/20" 
+                        userId={peerProfile?.id} 
+                        isOnline={isPeerOnline}
+                        showHoverCard={true}
+                        username={peerProfile?.username || undefined}
+                        firstName={peerProfile?.first_name || undefined}
+                        lastName={peerProfile?.last_name || undefined}
+                        profilePicture={peerProfile?.profile_picture || undefined}
+                        bio={peerProfile?.bio || undefined}
+                      >
+                        <AvatarImage src={peerAvatar ?? undefined} alt={peerName} />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
+                          {peerInitials}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h2 className="text-white/90 font-semibold text-sm sm:text-base truncate">{peerName}</h2>

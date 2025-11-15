@@ -92,21 +92,36 @@ export default function CommunityMembersView({
             <Link 
               key={member.id} 
               href={`/profile/${member.user.username}`}
-              className="group"
+              className="group h-full"
             >
-              <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 hover:bg-white/15 transition-colors cursor-pointer">
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    {/* Avatar */}
-                    <Avatar className="h-16 w-16 border-4 border-white/20" userId={member.user.id}>
-                      <AvatarImage src={member.user.profile_picture} alt={`${member.user.first_name} ${member.user.last_name}`} />
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xl">
-                        {member.user.first_name[0]}{member.user.last_name[0]}
-                      </AvatarFallback>
-                    </Avatar>
+              <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 hover:bg-white/15 transition-colors cursor-pointer h-full">
+                <CardContent className="p-6 h-full flex flex-col">
+                  <div className="flex items-start gap-4 flex-1">
+                    {/* Avatar with Hover Card */}
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="relative z-10"
+                    >
+                      <Avatar 
+                        className="h-16 w-16 border-4 border-white/20 flex-shrink-0" 
+                        userId={member.user.id}
+                        showHoverCard={true}
+                        username={member.user.username}
+                        firstName={member.user.first_name}
+                        lastName={member.user.last_name}
+                        profilePicture={member.user.profile_picture}
+                        bio={member.user.bio}
+                      >
+                        <AvatarImage src={member.user.profile_picture} alt={`${member.user.first_name} ${member.user.last_name}`} />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xl">
+                          {member.user.first_name[0]}{member.user.last_name[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
 
                     {/* Member Info */}
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 flex flex-col">
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="font-semibold text-white truncate">
                           {member.user.first_name} {member.user.last_name}
@@ -121,15 +136,20 @@ export default function CommunityMembersView({
                       <p className="text-white/60 text-sm truncate mb-3 group-hover:text-white/80 transition-colors">
                         @{member.user.username}
                       </p>
-                      <div className="flex items-center gap-1 text-white/40 text-xs">
+                      <div className="flex items-center gap-1 text-white/40 text-xs mb-3">
                         <Calendar className="h-3 w-3" />
                         <span>Joined {new Date(member.joined_at).toLocaleDateString()}</span>
                       </div>
-                      {member.user.bio && (
-                        <p className="text-white/50 text-xs mt-3 line-clamp-2">
-                          {member.user.bio}
-                        </p>
-                      )}
+                      {/* Bio section - always rendered to maintain consistent height */}
+                      <div className="mt-auto min-h-[2.5rem]">
+                        {member.user.bio ? (
+                          <p className="text-white/50 text-xs line-clamp-2">
+                            {member.user.bio}
+                          </p>
+                        ) : (
+                          <div className="h-10" />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </CardContent>

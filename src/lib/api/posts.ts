@@ -30,7 +30,8 @@ export async function insertPost(input: CreatePostInput): Promise<PostWithAuthor
           username,
           first_name,
           last_name,
-          profile_picture
+          profile_picture,
+          bio
         ),
         media:post_media(
           id,
@@ -62,7 +63,8 @@ export async function fetchCommentsWithReplies(postId: string, userId?: string):
           username,
           first_name,
           last_name,
-          profile_picture
+          profile_picture,
+          bio
         ),
         media:post_media(
           id,
@@ -97,7 +99,8 @@ export async function fetchCommentsWithReplies(postId: string, userId?: string):
           username,
           first_name,
           last_name,
-          profile_picture
+          profile_picture,
+          bio
         ),
         media:post_media(
           id,

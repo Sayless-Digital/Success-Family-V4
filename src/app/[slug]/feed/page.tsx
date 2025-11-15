@@ -47,7 +47,8 @@ export default async function FeedPage({ params }: FeedPageProps) {
           username,
           first_name,
           last_name,
-          profile_picture
+          profile_picture,
+          bio
         ),
         media:post_media(
           id,

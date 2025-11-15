@@ -262,12 +262,22 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
                       href={`/profile/${user.username}`}
                       className="flex items-center gap-3 p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-200 group"
                     >
-                      <Avatar className="h-10 w-10 border-2 border-white/20 flex-shrink-0" userId={user.id}>
-                        <AvatarImage src={user.profile_picture || ""} alt={`${user.first_name} ${user.last_name}`} />
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-sm">
-                          {user.first_name?.[0]}{user.last_name?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Avatar 
+                          className="h-10 w-10 border-2 border-white/20 flex-shrink-0" 
+                          userId={user.id}
+                          showHoverCard={true}
+                          username={user.username}
+                          firstName={user.first_name || undefined}
+                          lastName={user.last_name || undefined}
+                          profilePicture={user.profile_picture || undefined}
+                        >
+                          <AvatarImage src={user.profile_picture || ""} alt={`${user.first_name} ${user.last_name}`} />
+                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white text-sm">
+                            {user.first_name?.[0]}{user.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-white font-medium text-sm truncate group-hover:text-white/90">
                           {user.first_name} {user.last_name}

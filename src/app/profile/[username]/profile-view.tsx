@@ -445,6 +445,7 @@ export default function ProfileView({
       decay: 0.94,
       startVelocity: 30,
       scalar: 1.2,
+      zIndex: 10000, // Ensure confetti appears above sidebar (z-9000)
     })
 
     // Add extra sparkle burst
@@ -459,6 +460,7 @@ export default function ProfileView({
         decay: 0.9,
         startVelocity: 20,
         scalar: 0.8,
+        zIndex: 10000, // Ensure confetti appears above sidebar (z-9000)
       })
     }, 150)
   }
@@ -1558,7 +1560,8 @@ export default function ProfileView({
             username: user.username,
             first_name: user.first_name,
             last_name: user.last_name,
-            profile_picture: user.profile_picture
+            profile_picture: user.profile_picture,
+            bio: user.bio
           }
           const communitySlug = (post as any).community_slug
           const postLink = communitySlug ? `/${communitySlug}/feed#post-${post.id}` : '#'
@@ -1572,22 +1575,29 @@ export default function ProfileView({
                 {/* Post Header */}
                 <div className="flex gap-4 mb-3">
                   {/* Author Avatar */}
-                  <Link 
-                    href={`/profile/${postAuthor.username}`}
+                  <div 
                     onClick={(e) => e.stopPropagation()}
                     className="flex-shrink-0 avatar-feedback"
-                    prefetch={true}
                   >
-                      <Avatar className="h-10 w-10 border-4 border-white/20" userId={postAuthor?.id}>
-                        <AvatarImage 
-                          src={postAuthor?.profile_picture} 
-                          alt={`${postAuthor?.first_name} ${postAuthor?.last_name}`} 
-                        />
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                          {postAuthor?.first_name?.[0] || ''}{postAuthor?.last_name?.[0] || ''}
-                        </AvatarFallback>
-                      </Avatar>
-                    </Link>
+                    <Avatar 
+                      className="h-10 w-10 border-4 border-white/20" 
+                      userId={postAuthor?.id}
+                      showHoverCard={true}
+                      username={postAuthor?.username}
+                      firstName={postAuthor?.first_name}
+                      lastName={postAuthor?.last_name}
+                      profilePicture={postAuthor?.profile_picture}
+                      bio={postAuthor?.bio}
+                    >
+                      <AvatarImage 
+                        src={postAuthor?.profile_picture} 
+                        alt={`${postAuthor?.first_name} ${postAuthor?.last_name}`} 
+                      />
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                        {postAuthor?.first_name?.[0] || ''}{postAuthor?.last_name?.[0] || ''}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
 
                     {/* Post Info */}
                     <div className="flex items-center gap-2 flex-1">
@@ -1635,9 +1645,16 @@ export default function ProfileView({
                       </Badge>
                     )}
                     {post.boost_reward_message && (
-                      <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20">
-                        <Crown className="h-3 w-3 mr-1" />
-                        Reward
+                      <Badge 
+                        variant="outline" 
+                        className="text-white border-yellow-400/50 relative overflow-hidden"
+                        style={{
+                          background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                          boxShadow: '0 0 10px rgba(255, 215, 0, 0.5), 0 0 20px rgba(147, 51, 234, 0.3)',
+                        }}
+                      >
+                        <Crown className="h-3 w-3 mr-1 relative z-10 drop-shadow-lg" />
+                        <span className="relative z-10 drop-shadow-lg font-semibold">Boost for Reward</span>
                       </Badge>
                     )}
                   </div>

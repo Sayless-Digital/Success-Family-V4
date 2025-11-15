@@ -314,12 +314,22 @@ export function PostMediaSlider({ media, author, userHasBoosted = false, authorI
                       transformOrigin: 'center center'
                     }}
                     >
-                      <Avatar className="h-10 w-10 border-2 border-white/20" userId={author?.id}>
-                        <AvatarImage src={author.profile_picture} alt={`${author.first_name} ${author.last_name}`} />
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
-                          {author.first_name[0]}{author.last_name[0]}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Avatar 
+                          className="h-10 w-10 border-2 border-white/20" 
+                          userId={author?.id}
+                          showHoverCard={!!author?.id}
+                          username={author?.username}
+                          firstName={author?.first_name}
+                          lastName={author?.last_name}
+                          profilePicture={author?.profile_picture}
+                        >
+                          <AvatarImage src={author.profile_picture} alt={`${author.first_name} ${author.last_name}`} />
+                          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                            {author.first_name[0]}{author.last_name[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
                     </div>
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                       {playingAudio === voiceNote.id ? (
