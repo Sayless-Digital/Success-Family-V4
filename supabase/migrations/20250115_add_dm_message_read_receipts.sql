@@ -110,3 +110,5 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 COMMENT ON FUNCTION public.mark_messages_as_read
   IS 'Marks multiple messages in a thread as read by a user. Returns the number of messages marked as read.';
 
+
+

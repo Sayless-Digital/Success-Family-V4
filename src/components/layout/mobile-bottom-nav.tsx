@@ -11,7 +11,6 @@ import { AuthDialog } from "@/components/auth-dialog"
 import { useAuth } from "@/components/auth-provider"
 import { useUnreadMessagesCount } from "@/hooks/use-unread-messages-count"
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
 
 interface MobileBottomNavProps {
   isMobile: boolean
@@ -23,6 +22,11 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const { unreadCount } = useUnreadMessagesCount(user?.id ?? null)
+  
+  // Debug: Log unread count changes
+  React.useEffect(() => {
+    console.log("[MobileBottomNav] Unread count changed:", unreadCount)
+  }, [unreadCount])
   
   // Check if we're on the home page
   const isHomePage = pathname === "/"
@@ -195,7 +199,10 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                     <MessageCircle className="h-4 w-4" />
                   </Button>
                   {unreadCount > 0 && (
-                    <Badge className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md">
+                    <Badge 
+                      key={`unread-${unreadCount}`}
+                      className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md"
+                    >
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </Badge>
                   )}
@@ -204,12 +211,26 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={cn(
-                      "h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
-                      !isHomePage && "animate-shimmer"
-                    )}
+                    className="h-9 w-9 rounded-full touch-feedback relative overflow-hidden"
+                    style={{
+                      background: isHomePage 
+                        ? 'linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(147, 51, 234, 0.3) 100%)'
+                        : 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(147, 51, 234, 0.2) 100%)',
+                      border: '1.5px solid rgba(255, 215, 0, 0.5)',
+                      boxShadow: isHomePage 
+                        ? '0 0 8px rgba(255, 215, 0, 0.4), 0 0 16px rgba(147, 51, 234, 0.3)'
+                        : '0 0 4px rgba(255, 215, 0, 0.3), 0 0 8px rgba(147, 51, 234, 0.2)',
+                    }}
                   >
-                    <Home className="h-4 w-4" />
+                    <Home 
+                      className="h-4 w-4 relative z-10" 
+                      style={{
+                        background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        filter: 'drop-shadow(0 0 2px rgba(255, 215, 0, 0.6))',
+                      }}
+                    />
                   </Button>
                 </Link>
                 <Link href={`/profile/${userProfile?.username || user.id}`} prefetch={true} className="flex items-center">
@@ -236,12 +257,26 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={cn(
-                      "h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
-                      !isHomePage && "animate-shimmer"
-                    )}
+                    className="h-9 w-9 rounded-full touch-feedback relative overflow-hidden"
+                    style={{
+                      background: isHomePage 
+                        ? 'linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(147, 51, 234, 0.3) 100%)'
+                        : 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(147, 51, 234, 0.2) 100%)',
+                      border: '1.5px solid rgba(255, 215, 0, 0.5)',
+                      boxShadow: isHomePage 
+                        ? '0 0 8px rgba(255, 215, 0, 0.4), 0 0 16px rgba(147, 51, 234, 0.3)'
+                        : '0 0 4px rgba(255, 215, 0, 0.3), 0 0 8px rgba(147, 51, 234, 0.2)',
+                    }}
                   >
-                    <Home className="h-4 w-4" />
+                    <Home 
+                      className="h-4 w-4 relative z-10" 
+                      style={{
+                        background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        filter: 'drop-shadow(0 0 2px rgba(255, 215, 0, 0.6))',
+                      }}
+                    />
                   </Button>
                 </Link>
               </>

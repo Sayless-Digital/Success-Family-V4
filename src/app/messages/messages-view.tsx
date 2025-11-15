@@ -190,6 +190,7 @@ export default function MessagesView({
 
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const messagesChannelRef = useRef<RealtimeChannel | null>(null)
   const threadsChannelRef = useRef<RealtimeChannel | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const typingBroadcastCooldownRef = useRef<NodeJS.Timeout | null>(null)
@@ -199,6 +200,9 @@ export default function MessagesView({
   const messagesRef = useRef(messagesByThread)
   const conversationsRef = useRef(conversations)
   const lastThreadFromQueryRef = useRef<string | null>(null)
+  const selectedThreadIdRef = useRef<string | null>(null)
+  const mobileViewRef = useRef<"list" | "conversation">(mobileView)
+  const isMobileRef = useRef(isMobile)
 
   useEffect(() => {
     attachmentsRef.current = attachments
@@ -222,6 +226,18 @@ export default function MessagesView({
   useEffect(() => {
     conversationsRef.current = conversations
   }, [conversations])
+
+  useEffect(() => {
+    selectedThreadIdRef.current = selectedThreadId
+  }, [selectedThreadId])
+
+  useEffect(() => {
+    mobileViewRef.current = mobileView
+  }, [mobileView])
+
+  useEffect(() => {
+    isMobileRef.current = isMobile
+  }, [isMobile])
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.thread_id === selectedThreadId) ?? null,
@@ -382,18 +398,29 @@ export default function MessagesView({
     setDisplayedConversations(conversations)
   }, [conversations, searchTerm])
 
+  // Scroll to bottom when thread changes
   useEffect(() => {
     if (!selectedThreadId) return
     const container = messageContainerRef.current
     if (!container) return
-    container.scrollTo({ top: container.scrollHeight, behavior: "auto" })
+    // Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight
+    })
   }, [selectedThreadId])
 
+  // Scroll to bottom when new messages arrive (only if user is near bottom)
   useEffect(() => {
     if (!selectedThreadId) return
     const container = messageContainerRef.current
     if (!container) return
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+    // Only auto-scroll if user is near the bottom (within 100px)
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    if (isNearBottom) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight
+      })
+    }
   }, [selectedMessages.length, selectedThreadId])
 
   const ensureAttachmentUrls = useCallback(
@@ -890,6 +917,13 @@ export default function MessagesView({
 
   useEffect(() => {
     if (!selectedConversation || !selectedThreadId) return
+    
+    // Only mark messages as read if the conversation is actively being viewed
+    // On mobile, check if we're in conversation view (not list view)
+    if (isMobile && mobileView !== "conversation") {
+      return
+    }
+    
     const lastMessageAt = selectedConversation.last_message_at
     const lastReadAt = selectedConversation.last_read_at
     const unread =
@@ -914,7 +948,7 @@ export default function MessagesView({
     if (unreadMessageIds.length > 0) {
       markMessagesAsRead(selectedThreadId, unreadMessageIds)
     }
-  }, [selectedConversation, selectedThreadId, handleMarkThreadRead, messagesByThread, viewer.id, markMessagesAsRead])
+  }, [selectedConversation, selectedThreadId, handleMarkThreadRead, messagesByThread, viewer.id, markMessagesAsRead, isMobile, mobileView])
 
   const cleanupChannel = useCallback(() => {
     if (channelRef.current) {
@@ -944,12 +978,11 @@ export default function MessagesView({
     cleanupChannel()
     if (!selectedThreadId || !selectedConversation) return
 
-    const channel = supabase
-      .channel(getThreadChannelName(selectedThreadId), {
+    // Create a dedicated channel for postgres_changes (separate from presence/broadcast)
+    const messagesChannel = supabase
+      .channel(`dm-messages-${selectedThreadId}`, {
         config: {
-          presence: {
-            key: viewer.id,
-          },
+          broadcast: { self: false },
         },
       })
       .on(
@@ -958,16 +991,30 @@ export default function MessagesView({
           event: "INSERT",
           schema: "public",
           table: "dm_messages",
+          filter: `thread_id=eq.${selectedThreadId}`,
         },
         async (payload) => {
-          console.log("[realtime] Received message INSERT event:", payload)
-          
-          // Filter by thread_id in the handler instead of in the subscription
-          const messageThreadId = (payload.new as { thread_id?: string })?.thread_id
-          if (!messageThreadId || messageThreadId !== selectedThreadId) {
-            console.log("[realtime] Message is for different thread, ignoring:", messageThreadId, "expected:", selectedThreadId)
-            return
-          }
+          try {
+            console.log("[realtime] Received message INSERT event:", payload)
+            
+            if (!payload || !payload.new) {
+              console.error("[realtime] Invalid payload structure:", payload)
+              return
+            }
+            
+            // Filter by thread_id in the handler instead of in the subscription
+            const messageThreadId = (payload.new as { thread_id?: string })?.thread_id
+            if (!messageThreadId) {
+              console.error("[realtime] Message missing thread_id:", payload.new)
+              return
+            }
+            
+            if (messageThreadId !== selectedThreadId) {
+              console.log("[realtime] Message is for different thread, ignoring:", messageThreadId, "expected:", selectedThreadId)
+              return
+            }
+            
+            console.log("[realtime] Processing message for current thread:", messageThreadId)
           
           const newMessage = payload.new as {
             id: string
@@ -995,6 +1042,24 @@ export default function MessagesView({
           }
 
           console.log("[realtime] Processing new message from other user:", newMessage.id, "in thread:", selectedThreadId)
+
+          // Immediately stop typing indicator when a message is received
+          setTypingIndicators((prev) => {
+            const next = { ...prev }
+            delete next[selectedThreadId]
+            return next
+          })
+          // Clear any pending typing display timeout
+          if (typingDisplayTimeoutRef.current[selectedThreadId]) {
+            clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
+            delete typingDisplayTimeoutRef.current[selectedThreadId]
+          }
+          // Immediately hide typing indicator
+          setDisplayTypingIndicators((prev) => {
+            const next = { ...prev }
+            delete next[selectedThreadId]
+            return next
+          })
 
           // Fetch attachments and read receipts in parallel
           const [attachmentsResult, readReceiptsResult] = await Promise.all([
@@ -1063,14 +1128,42 @@ export default function MessagesView({
 
           ensureAttachmentUrls(enrichedMessage.attachments ?? [])
 
-          // Mark message as read if viewing this thread
-          if (selectedThreadId === newMessage.thread_id) {
-            markMessagesAsRead(selectedThreadId, [enrichedMessage.id]).catch((error) => {
+          // Mark message as read if viewing this thread and conversation is actively open
+          // On mobile, only mark if in conversation view (not list view)
+          // Use refs to avoid stale closure values
+          const currentThreadId = selectedThreadIdRef.current
+          const currentMobileView = mobileViewRef.current
+          const currentIsMobile = isMobileRef.current
+          const isConversationActive = !currentIsMobile || currentMobileView === "conversation"
+          if (currentThreadId === newMessage.thread_id && isConversationActive) {
+            markMessagesAsRead(currentThreadId, [enrichedMessage.id]).catch((error) => {
               console.error("[realtime] Failed to mark message as read:", error)
             })
           }
+          } catch (error) {
+            console.error("[realtime] Error processing message INSERT event:", error, payload)
+          }
         },
       )
+      .subscribe(async (status, err) => {
+        console.log("[messagesChannel.subscribe] Channel status:", status, "for thread:", selectedThreadId)
+        if (err) {
+          console.error("[messagesChannel.subscribe] Subscription error:", err)
+        }
+        if (status === "SUBSCRIBED") {
+          console.log("[messagesChannel.subscribe] Successfully subscribed to messages for thread:", selectedThreadId)
+        }
+      })
+
+    // Create a separate channel for presence and typing (broadcast events)
+    const channel = supabase
+      .channel(getThreadChannelName(selectedThreadId), {
+        config: {
+          presence: {
+            key: viewer.id,
+          },
+        },
+      })
       .on(
         "presence",
         { event: "sync" },
@@ -1109,51 +1202,104 @@ export default function MessagesView({
           table: "dm_message_reads",
         },
         async (payload) => {
-          const readReceipt = payload.new as {
-            id: string
-            message_id: string
-            user_id: string
-            read_at: string
-          }
-          if (!readReceipt) return
+          try {
+            console.log("[realtime] Received read receipt INSERT event:", payload)
+            
+            const readReceipt = payload.new as {
+              id: string
+              message_id: string
+              user_id: string
+              read_at: string
+            }
+            if (!readReceipt || !readReceipt.message_id) {
+              console.error("[realtime] Invalid read receipt payload:", payload)
+              return
+            }
 
-          // Check if this read receipt is for a message in the current thread
-          const messages = messagesRef.current[selectedThreadId] ?? []
-          const messageInThread = messages.find((msg) => msg.id === readReceipt.message_id)
-          
-          if (!messageInThread) return
+            // Get current thread ID from ref to avoid stale closure
+            const currentThreadId = selectedThreadIdRef.current
+            if (!currentThreadId) {
+              console.log("[realtime] No thread selected, ignoring read receipt")
+              return
+            }
 
-          // Update the message with the new read receipt
-          setMessagesByThread((prev) => {
-            const threadMessages = prev[selectedThreadId] ?? []
-            return {
-              ...prev,
-              [selectedThreadId]: threadMessages.map((msg) => {
+            // Fetch the message to get its thread_id
+            const { data: messageData, error: messageError } = await supabase
+              .from("dm_messages")
+              .select("thread_id, sender_id")
+              .eq("id", readReceipt.message_id)
+              .single()
+
+            if (messageError || !messageData) {
+              console.error("[realtime] Error fetching message for read receipt:", messageError)
+              return
+            }
+
+            const messageThreadId = messageData.thread_id
+            if (messageThreadId !== currentThreadId) {
+              console.log("[realtime] Read receipt is for different thread, ignoring:", messageThreadId, "expected:", currentThreadId)
+              return
+            }
+
+            // Only update if this read receipt is for a message we sent
+            if (messageData.sender_id !== viewer.id) {
+              console.log("[realtime] Read receipt is not for our message, ignoring")
+              return
+            }
+
+            console.log("[realtime] Processing read receipt for message:", readReceipt.message_id, "in thread:", currentThreadId)
+
+            // Update the message with the new read receipt using functional update
+            setMessagesByThread((prev) => {
+              const threadMessages = prev[currentThreadId] ?? []
+              const messageExists = threadMessages.some((msg) => msg.id === readReceipt.message_id)
+              
+              if (!messageExists) {
+                console.log("[realtime] Message not found in current thread, skipping read receipt update")
+                return prev
+              }
+
+              let updated = false
+              const updatedMessages = threadMessages.map((msg) => {
                 if (msg.id === readReceipt.message_id) {
                   const existingReceipt = msg.read_receipts?.find(
                     (r) => r.id === readReceipt.id || (r.message_id === readReceipt.message_id && r.user_id === readReceipt.user_id)
                   )
                   if (!existingReceipt) {
+                    console.log("[realtime] Adding read receipt to message:", readReceipt.message_id)
+                    updated = true
                     return {
                       ...msg,
                       read_receipts: [...(msg.read_receipts ?? []), readReceipt],
                     }
+                  } else {
+                    console.log("[realtime] Read receipt already exists, skipping")
                   }
                 }
                 return msg
-              }),
-            }
-          })
+              })
+
+              if (!updated) {
+                return prev
+              }
+
+              return {
+                ...prev,
+                [currentThreadId]: updatedMessages,
+              }
+            })
+          } catch (error) {
+            console.error("[realtime] Error processing read receipt INSERT event:", error, payload)
+          }
         },
       )
       .subscribe(async (status, err) => {
-        console.log("[channel.subscribe] Channel status:", status, "for thread:", selectedThreadId)
+        console.log("[channel.subscribe] Presence/typing channel status:", status, "for thread:", selectedThreadId)
         if (err) {
           console.error("[channel.subscribe] Subscription error:", err)
         }
         if (status === "SUBSCRIBED") {
-          console.log("[channel.subscribe] Successfully subscribed to thread:", selectedThreadId)
-          console.log("[channel.subscribe] Listening for INSERT events on dm_messages table")
+          console.log("[channel.subscribe] Successfully subscribed to presence/typing for thread:", selectedThreadId)
           try {
             await channel.track({ userId: viewer.id, at: Date.now() })
             console.log("[channel.subscribe] Presence tracked for user:", viewer.id)
@@ -1169,10 +1315,22 @@ export default function MessagesView({
         }
       })
 
+    // Store both channels
     channelRef.current = channel
+    messagesChannelRef.current = messagesChannel
 
     return () => {
       cleanupChannel()
+      // Also cleanup messages channel
+      if (messagesChannelRef.current) {
+        try {
+          supabase.removeChannel(messagesChannelRef.current)
+        } catch (error) {
+          console.error("[cleanupMessagesChannel] Error removing messages channel:", error)
+        } finally {
+          messagesChannelRef.current = null
+        }
+      }
     }
   }, [cleanupChannel, ensureAttachmentUrls, markMessagesAsRead, selectedConversation, selectedThreadId, viewer.id])
 
@@ -1315,6 +1473,8 @@ export default function MessagesView({
   }, [selectedThreadId, typingIndicators])
 
   // Add grace period for typing indicator display (prevents flicker on brief pauses)
+  // Note: Grace period only applies if typing stops without a message being sent
+  // If a message is sent, the typing indicator is cleared immediately in the message handler
   useEffect(() => {
     if (!selectedThreadId) return
 
@@ -1333,17 +1493,29 @@ export default function MessagesView({
         delete typingDisplayTimeoutRef.current[selectedThreadId]
       }
     } else {
-      // Keep showing for 2 more seconds after typing stops (grace period)
-      const timeout = setTimeout(() => {
-        setDisplayTypingIndicators((prev) => {
-          const next = { ...prev }
-          delete next[selectedThreadId]
-          return next
-        })
-        delete typingDisplayTimeoutRef.current[selectedThreadId]
-      }, 2000)
-      
-      typingDisplayTimeoutRef.current[selectedThreadId] = timeout
+      // Only apply grace period if typing stopped (not if message was sent)
+      // Use a ref to check current state without causing re-renders
+      setDisplayTypingIndicators((prev) => {
+        const isCurrentlyDisplayed = prev[selectedThreadId]
+        if (isCurrentlyDisplayed) {
+          // Keep showing for 2 more seconds after typing stops (grace period)
+          // Clear any existing timeout first
+          if (typingDisplayTimeoutRef.current[selectedThreadId]) {
+            clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
+          }
+          const timeout = setTimeout(() => {
+            setDisplayTypingIndicators((current) => {
+              const next = { ...current }
+              delete next[selectedThreadId]
+              return next
+            })
+            delete typingDisplayTimeoutRef.current[selectedThreadId]
+          }, 2000)
+          
+          typingDisplayTimeoutRef.current[selectedThreadId] = timeout
+        }
+        return prev
+      })
     }
 
     return () => {
@@ -1856,8 +2028,79 @@ export default function MessagesView({
       return
     }
 
+    // Create optimistic message ID
+    const optimisticMessageId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const now = new Date().toISOString()
+    
+    // Create optimistic message
+    const optimisticMessage: MessageResult = {
+      id: optimisticMessageId,
+      thread_id: normalizedThreadId,
+      sender_id: viewer.id,
+      message_type: "text",
+      content: trimmed.length > 0 ? trimmed : null,
+      metadata: null,
+      has_attachments: readyAttachments.length > 0,
+      reply_to_message_id: null,
+      created_at: now,
+      updated_at: now,
+      is_deleted: false,
+      attachments: readyAttachments.map((attachment) => ({
+        id: `temp-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        message_id: optimisticMessageId,
+        media_type: attachment.mediaType,
+        storage_path: attachment.storagePath ?? "",
+        mime_type: attachment.mimeType ?? null,
+        file_size: attachment.fileSize ?? null,
+        duration_seconds: attachment.durationSeconds ?? null,
+        file_name: attachment.fileName ?? null,
+        created_at: now,
+      })),
+      read_receipts: [],
+    }
+
+    // Add optimistic message immediately
+    setMessagesByThread((prev) => ({
+      ...prev,
+      [normalizedThreadId]: [...(prev[normalizedThreadId] ?? []), optimisticMessage],
+    }))
+    
+    const hasImage = optimisticMessage.attachments?.some(a => a.media_type === "image") ?? false
+    setConversations((prev) =>
+      prev
+        .map((item) =>
+          item.thread_id === normalizedThreadId
+            ? {
+                ...item,
+                last_message_at: now,
+                last_message_preview: optimisticMessage.content ?? (hasImage ? "[image]" : (optimisticMessage.attachments?.length ? "[attachment]" : "")),
+                last_message_sender_id: viewer.id,
+                updated_at: now,
+              }
+            : item,
+        )
+        .sort((a, b) => {
+          const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
+          const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
+          return bTime - aTime
+        }),
+    )
+
+    // Ensure attachment URLs for optimistic message
+    ensureAttachmentUrls(optimisticMessage.attachments ?? [])
+    resetComposer()
+    
+    // Scroll to bottom immediately
+    requestAnimationFrame(() => {
+      const container = messageContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    })
+
+    // Send message in background (don't block UI)
+    setIsSending(true)
     try {
-      setIsSending(true)
       const response = await fetch(`/api/dm/threads/${normalizedThreadId}/messages`, {
         method: "POST",
         headers: {
@@ -1889,13 +2132,33 @@ export default function MessagesView({
         const withAttachments: MessageResult = {
           ...sentMessage,
           attachments: sentMessage.attachments ?? [],
+          read_receipts: [],
         }
 
-        setMessagesByThread((prev) => ({
-          ...prev,
-          [normalizedThreadId]: [...(prev[normalizedThreadId] ?? []), withAttachments],
-        }))
-        const hasImage = withAttachments.attachments?.some(a => a.media_type === "image") ?? false
+        // Replace optimistic message with real message
+        setMessagesByThread((prev) => {
+          const existingMessages = prev[normalizedThreadId] ?? []
+          const optimisticIndex = existingMessages.findIndex((msg) => msg.id === optimisticMessageId)
+          
+          if (optimisticIndex >= 0) {
+            // Replace optimistic message with real one
+            const updated = [...existingMessages]
+            updated[optimisticIndex] = withAttachments
+            return {
+              ...prev,
+              [normalizedThreadId]: updated,
+            }
+          } else {
+            // Optimistic message not found, just add the real one
+            return {
+              ...prev,
+              [normalizedThreadId]: [...existingMessages, withAttachments],
+            }
+          }
+        })
+        
+        // Update conversation with real message data
+        const hasImageReal = withAttachments.attachments?.some(a => a.media_type === "image") ?? false
         setConversations((prev) =>
           prev
             .map((item) =>
@@ -1903,7 +2166,7 @@ export default function MessagesView({
                 ? {
                     ...item,
                     last_message_at: withAttachments.created_at,
-                    last_message_preview: withAttachments.content ?? (hasImage ? "[image]" : (withAttachments.attachments?.length ? "[attachment]" : "")),
+                    last_message_preview: withAttachments.content ?? (hasImageReal ? "[image]" : (withAttachments.attachments?.length ? "[attachment]" : "")),
                     last_message_sender_id: viewer.id,
                     updated_at: new Date().toISOString(),
                   }
@@ -1917,10 +2180,51 @@ export default function MessagesView({
         )
 
         ensureAttachmentUrls(withAttachments.attachments ?? [])
-        resetComposer()
       }
     } catch (error) {
       console.error(error)
+      
+      // Remove optimistic message on error and revert conversation preview
+      setMessagesByThread((prev) => {
+        const existingMessages = prev[normalizedThreadId] ?? []
+        const realMessages = existingMessages.filter((msg) => msg.id !== optimisticMessageId)
+        const lastRealMessage = realMessages[realMessages.length - 1]
+        
+        // Update conversation preview with previous message (if exists)
+        if (lastRealMessage) {
+          const hasImage = lastRealMessage.attachments?.some(a => a.media_type === "image") ?? false
+          setConversations((convPrev) =>
+            convPrev
+              .map((item) =>
+                item.thread_id === normalizedThreadId
+                  ? {
+                      ...item,
+                      last_message_at: lastRealMessage.created_at,
+                      last_message_preview: lastRealMessage.content ?? (hasImage ? "[image]" : (lastRealMessage.attachments?.length ? "[attachment]" : "")),
+                      last_message_sender_id: lastRealMessage.sender_id,
+                      updated_at: lastRealMessage.updated_at,
+                    }
+                  : item,
+              )
+              .sort((a, b) => {
+                const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
+                const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
+                return bTime - aTime
+              }),
+          )
+        }
+        
+        // Remove optimistic message
+        return {
+          ...prev,
+          [normalizedThreadId]: realMessages,
+        }
+      })
+      
+      // Restore composer content
+      setComposerValue(trimmed)
+      setAttachments(readyAttachments)
+      
       const fallback = "Could not send your message. Please try again."
       const message = error instanceof Error ? error.message || fallback : fallback
       toast.error(message)
@@ -2098,6 +2402,20 @@ export default function MessagesView({
 
   const typingActive = selectedThreadId ? displayTypingIndicators[selectedThreadId] : false
   const peerProfile = selectedConversation?.other_user_profile ?? null
+
+  // Scroll to bottom when typing indicator appears (only if user is near bottom)
+  useEffect(() => {
+    if (!selectedThreadId || !typingActive) return
+    const container = messageContainerRef.current
+    if (!container) return
+    // Only auto-scroll if user is near the bottom (within 100px)
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    if (isNearBottom) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight
+      })
+    }
+  }, [typingActive, selectedThreadId])
   const peerName = getDisplayName(peerProfile)
   const peerInitials = getInitials(peerProfile)
   const peerAvatar = peerProfile?.profile_picture ?? null
@@ -2667,6 +2985,13 @@ export default function MessagesView({
                                   ? readReceipts.some((r) => r.user_id === otherUserId)
                                   : false
                                 
+                                // Determine message status for dots
+                                const isSending = isOwn && message.id.startsWith('temp-')
+                                const isReadState = isOwn && isRead
+                                // For non-temp messages that aren't read, show as "delivered" (gold/purple)
+                                // This indicates the message was delivered but not yet read
+                                const isDelivered = isOwn && !isSending && !isReadState
+                                
                                 return (
                                   <div className={cn(
                                     "absolute flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded",
@@ -2678,11 +3003,40 @@ export default function MessagesView({
                                   )}>
                                     {formatTimestamp(message.created_at)}
                                     {isOwn && (
-                                      <span className="flex-shrink-0">
-                                        {isRead ? (
-                                          <CheckCheck className="h-3 w-3 text-white/70" />
+                                      <span className="flex-shrink-0 ml-1">
+                                        {isSending ? (
+                                          // Sending: White dot with glow
+                                          <span 
+                                            className="inline-block h-2 w-2 rounded-full bg-white border border-white/50 animate-pulse"
+                                            style={{
+                                              boxShadow: '0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px rgba(255, 255, 255, 0.3)',
+                                            }}
+                                          />
+                                        ) : isReadState ? (
+                                          // Read: Green/blue gradient dot
+                                          <span 
+                                            className="inline-block h-2 w-2 rounded-full"
+                                            style={{
+                                              background: 'linear-gradient(135deg, #10B981 0%, #3B82F6 50%, #06B6D4 100%)',
+                                              border: '1px solid rgba(16, 185, 129, 0.6)',
+                                              boxShadow: '0 0 6px rgba(16, 185, 129, 0.5), 0 0 12px rgba(59, 130, 246, 0.3)',
+                                            }}
+                                          />
+                                        ) : isDelivered ? (
+                                          // Delivered (not read): Gold/purple gradient dot
+                                          <span 
+                                            className="inline-block h-2 w-2 rounded-full"
+                                            style={{
+                                              background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                                              border: '1px solid rgba(255, 215, 0, 0.6)',
+                                              boxShadow: '0 0 6px rgba(255, 215, 0, 0.5), 0 0 12px rgba(147, 51, 234, 0.3)',
+                                            }}
+                                          />
                                         ) : (
-                                          <Check className="h-3 w-3 text-white/50" />
+                                          // Fallback: White dot
+                                          <span 
+                                            className="inline-block h-2 w-2 rounded-full bg-white/40 border border-white/20"
+                                          />
                                         )}
                                       </span>
                                     )}
@@ -2742,8 +3096,6 @@ export default function MessagesView({
                           </div>
                         </div>
                       )}
-                      
-                        <div className="h-1" />
                       </div>
                     )}
                   </div>
@@ -3130,24 +3482,32 @@ export default function MessagesView({
                         className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-0.5 sm:pb-1.5"
                         rows={1}
                         onKeyDown={(event) => {
-                          // On mobile: Enter creates new line, Shift+Enter sends
-                          // On desktop: Enter sends, Shift+Enter creates new line
-                          if (event.key === "Enter") {
-                            if (isMobile) {
-                              // On mobile, allow Enter to create new line (default behavior)
-                              // Only prevent default and send if Shift+Enter is pressed
+                          if (event.key === "Enter" || event.keyCode === 13) {
+                            // Desktop: Enter sends, Shift+Enter creates new line
+                            // Mobile: Enter creates new line, Shift+Enter sends
+                            
+                            if (!isMobile) {
+                              // DESKTOP: Enter sends, Shift+Enter creates new line
                               if (event.shiftKey) {
+                                // Shift+Enter pressed: allow default (new line)
+                                // Do nothing - let browser handle it
+                              } else {
+                                // Enter pressed (no Shift): send message
                                 event.preventDefault()
-                                handleSendMessage()
+                                event.stopPropagation()
+                                if (!isSending && !composerDisabled) {
+                                  handleSendMessage()
+                                }
                               }
-                              // Otherwise, let Enter create a new line (no preventDefault)
                             } else {
-                              // On desktop, Enter sends, Shift+Enter creates new line
-                              if (!event.shiftKey) {
+                              // MOBILE: Enter creates new line, Shift+Enter sends
+                              if (event.shiftKey) {
+                                // Shift+Enter pressed: send message
                                 event.preventDefault()
+                                event.stopPropagation()
                                 handleSendMessage()
                               }
-                              // If Shift+Enter, allow default behavior (new line)
+                              // Enter pressed (no Shift): allow default (new line)
                             }
                           }
                         }}

@@ -93,6 +93,7 @@ export function useUnreadMessagesCount(userId: string | null) {
         }
 
         if (!isCancelled) {
+          console.log("[useUnreadMessagesCount] Setting unread count:", totalUnread)
           setUnreadCount(totalUnread)
           setIsLoading(false)
         }
@@ -109,12 +110,12 @@ export function useUnreadMessagesCount(userId: string | null) {
     fetchUnreadCount()
 
     // Set up Realtime subscription immediately (no delay)
+    // Use a simpler channel config - no presence needed since we're only listening to postgres_changes
     try {
       const channel = supabase
         .channel(`unread-messages-${userId}`, {
           config: {
             broadcast: { self: false },
-            presence: { key: userId },
           },
         })
         .on(
@@ -124,32 +125,49 @@ export function useUnreadMessagesCount(userId: string | null) {
             schema: "public",
             table: "dm_messages",
           },
-          (payload) => {
+          async (payload) => {
             if (isCancelled || !channelSubscribed) return
 
-            const newMessage = payload.new as any
-            if (!newMessage) return
+            try {
+              const newMessage = payload.new as any
+              if (!newMessage || !newMessage.thread_id || !newMessage.sender_id) {
+                console.warn("[useUnreadMessagesCount] Invalid message payload:", payload)
+                return
+              }
 
-            // Ignore messages from the current user
-            if (newMessage.sender_id === userId) return
+              // Ignore messages from the current user
+              if (newMessage.sender_id === userId) return
 
-            // Check if this message is in a thread where the user is a participant
-            const threadMetadata = threadMetadataRef.current.get(newMessage.thread_id)
-            if (!threadMetadata) {
-              // User might have just joined the thread, refetch to be safe
+              // Check if this message is in a thread where the user is a participant
+              const threadMetadata = threadMetadataRef.current.get(newMessage.thread_id)
+              if (!threadMetadata) {
+                // User might have just joined the thread, refetch to be safe
+                console.log("[useUnreadMessagesCount] Thread metadata not found, refetching count")
+                fetchUnreadCount()
+                return
+              }
+
+              // Check if message is unread (created after last_read_at)
+              const messageCreatedAt = new Date(newMessage.created_at)
+              const lastReadAt = threadMetadata.last_read_at
+                ? new Date(threadMetadata.last_read_at)
+                : null
+
+              // If no last_read_at or message is newer, increment count immediately
+              if (!lastReadAt || messageCreatedAt > lastReadAt) {
+                console.log("[useUnreadMessagesCount] Incrementing unread count for new message:", newMessage.id)
+                setUnreadCount((prev) => {
+                  const newCount = Math.max(0, prev + 1)
+                  console.log("[useUnreadMessagesCount] Unread count update:", prev, "->", newCount, "for userId:", userId)
+                  return newCount
+                })
+              } else {
+                console.log("[useUnreadMessagesCount] Message is already read, skipping increment")
+              }
+            } catch (error) {
+              console.error("[useUnreadMessagesCount] Error processing message INSERT:", error)
+              // Refetch on error to ensure accuracy
               fetchUnreadCount()
-              return
-            }
-
-            // Check if message is unread (created after last_read_at)
-            const messageCreatedAt = new Date(newMessage.created_at)
-            const lastReadAt = threadMetadata.last_read_at
-              ? new Date(threadMetadata.last_read_at)
-              : null
-
-            // If no last_read_at or message is newer, increment count immediately
-            if (!lastReadAt || messageCreatedAt > lastReadAt) {
-              setUnreadCount((prev) => prev + 1)
             }
           },
         )
@@ -159,27 +177,49 @@ export function useUnreadMessagesCount(userId: string | null) {
             event: "UPDATE",
             schema: "public",
             table: "dm_participants",
-            filter: `user_id=eq.${userId}`,
+            // Remove filter - handle filtering in handler to ensure we catch all updates
           },
-          (payload) => {
+          async (payload) => {
             if (isCancelled || !channelSubscribed) return
 
-            const updated = payload.new as any
-            if (!updated) return
+            try {
+              const updated = payload.new as any
+              if (!updated || !updated.thread_id || !updated.user_id) {
+                console.warn("[useUnreadMessagesCount] Invalid participant UPDATE payload:", payload)
+                return
+              }
 
-            // Update thread metadata cache
-            const oldMetadata = threadMetadataRef.current.get(updated.thread_id)
-            const newLastReadAt = updated.last_read_at
+              // Filter by user_id in handler instead of subscription filter
+              if (updated.user_id !== userId) {
+                return
+              }
 
-            threadMetadataRef.current.set(updated.thread_id, {
-              thread_id: updated.thread_id,
-              last_read_at: newLastReadAt,
-            })
+              console.log("[useUnreadMessagesCount] Participant UPDATE received:", {
+                thread_id: updated.thread_id,
+                user_id: updated.user_id,
+                old_last_read_at: payload.old?.last_read_at,
+                new_last_read_at: updated.last_read_at,
+              })
 
-            // If last_read_at was updated, we need to recalculate the count
-            // because messages that were unread might now be read
-            if (oldMetadata?.last_read_at !== newLastReadAt) {
-              // Refetch to get accurate count
+              // Update thread metadata cache
+              const oldMetadata = threadMetadataRef.current.get(updated.thread_id)
+              const newLastReadAt = updated.last_read_at
+
+              threadMetadataRef.current.set(updated.thread_id, {
+                thread_id: updated.thread_id,
+                last_read_at: newLastReadAt,
+              })
+
+              // If last_read_at was updated, we need to recalculate the count
+              // because messages that were unread might now be read
+              if (oldMetadata?.last_read_at !== newLastReadAt) {
+                console.log("[useUnreadMessagesCount] last_read_at changed, refetching count")
+                // Refetch to get accurate count
+                fetchUnreadCount()
+              }
+            } catch (error) {
+              console.error("[useUnreadMessagesCount] Error processing participant UPDATE:", error)
+              // Refetch on error to ensure accuracy
               fetchUnreadCount()
             }
           },
@@ -190,30 +230,77 @@ export function useUnreadMessagesCount(userId: string | null) {
             event: "INSERT",
             schema: "public",
             table: "dm_participants",
-            filter: `user_id=eq.${userId}`,
+            // Remove filter - handle filtering in handler
           },
-          () => {
-            // User joined a new thread, refetch to include it
-            if (!isCancelled && channelSubscribed) {
+          async (payload) => {
+            if (isCancelled || !channelSubscribed) return
+
+            try {
+              const newParticipant = payload.new as any
+              if (!newParticipant || !newParticipant.user_id) {
+                return
+              }
+
+              // Filter by user_id in handler
+              if (newParticipant.user_id !== userId) {
+                return
+              }
+
+              console.log("[useUnreadMessagesCount] New participant INSERT, refetching count")
+              // User joined a new thread, refetch to include it
+              fetchUnreadCount()
+            } catch (error) {
+              console.error("[useUnreadMessagesCount] Error processing participant INSERT:", error)
               fetchUnreadCount()
             }
           },
         )
-        .subscribe((status) => {
+        .subscribe(async (status, err) => {
           if (isCancelled) return
+
+          if (err) {
+            console.error(`[useUnreadMessagesCount] Subscription error:`, err)
+            channelSubscribed = false
+            // Retry subscription after a delay
+            if (!isCancelled) {
+              setTimeout(() => {
+                if (!isCancelled && channelRef.current) {
+                  console.log("[useUnreadMessagesCount] Retrying subscription after error...")
+                  channelRef.current.subscribe()
+                }
+              }, 3000)
+            }
+            // Still refetch to get current count
+            fetchUnreadCount()
+            return
+          }
 
           if (status === "SUBSCRIBED") {
             channelSubscribed = true
+            console.log("[useUnreadMessagesCount] Successfully subscribed to realtime")
             // Refetch to ensure count is accurate after subscription is active
             fetchUnreadCount()
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.error(`[useUnreadMessagesCount] Channel error: ${status}`)
+            console.error(`[useUnreadMessagesCount] Channel error: ${status}, attempting to resubscribe...`)
             channelSubscribed = false
+            
+            // Retry subscription after a delay
+            if (!isCancelled) {
+              setTimeout(() => {
+                if (!isCancelled && channelRef.current) {
+                  console.log("[useUnreadMessagesCount] Retrying subscription after channel error...")
+                  channelRef.current.subscribe()
+                }
+              }, 3000)
+            }
+            
+            // Still refetch to get current count
             if (!isCancelled) {
               fetchUnreadCount()
             }
           } else if (status === "CLOSED") {
             channelSubscribed = false
+            console.log("[useUnreadMessagesCount] Channel closed")
           }
         })
 
@@ -232,17 +319,22 @@ export function useUnreadMessagesCount(userId: string | null) {
 
       if (channelRef.current) {
         try {
+          console.log("[useUnreadMessagesCount] Cleaning up channel for userId:", userId)
           supabase.removeChannel(channelRef.current)
         } catch (error) {
-          // Ignore cleanup errors
+          console.error("[useUnreadMessagesCount] Error removing channel:", error)
+        } finally {
+          channelRef.current = null
         }
-        channelRef.current = null
       }
     }
   }, [userId])
 
   return { unreadCount, isLoading }
 }
+
+
+
 
 
 

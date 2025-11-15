@@ -40,6 +40,11 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   const { user, userProfile, walletBalance, walletEarningsBalance, userValuePerPoint, signOut, isLoading, refreshProfile } = useAuth()
   const pathname = usePathname()
   const { unreadCount } = useUnreadMessagesCount(user?.id ?? null)
+  
+  // Debug: Log unread count changes
+  React.useEffect(() => {
+    console.log("[GlobalHeader] Unread count changed:", unreadCount)
+  }, [unreadCount])
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -586,10 +591,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
 
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
         <div className="flex items-center gap-2">
-          {isLoading ? (
-            // Show loading state to prevent flash - but with timeout protection (desktop only)
-            <div className="hidden md:block h-8 w-8 rounded-full bg-white/10 animate-pulse" />
-          ) : user && !userProfile && !isRetryingProfile ? (
+          {user && !userProfile && !isRetryingProfile ? (
             // User is authenticated but profile failed to load - show retry option
             <Button
               variant="ghost"
@@ -681,7 +683,10 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                 <MessageCircle className="h-4 w-4" />
               </Button>
               {unreadCount > 0 && (
-                <Badge className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md">
+                <Badge 
+                  key={`unread-${unreadCount}`}
+                  className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md"
+                >
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </Badge>
               )}
@@ -692,11 +697,19 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
           {user && (
             <Link href={`/profile/${userProfile?.username || ''}`} className="cursor-pointer flex items-center hidden md:flex">
               <Button variant="ghost" className="h-10 w-10 rounded-full p-0 avatar-feedback cursor-pointer flex items-center justify-center">
-                <Avatar className="h-8 w-8 border-2 border-white/20" userId={user?.id}>
-                  <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
-                  <AvatarFallback className="text-xs">
-                    {userProfile ? userInitials : "..."}
-                  </AvatarFallback>
+                <Avatar 
+                  className="h-8 w-8 border-2 border-white/20" 
+                  userId={user?.id}
+                  loading={isLoading || !userProfile}
+                >
+                  {!isLoading && userProfile && (
+                    <>
+                      <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
+                      <AvatarFallback className="text-xs">
+                        {userInitials}
+                      </AvatarFallback>
+                    </>
+                  )}
                 </Avatar>
               </Button>
             </Link>
