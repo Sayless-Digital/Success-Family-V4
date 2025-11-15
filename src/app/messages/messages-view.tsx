@@ -6,6 +6,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import {
   ArrowLeft,
+  Check,
+  CheckCheck,
   ChevronDown,
   Download,
   FileText,
@@ -14,7 +16,6 @@ import {
   MessageCircle,
   Mic,
   Paperclip,
-  Pause,
   Play,
   Search,
   Send,
@@ -172,8 +173,8 @@ export default function MessagesView({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxImages, setLightboxImages] = useState<Array<{ id: string; url: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -836,6 +837,57 @@ export default function MessagesView({
     }
   }, [handleSelectConversation, pathname, refreshConversations, router, searchParams])
 
+  // Mark messages as read when viewing them
+  const markMessagesAsRead = useCallback(async (threadId: string, messageIds: string[]) => {
+    if (messageIds.length === 0) return
+    
+    try {
+      const response = await fetch(`/api/dm/threads/${threadId}/messages/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageIds }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to mark messages as read")
+      }
+
+      // Update read receipts in local state
+      setMessagesByThread((prev) => {
+        const messages = prev[threadId] ?? []
+        const now = new Date().toISOString()
+        const otherUserId = selectedConversation?.other_user_id
+        
+        return {
+          ...prev,
+          [threadId]: messages.map((msg) => {
+            // Only update read receipts for messages sent by the other user
+            if (msg.sender_id !== viewer.id && messageIds.includes(msg.id) && otherUserId) {
+              const existingReceipt = msg.read_receipts?.find((r) => r.user_id === viewer.id)
+              if (!existingReceipt) {
+                return {
+                  ...msg,
+                  read_receipts: [
+                    ...(msg.read_receipts ?? []),
+                    {
+                      id: `temp-${msg.id}-${viewer.id}`,
+                      message_id: msg.id,
+                      user_id: viewer.id,
+                      read_at: now,
+                    },
+                  ],
+                }
+              }
+            }
+            return msg
+          }),
+        }
+      })
+    } catch (error) {
+      console.error("[markMessagesAsRead] Error:", error)
+    }
+  }, [viewer.id, selectedConversation])
+
   useEffect(() => {
     if (!selectedConversation || !selectedThreadId) return
     const lastMessageAt = selectedConversation.last_message_at
@@ -846,7 +898,23 @@ export default function MessagesView({
     if (unread) {
       handleMarkThreadRead(selectedThreadId)
     }
-  }, [selectedConversation, selectedThreadId, handleMarkThreadRead])
+
+    // Mark all unread messages from the other user as read
+    const messages = messagesByThread[selectedThreadId] ?? []
+    const unreadMessageIds = messages
+      .filter((msg) => {
+        // Only mark messages from the other user as read
+        if (msg.sender_id === viewer.id) return false
+        // Check if already read
+        const isRead = msg.read_receipts?.some((r) => r.user_id === viewer.id)
+        return !isRead
+      })
+      .map((msg) => msg.id)
+
+    if (unreadMessageIds.length > 0) {
+      markMessagesAsRead(selectedThreadId, unreadMessageIds)
+    }
+  }, [selectedConversation, selectedThreadId, handleMarkThreadRead, messagesByThread, viewer.id, markMessagesAsRead])
 
   const cleanupChannel = useCallback(() => {
     if (channelRef.current) {
@@ -890,36 +958,87 @@ export default function MessagesView({
           event: "INSERT",
           schema: "public",
           table: "dm_messages",
-          filter: `thread_id=eq.${selectedThreadId}`,
         },
         async (payload) => {
-          const newMessage = payload.new as MessageResult
-          if (!newMessage) return
+          console.log("[realtime] Received message INSERT event:", payload)
+          
+          // Filter by thread_id in the handler instead of in the subscription
+          const messageThreadId = (payload.new as { thread_id?: string })?.thread_id
+          if (!messageThreadId || messageThreadId !== selectedThreadId) {
+            console.log("[realtime] Message is for different thread, ignoring:", messageThreadId, "expected:", selectedThreadId)
+            return
+          }
+          
+          const newMessage = payload.new as {
+            id: string
+            thread_id: string
+            sender_id: string
+            message_type: string
+            content?: string | null
+            metadata?: Record<string, unknown> | null
+            has_attachments: boolean
+            reply_to_message_id?: string | null
+            created_at: string
+            updated_at: string
+            is_deleted: boolean
+          }
+          
+          if (!newMessage || !newMessage.id) {
+            console.error("[realtime] Invalid message payload:", payload)
+            return
+          }
 
           // Skip if this is our own message - it's already added optimistically
           if (newMessage.sender_id === viewer.id) {
+            console.log("[realtime] Skipping own message:", newMessage.id)
             return
           }
 
-          const existingMessages = messagesRef.current[selectedThreadId] ?? []
-          if (existingMessages.some((message) => message.id === newMessage.id)) {
-            return
-          }
+          console.log("[realtime] Processing new message from other user:", newMessage.id, "in thread:", selectedThreadId)
 
-          const { data: attachmentsData } = await supabase
-            .from("dm_message_media")
-            .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at")
-            .eq("message_id", newMessage.id)
+          // Fetch attachments and read receipts in parallel
+          const [attachmentsResult, readReceiptsResult] = await Promise.all([
+            supabase
+              .from("dm_message_media")
+              .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at")
+              .eq("message_id", newMessage.id),
+            supabase
+              .from("dm_message_reads")
+              .select("id, message_id, user_id, read_at")
+              .eq("message_id", newMessage.id),
+          ])
 
           const enrichedMessage: MessageResult = {
-            ...newMessage,
-            attachments: attachmentsData ?? [],
+            id: newMessage.id,
+            thread_id: newMessage.thread_id,
+            sender_id: newMessage.sender_id,
+            message_type: newMessage.message_type as "text" | "system",
+            content: newMessage.content ?? null,
+            metadata: newMessage.metadata ?? null,
+            has_attachments: newMessage.has_attachments ?? false,
+            reply_to_message_id: newMessage.reply_to_message_id ?? null,
+            created_at: newMessage.created_at,
+            updated_at: newMessage.updated_at,
+            is_deleted: newMessage.is_deleted ?? false,
+            attachments: attachmentsResult.data ?? [],
+            read_receipts: readReceiptsResult.data ?? [],
           }
 
-          setMessagesByThread((prev) => ({
-            ...prev,
-            [selectedThreadId]: [...(prev[selectedThreadId] ?? []), enrichedMessage],
-          }))
+          // Add message to state (append since messages are in ascending order)
+          setMessagesByThread((prev) => {
+            const existingMessages = prev[selectedThreadId] ?? []
+            // Check if message already exists (race condition protection)
+            if (existingMessages.some((message) => message.id === enrichedMessage.id)) {
+              console.log("[realtime] Message already exists, skipping:", enrichedMessage.id)
+              return prev
+            }
+            console.log("[realtime] Adding new message to state:", enrichedMessage.id, "Total messages:", existingMessages.length + 1)
+            // Append new message to the end (messages are in ascending chronological order)
+            return {
+              ...prev,
+              [selectedThreadId]: [...existingMessages, enrichedMessage],
+            }
+          })
 
           const hasImage = enrichedMessage.attachments?.some(a => a.media_type === "image") ?? false
           setConversations((prev) =>
@@ -943,6 +1062,13 @@ export default function MessagesView({
           )
 
           ensureAttachmentUrls(enrichedMessage.attachments ?? [])
+
+          // Mark message as read if viewing this thread
+          if (selectedThreadId === newMessage.thread_id) {
+            markMessagesAsRead(selectedThreadId, [enrichedMessage.id]).catch((error) => {
+              console.error("[realtime] Failed to mark message as read:", error)
+            })
+          }
         },
       )
       .on(
@@ -975,10 +1101,62 @@ export default function MessagesView({
           return next
         })
       })
-      .subscribe(async (status) => {
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "dm_message_reads",
+        },
+        async (payload) => {
+          const readReceipt = payload.new as {
+            id: string
+            message_id: string
+            user_id: string
+            read_at: string
+          }
+          if (!readReceipt) return
+
+          // Check if this read receipt is for a message in the current thread
+          const messages = messagesRef.current[selectedThreadId] ?? []
+          const messageInThread = messages.find((msg) => msg.id === readReceipt.message_id)
+          
+          if (!messageInThread) return
+
+          // Update the message with the new read receipt
+          setMessagesByThread((prev) => {
+            const threadMessages = prev[selectedThreadId] ?? []
+            return {
+              ...prev,
+              [selectedThreadId]: threadMessages.map((msg) => {
+                if (msg.id === readReceipt.message_id) {
+                  const existingReceipt = msg.read_receipts?.find(
+                    (r) => r.id === readReceipt.id || (r.message_id === readReceipt.message_id && r.user_id === readReceipt.user_id)
+                  )
+                  if (!existingReceipt) {
+                    return {
+                      ...msg,
+                      read_receipts: [...(msg.read_receipts ?? []), readReceipt],
+                    }
+                  }
+                }
+                return msg
+              }),
+            }
+          })
+        },
+      )
+      .subscribe(async (status, err) => {
+        console.log("[channel.subscribe] Channel status:", status, "for thread:", selectedThreadId)
+        if (err) {
+          console.error("[channel.subscribe] Subscription error:", err)
+        }
         if (status === "SUBSCRIBED") {
+          console.log("[channel.subscribe] Successfully subscribed to thread:", selectedThreadId)
+          console.log("[channel.subscribe] Listening for INSERT events on dm_messages table")
           try {
             await channel.track({ userId: viewer.id, at: Date.now() })
+            console.log("[channel.subscribe] Presence tracked for user:", viewer.id)
           } catch (error) {
             console.error("[channel.subscribe] Failed to track presence:", error)
           }
@@ -986,6 +1164,8 @@ export default function MessagesView({
           console.error("[channel.subscribe] Channel error detected, will attempt reconnect")
         } else if (status === "TIMED_OUT") {
           console.error("[channel.subscribe] Channel timed out")
+        } else if (status === "CLOSED") {
+          console.warn("[channel.subscribe] Channel closed")
         }
       })
 
@@ -994,7 +1174,7 @@ export default function MessagesView({
     return () => {
       cleanupChannel()
     }
-  }, [cleanupChannel, ensureAttachmentUrls, selectedConversation, selectedThreadId, viewer.id])
+  }, [cleanupChannel, ensureAttachmentUrls, markMessagesAsRead, selectedConversation, selectedThreadId, viewer.id])
 
   // Subscribe to dm_threads updates to refresh conversation previews when messages change
   useEffect(() => {
@@ -1873,32 +2053,6 @@ export default function MessagesView({
 
   // Voice note playback is now handled by VoiceNotePlayer component
 
-  const handleVideoPlay = useCallback((videoId: string) => {
-    // Stop any OTHER currently playing video
-    Object.keys(videoRefs.current).forEach(key => {
-      if (key !== videoId) {
-        const video = videoRefs.current[key]
-        if (video && !video.paused) {
-          video.pause()
-          video.currentTime = 0
-        }
-      }
-    })
-
-    // Stop any currently playing audio (voice notes)
-    setPlayingAudio(null)
-
-    const video = videoRefs.current[videoId]
-    if (!video) return
-    
-    if (playingVideo === videoId) {
-      video.pause()
-      setPlayingVideo(null)
-    } else {
-      video.play()
-      setPlayingVideo(videoId)
-    }
-  }, [playingVideo])
 
   const handleLoadOlderMessages = useCallback(async () => {
     const normalizedThreadId = selectedThreadId?.trim()
@@ -2166,9 +2320,11 @@ export default function MessagesView({
                         const isOwn = message.sender_id === viewer.id
                         const attachmentsForMessage = message.attachments ?? []
                         const hasImages = attachmentsForMessage.some(a => a.media_type === "image")
+                        const hasVideos = attachmentsForMessage.some(a => a.media_type === "video")
                         const hasAudio = attachmentsForMessage.some(a => a.media_type === "audio")
                         const isImageOnly = hasImages && !message.content
-                        const isAudioOnly = hasAudio && !message.content && !hasImages
+                        const isVideoOnly = hasVideos && !message.content && !hasImages
+                        const isAudioOnly = hasAudio && !message.content && !hasImages && !hasVideos
                         const isDeleting = deletingMessageId === message.id
                         
                         return (
@@ -2179,7 +2335,7 @@ export default function MessagesView({
                                 isAudioOnly 
                                   ? "w-[280px] sm:w-[320px]"
                                   : "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
-                                isImageOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
+                                isImageOnly || isVideoOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
                                 isOwn
                                   ? "bg-gradient-to-br from-black/40 to-black/60 text-white"
                                   : "bg-gradient-to-br from-white/15 to-white/8 text-white",
@@ -2238,9 +2394,9 @@ export default function MessagesView({
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               )}
-                             <div className={cn(isImageOnly ? "" : "space-y-1.5", !hasImages && !isAudioOnly && "pr-12 sm:pr-14")}>
+                             <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-1.5", !hasImages && !hasVideos && !isAudioOnly && "pr-12 sm:pr-14")}>
                                 {attachmentsForMessage.length > 0 && (
-                                  <div className={cn(isImageOnly ? "" : "space-y-2", message.content && "mb-1.5")}>
+                                  <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-2", message.content && "mb-1.5")}>
                                   {attachmentsForMessage.map((attachment, attachmentIndex) => {
                                     const signedUrl = attachmentUrls[attachment.id]?.url
                                     if (attachment.media_type === "image") {
@@ -2312,15 +2468,6 @@ export default function MessagesView({
                                             setPlayingAudio(isPlaying ? attachmentId : null)
                                           }}
                                           onStopOthers={(currentId) => {
-                                            // Stop any currently playing video
-                                            Object.keys(videoRefs.current).forEach(key => {
-                                              const video = videoRefs.current[key]
-                                              if (video && !video.paused) {
-                                                video.pause()
-                                                video.currentTime = 0
-                                              }
-                                            })
-                                            setPlayingVideo(null)
                                             // Stop other audio (from other voice note players)
                                             if (playingAudio && playingAudio !== currentId) {
                                               setPlayingAudio(null)
@@ -2331,54 +2478,81 @@ export default function MessagesView({
                                     }
                                     if (attachment.media_type === "video") {
                                       const signedUrl = attachmentUrls[attachment.id]?.url
+                                      const isPlaying = playingVideo === attachment.id
+                                      
+                                      const handlePlayClick = async (e: React.MouseEvent) => {
+                                        e.stopPropagation()
+                                        const video = videoRefs.current[attachment.id]
+                                        if (!video) return
+                                        
+                                        try {
+                                          await video.play()
+                                          setPlayingVideo(attachment.id)
+                                        } catch (error) {
+                                          console.error('Error playing video:', error)
+                                        }
+                                      }
                                       
                                       return (
                                         <div
                                           key={`${message.id}-${attachment.id}-${attachmentIndex}`}
                                           className={cn(
-                                            "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity rounded-lg",
-                                            isImageOnly ? "rounded-2xl" : "rounded-lg"
+                                            "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 rounded-lg",
+                                            !isPlaying && "cursor-pointer",
+                                            isImageOnly || isVideoOnly ? "rounded-2xl" : "rounded-lg"
                                           )}
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            if (signedUrl) {
-                                              handleVideoPlay(attachment.id)
-                                            }
-                                          }}
+                                          onClick={!isPlaying ? handlePlayClick : undefined}
                                         >
                                           {signedUrl ? (
-                                            <>
+                                            <div className="relative">
                                               <video
                                                 ref={(el) => {
-                                                  if (el) {
+                                                  if (el && !videoRefs.current[attachment.id]) {
                                                     videoRefs.current[attachment.id] = el
-                                                    // Set up event listeners
-                                                    el.addEventListener('play', () => setPlayingVideo(attachment.id))
-                                                    el.addEventListener('pause', () => {
+                                                    // Set up event listeners once
+                                                    const handlePlay = () => setPlayingVideo(attachment.id)
+                                                    const handlePause = () => {
                                                       if (el.paused) {
                                                         setPlayingVideo(null)
                                                       }
-                                                    })
-                                                    el.addEventListener('ended', () => {
-                                                      setPlayingVideo(null)
-                                                    })
+                                                    }
+                                                    const handleEnded = () => setPlayingVideo(null)
+                                                    
+                                                    el.addEventListener('play', handlePlay)
+                                                    el.addEventListener('pause', handlePause)
+                                                    el.addEventListener('ended', handleEnded)
+                                                    
+                                                    // Store cleanup function on the element
+                                                    ;(el as any)._cleanup = () => {
+                                                      el.removeEventListener('play', handlePlay)
+                                                      el.removeEventListener('pause', handlePause)
+                                                      el.removeEventListener('ended', handleEnded)
+                                                    }
                                                   }
                                                 }}
                                                 src={signedUrl}
-                                                className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block"
+                                                className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block rounded-lg"
                                                 style={{ maxHeight: '280px' }}
-                                                muted={false}
+                                                controls={isPlaying}
+                                                controlsList="nodownload"
                                                 playsInline
                                                 preload="metadata"
+                                                onClick={(e) => {
+                                                  if (isPlaying) {
+                                                    e.stopPropagation()
+                                                  }
+                                                }}
                                               />
-                                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none z-10">
-                                                {playingVideo === attachment.id ? (
-                                                  <Pause className="h-8 w-8 text-white/90 drop-shadow-lg fill-white/90" />
-                                                ) : (
-                                                  <Play className="h-8 w-8 text-white/90 drop-shadow-lg fill-white/90" />
-                                                )}
-                                              </div>
-                                            </>
+                                              {!isPlaying && (
+                                                <div 
+                                                  className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none z-10 rounded-lg"
+                                                >
+                                                  <div className="bg-black/60 rounded-full p-3 backdrop-blur-sm">
+                                                    <Play className="h-8 w-8 text-white/90 fill-white/90" />
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
                                           ) : (
                                             <div className="h-32 flex items-center justify-center text-white/50 text-xs bg-white/5">
                                               <Video className="h-8 w-8 text-white/50" />
@@ -2478,16 +2652,43 @@ export default function MessagesView({
                                   )}>{linkifyText(message.content)}</p>
                                 )}
                               </div>
-                              <div className={cn(
-                                "absolute text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded",
-                                isImageOnly
-                                  ? "bottom-1.5 right-1.5 bg-black/60 text-white/90 backdrop-blur-sm"
-                                  : isAudioOnly
-                                  ? "bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 text-white/40 px-1"
-                                  : "bottom-1.5 right-1.5 text-white/40 px-1"
-                              )}>
-                                {formatTimestamp(message.created_at)}
-                              </div>
+                              {(() => {
+                                // Check if any video in this message is playing
+                                const hasPlayingVideo = attachmentsForMessage.some(
+                                  a => a.media_type === "video" && playingVideo === a.id
+                                )
+                                // Hide timestamp if a video is playing
+                                if (hasPlayingVideo) return null
+                                
+                                // Check read receipt status for sent messages
+                                const readReceipts = message.read_receipts ?? []
+                                const otherUserId = selectedConversation?.other_user_id
+                                const isRead = isOwn && otherUserId 
+                                  ? readReceipts.some((r) => r.user_id === otherUserId)
+                                  : false
+                                
+                                return (
+                                  <div className={cn(
+                                    "absolute flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded",
+                                    isImageOnly || isVideoOnly
+                                      ? "bottom-1.5 right-1.5 bg-black/60 text-white/90 backdrop-blur-sm"
+                                      : isAudioOnly
+                                      ? "bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 text-white/40 px-1"
+                                      : "bottom-1.5 right-1.5 text-white/40 px-1"
+                                  )}>
+                                    {formatTimestamp(message.created_at)}
+                                    {isOwn && (
+                                      <span className="flex-shrink-0">
+                                        {isRead ? (
+                                          <CheckCheck className="h-3 w-3 text-white/70" />
+                                        ) : (
+                                          <Check className="h-3 w-3 text-white/50" />
+                                        )}
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </div>
                           </div>
                         )

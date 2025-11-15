@@ -19,8 +19,17 @@ export async function POST(req: Request) {
   const bankAccountId = String(form.get('bank_account_id') || '')
   const file = form.get('file') as File | null
 
-  if (!Number.isFinite(amount) || amount < 50) {
-    return NextResponse.json({ error: 'Minimum top up is 50 TTD' }, { status: 400 })
+  // Get minimum top-up amount from platform settings
+  const { data: settings } = await supabase
+    .from('platform_settings')
+    .select('mandatory_topup_ttd')
+    .eq('id', 1)
+    .maybeSingle()
+
+  const minimumTopup = Number(settings?.mandatory_topup_ttd ?? 150)
+
+  if (!Number.isFinite(amount) || amount < minimumTopup) {
+    return NextResponse.json({ error: `Minimum top up is ${minimumTopup.toFixed(2)} TTD` }, { status: 400 })
   }
   if (!bankAccountId) {
     return NextResponse.json({ error: 'bank_account_id is required' }, { status: 400 })

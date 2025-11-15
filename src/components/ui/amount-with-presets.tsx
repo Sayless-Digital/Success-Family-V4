@@ -12,7 +12,7 @@ interface AmountWithPresetsProps {
   presets?: number[]
 }
 
-export function AmountWithPresets({ id = 'amount_ttd', name = 'amount_ttd', min = 50, step = 0.01, presets = [50, 100, 200] }: AmountWithPresetsProps) {
+export function AmountWithPresets({ id = 'amount_ttd', name = 'amount_ttd', min = 150, step = 0.01, presets = [150, 200, 300] }: AmountWithPresetsProps) {
   const [value, setValue] = React.useState<string>('')
 
   const handlePreset = (amt: number) => {

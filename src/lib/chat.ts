@@ -294,6 +294,12 @@ export async function listMessages(
           duration_seconds,
           file_name,
           created_at
+        ),
+        read_receipts:dm_message_reads(
+          id,
+          message_id,
+          user_id,
+          read_at
         )
       `,
     )
@@ -311,11 +317,20 @@ export async function listMessages(
     throw error
   }
 
-  const rows = (data ?? []) as Array<DirectMessage & { attachments: DirectMessageAttachment[] }>
+  const rows = (data ?? []) as Array<DirectMessage & { 
+    attachments: DirectMessageAttachment[]
+    read_receipts: Array<{
+      id: string
+      message_id: string
+      user_id: string
+      read_at: string
+    }>
+  }>
 
   return rows.map((row) => ({
     ...row,
     attachments: row.attachments ?? [],
+    read_receipts: row.read_receipts ?? [],
   }))
 }
 
@@ -438,6 +453,32 @@ export async function markThreadRead(
   if (error) {
     throw error
   }
+}
+
+export async function markMessagesAsRead(
+  supabase: TypedSupabaseClient,
+  threadId: string,
+  userId: string,
+  messageIds: string[],
+): Promise<number> {
+  if (messageIds.length === 0) {
+    return 0
+  }
+
+  const client = supabase as SupabaseClient<any>
+
+  // Use the database function to efficiently mark messages as read
+  const { data, error } = await client.rpc("mark_messages_as_read", {
+    p_thread_id: threadId,
+    p_user_id: userId,
+    p_message_ids: messageIds,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data ?? 0
 }
 
 export async function getThreadById(

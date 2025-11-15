@@ -98,7 +98,7 @@ async function submitReceiptAction(formData: FormData) {
     .eq('id', 1)
     .maybeSingle()
 
-  const minimumTopup = Number(settings?.mandatory_topup_ttd ?? 50)
+  const minimumTopup = Number(settings?.mandatory_topup_ttd ?? 150)
 
   if (!Number.isFinite(amount) || amount < minimumTopup) {
     throw new Error(`Minimum top up is ${minimumTopup.toFixed(2)} TTD`)
@@ -166,7 +166,7 @@ export default async function WalletPage() {
         buyPricePerPoint={Number(settings?.buy_price_per_point ?? 1)}
         userValuePerPoint={Number(settings?.user_value_per_point ?? 1)}
         payoutMinimumTtd={Number(settings?.payout_minimum_ttd ?? 100)}
-        mandatoryTopupTtd={Number(settings?.mandatory_topup_ttd ?? 50)}
+        mandatoryTopupTtd={Number(settings?.mandatory_topup_ttd ?? 150)}
         topupBonusEnabled={settings?.topup_bonus_enabled ?? false}
         topupBonusPoints={Number(settings?.topup_bonus_points ?? 0)}
         topupBonusEndTime={settings?.topup_bonus_end_time ?? null}

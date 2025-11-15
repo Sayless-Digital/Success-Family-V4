@@ -34,7 +34,7 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
   const { user } = useAuth()
   const router = useRouter()
   const [banks, setBanks] = React.useState<Bank[]>([])
-  const [mandatoryTopupTtd, setMandatoryTopupTtd] = React.useState<number>(25)
+  const [mandatoryTopupTtd, setMandatoryTopupTtd] = React.useState<number>(150)
   const [buyPricePerPoint, setBuyPricePerPoint] = React.useState<number>(0.01)
   const [loading, setLoading] = React.useState(true)
   const [submitting, setSubmitting] = React.useState(false)
@@ -99,7 +99,7 @@ export function TopUpDialog({ open, onOpenChange, message, actionText = "Top Up 
           .single()
 
         if (settings) {
-          setMandatoryTopupTtd(settings.mandatory_topup_ttd || 25)
+          setMandatoryTopupTtd(settings.mandatory_topup_ttd || 150)
           setBuyPricePerPoint(settings.buy_price_per_point || 0.01)
         }
       } catch (error) {

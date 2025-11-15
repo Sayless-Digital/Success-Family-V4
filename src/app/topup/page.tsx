@@ -36,7 +36,7 @@ export default async function TopUpPage({
   return (
     <TopUpPageView
       banks={banks || []}
-      mandatoryTopupTtd={settings?.mandatory_topup_ttd || 25}
+      mandatoryTopupTtd={settings?.mandatory_topup_ttd || 150}
       buyPricePerPoint={settings?.buy_price_per_point || 0.01}
       returnUrl={returnUrl}
     />

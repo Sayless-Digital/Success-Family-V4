@@ -349,6 +349,13 @@ export interface DirectMessageParticipant {
   updated_at: string
 }
 
+export interface DirectMessageReadReceipt {
+  id: string
+  message_id: string
+  user_id: string
+  read_at: string
+}
+
 export interface DirectMessage {
   id: string
   thread_id: string
@@ -362,6 +369,7 @@ export interface DirectMessage {
   updated_at: string
   is_deleted: boolean
   attachments?: DirectMessageAttachment[]
+  read_receipts?: DirectMessageReadReceipt[]
 }
 
 export interface DirectMessageAttachment {
@@ -727,6 +735,15 @@ export interface Database {
           duration_seconds?: number | null
         }
         Update: Partial<DirectMessageAttachment>
+      }
+      dm_message_reads: {
+        Row: DirectMessageReadReceipt
+        Insert: {
+          message_id: string
+          user_id: string
+          read_at?: string
+        }
+        Update: Partial<DirectMessageReadReceipt>
       }
     }
     Views: {

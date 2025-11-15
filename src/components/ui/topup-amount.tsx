@@ -20,7 +20,7 @@ interface TopUpAmountProps {
 export function TopUpAmount({
   id = 'points',
   name = 'amount_ttd',
-  minAmount = 50,
+  minAmount = 150,
   presets,
   buyPricePerPoint,
   showBonus = false,
@@ -35,12 +35,8 @@ export function TopUpAmount({
   const minPoints = buyPricePerPoint > 0 ? Math.ceil(minAmount / buyPricePerPoint) : 0
   const minPointsRounded = Math.ceil(minPoints / multipleForWholeDollars) * multipleForWholeDollars
   
-  // Calculate 100 TTD equivalent in points (highlighted option)
-  const pts100TTD = buyPricePerPoint > 0 ? Math.ceil(100 / buyPricePerPoint) : 100
-  const pts100TTDRounded = buyPricePerPoint > 0 
-    ? Math.ceil(pts100TTD / multipleForWholeDollars) * multipleForWholeDollars
-    : 100
-  const defaultPoints = Math.max(minPointsRounded, pts100TTDRounded)
+  // Default to minimum (150 TTD equivalent)
+  const defaultPoints = minPointsRounded
   
   const computedPresets = React.useMemo(() => {
     if (presets && presets.length > 0) {
@@ -53,7 +49,7 @@ export function TopUpAmount({
       return presetsWith1000.sort((a, b) => a - b)
     }
     if (buyPricePerPoint <= 0) return [minPoints, 1000]
-    const basePresets = [50, 100, 200, 1000]
+    const basePresets = [150, 200, 300, 1000]
       .map((amt) => Math.ceil(amt / buyPricePerPoint))
       .map((pts) => Math.ceil(pts / multipleForWholeDollars) * multipleForWholeDollars)
     return basePresets.sort((a, b) => a - b)
@@ -114,8 +110,8 @@ export function TopUpAmount({
       <input type="hidden" name={name} value={amount.toFixed(2)} />
       <div className="flex flex-wrap gap-2">
         {computedPresets.map((p) => {
-          // Check if this preset equals 100 TTD equivalent
-          const is100TTD = p === pts100TTDRounded
+          // Check if this preset matches the currently selected points value
+          const isSelected = points === p
           
           return (
             <Button 
@@ -123,11 +119,11 @@ export function TopUpAmount({
               type="button" 
               className={cn(
                 "h-8 px-2",
-                is100TTD
+                isSelected
                   ? "bg-gradient-to-r from-yellow-500/90 to-purple-500/90 text-white border-2 border-yellow-400/50 shadow-lg font-bold hover:from-yellow-500 hover:to-purple-500"
                   : "bg-white/10 text-white/80 hover:bg-white/20"
               )}
-              style={is100TTD ? {
+              style={isSelected ? {
                 boxShadow: '0 0 10px rgba(255, 215, 0, 0.5)',
               } : undefined}
               onClick={() => handlePreset(p)}
