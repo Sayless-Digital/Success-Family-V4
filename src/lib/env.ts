@@ -14,6 +14,10 @@ export function validateEnv() {
     GETSTREAM_API_KEY: process.env.GETSTREAM_API_KEY,
     GETSTREAM_API_SECRET: process.env.GETSTREAM_API_SECRET,
     NEXT_PUBLIC_GETSTREAM_API_KEY: process.env.NEXT_PUBLIC_GETSTREAM_API_KEY,
+    // VAPID keys for Web Push notifications
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_EMAIL: process.env.VAPID_EMAIL || 'hello@successfamily.online',
   }
 
   const missingVars = Object.entries(requiredEnvVars)

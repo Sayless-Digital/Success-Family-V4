@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ScrollbarProvider } from "@/components/scrollbar-provider";
 import { HMRErrorSuppressor } from "@/components/hmr-error-suppressor";
 import { TopUpBonusProvider } from "@/components/topup-bonus-provider";
+import { PushNotificationsProvider } from "@/components/push-notifications-provider";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -54,12 +55,14 @@ export default function RootLayout({
         <HMRErrorSuppressor />
         <ScrollbarProvider>
           <AuthProvider>
-            <TopUpBonusProvider />
-            <OnlineStatusProvider>
-              <GlobalLayout>
-                {children}
-              </GlobalLayout>
-            </OnlineStatusProvider>
+            <PushNotificationsProvider>
+              <TopUpBonusProvider />
+              <OnlineStatusProvider>
+                <GlobalLayout>
+                  {children}
+                </GlobalLayout>
+              </OnlineStatusProvider>
+            </PushNotificationsProvider>
           </AuthProvider>
         </ScrollbarProvider>
       </body>

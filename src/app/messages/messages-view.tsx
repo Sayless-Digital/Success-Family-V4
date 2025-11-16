@@ -1650,7 +1650,7 @@ export default function MessagesView({
       if (pagination?.hasMore && !loadingOlderMessages) {
         // Load older messages until we find the target message or run out of messages
         let found = false
-        let hasMore = pagination.hasMore
+        let hasMore: boolean = pagination.hasMore
         let nextCursor = pagination.nextCursor
         let loadAttempts = 0
         const MAX_LOAD_ATTEMPTS = 20 // Safety limit to prevent infinite loops
@@ -3063,7 +3063,7 @@ export default function MessagesView({
                               {message.replied_to_message?.id && (() => {
                                 // Use attachments from replied_to_message if available, otherwise try to find in thread messages
                                 const repliedMessageAttachments = message.replied_to_message.attachments ?? 
-                                  (messagesByThread[selectedThreadId] ?? [])
+                                  (selectedThreadId ? (messagesByThread[selectedThreadId] ?? []) : [])
                                     .find(m => m.id === message.replied_to_message?.id)
                                     ?.attachments ?? []
                                 const imageAttachments = repliedMessageAttachments.filter(a => a.media_type === "image")

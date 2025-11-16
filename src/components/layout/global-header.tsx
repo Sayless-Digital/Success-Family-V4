@@ -26,6 +26,7 @@ import { CommunityLogo } from "@/components/community-logo"
 import { PlatformLogo } from "@/components/platform-logo"
 import { useUnreadMessagesCount } from "@/hooks/use-unread-messages-count"
 import { Badge } from "@/components/ui/badge"
+import { NotificationsDropdown } from "@/components/notifications-dropdown"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -691,6 +692,13 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                 </Badge>
               )}
             </Link>
+          )}
+
+          {/* Notifications dropdown - shown when user is logged in, desktop only */}
+          {user && (
+            <div className="hidden md:flex">
+              <NotificationsDropdown userId={user.id} />
+            </div>
           )}
 
           {/* Profile button - shown when user is logged in, farthest right, desktop only */}

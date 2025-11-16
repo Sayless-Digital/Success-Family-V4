@@ -20,6 +20,7 @@ import {
   MessageResult,
   orderParticipants,
 } from "@/lib/chat-shared"
+import { createNotification } from "@/lib/notifications"
 
 type TypedSupabaseClient = SupabaseClient<Database>
 type ConversationSummaryRow = Database["public"]["Views"]["dm_conversation_summaries"]["Row"]
@@ -505,6 +506,58 @@ export async function appendMessage(
     messageRow.reply_to_message_id ?? null,
     input.threadId,
   )
+
+  // Notify other participants about the new message (fire and forget - non-critical)
+  void (async () => {
+    try {
+      // Get all participants in the thread
+      const participants = await loadThreadParticipants(supabase, input.threadId)
+      const otherParticipants = participants.filter(p => p.user_id !== input.senderId)
+
+      if (otherParticipants.length === 0) {
+        return
+      }
+
+      // Get sender's profile for notification
+      const { data: senderProfile } = await client
+        .from("users")
+        .select("username, first_name, last_name")
+        .eq("id", input.senderId)
+        .single()
+
+      const senderName = senderProfile
+        ? `${senderProfile.first_name} ${senderProfile.last_name}`.trim() || senderProfile.username
+        : "Someone"
+
+      // Create notifications for each other participant
+      const notificationPromises = otherParticipants.map(async (participant) => {
+        // Skip if participant has blocked the sender or is not active
+        if (participant.status === "blocked" || participant.status !== "active") {
+          return
+        }
+
+        // Create notification
+        await createNotification({
+          userId: participant.user_id,
+          type: "new_message",
+          title: "New message",
+          body: `${senderName} sent you a message${input.content ? `: ${input.content.slice(0, 50)}${input.content.length > 50 ? "..." : ""}` : ""}`,
+          actionUrl: `/messages?thread=${input.threadId}`,
+          metadata: {
+            thread_id: input.threadId,
+            message_id: messageRow.id,
+            sender_id: input.senderId,
+            sender_name: senderName,
+          }
+        })
+      })
+
+      await Promise.allSettled(notificationPromises)
+    } catch (error) {
+      console.error("[appendMessage] Error creating notifications:", error)
+      // Non-critical error - don't fail the message send
+    }
+  })()
 
   return {
     ...messageRow,

@@ -201,6 +201,82 @@ export async function GET(request: Request) {
       self.registration.update();
     }
   });
+
+  // Web Push notification handlers
+  self.addEventListener("push", (event) => {
+    let data = {};
+    
+    try {
+      data = event.data?.json() ?? {};
+    } catch (error) {
+      console.error("[SW] Error parsing push data:", error);
+      data = {
+        title: "Success Family",
+        body: event.data?.text() || "New notification",
+        url: "/"
+      };
+    }
+
+    const options = {
+      body: data.body || "New notification",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: {
+        url: data.action_url || data.url || "/",
+        notificationId: data.id,
+        ...data
+      },
+      tag: data.id || "default", // Prevent duplicate notifications
+      requireInteraction: false,
+      vibrate: [200, 100, 200],
+      timestamp: Date.now()
+    };
+
+    event.waitUntil(
+      self.registration.showNotification(data.title || "Success Family", options)
+    );
+  });
+
+  self.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    
+    const url = event.notification.data?.url || "/";
+    
+    event.waitUntil(
+      clients.matchAll({ 
+        type: "window", 
+        includeUncontrolled: true 
+      }).then((clientList) => {
+        // Check if app is already open
+        for (const client of clientList) {
+          const clientUrl = new URL(client.url);
+          const targetUrl = new URL(url, self.location.origin);
+          
+          // If app is open on same origin, navigate to the URL
+          if (clientUrl.origin === targetUrl.origin) {
+            return client.focus().then(client => {
+              if ("navigate" in client) {
+                return client.navigate(url);
+              } else {
+                return client;
+              }
+            });
+          }
+        }
+        
+        // Otherwise open new window/tab
+        if (clients.openWindow) {
+          return clients.openWindow(url);
+        }
+      })
+    );
+  });
+
+  // Handle notification close event (optional)
+  self.addEventListener("notificationclose", (event) => {
+    // Could track notification dismissal here if needed
+    console.log("[SW] Notification closed:", event.notification.data);
+  });
 `
 
   // Generate ETag for this version

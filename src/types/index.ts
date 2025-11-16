@@ -407,6 +407,41 @@ export interface DirectMessageConversationSummary {
   other_muted_at?: string | null
 }
 
+// Notification system types
+export type NotificationType = 
+  | 'new_message'
+  | 'post_comment'
+  | 'post_boost'
+  | 'community_invite'
+  | 'payment_verified'
+  | 'event_reminder'
+  | 'follow'
+  | 'mention'
+
+export interface Notification {
+  id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  body: string
+  action_url?: string | null
+  metadata?: Record<string, unknown> | null
+  is_read: boolean
+  read_at?: string | null
+  created_at: string
+}
+
+export interface PushSubscription {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh_key: string
+  auth_key: string
+  user_agent?: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Event system types
 export type EventStatus = 'scheduled' | 'live' | 'completed' | 'cancelled'
 

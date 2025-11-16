@@ -442,18 +442,23 @@ export default function CrmPage() {
           .from('crm_stages')
           .update(stageData)
           .eq('id', editingStage.id)
+          .select()
+          .single()
         if (error) throw error
         toast.success('Stage updated successfully')
       } else {
         const { error } = await supabase
           .from('crm_stages')
           .insert(stageData)
+          .select()
+          .single()
         if (error) throw error
         toast.success('Stage created successfully')
       }
 
+      // Close dialog and refresh data
       setStageDialogOpen(false)
-      fetchData()
+      await fetchData()
     } catch (error) {
       console.error('Error saving stage:', error)
       toast.error('Failed to save stage')
