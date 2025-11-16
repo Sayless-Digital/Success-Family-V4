@@ -108,3 +108,4 @@ CREATE TRIGGER update_push_subscriptions_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION public.update_push_subscriptions_updated_at();
 
+

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import type { Database, DirectMessageThread, UserFollow, UserFollowStats } from "@/types"
+import { createNotification } from "@/lib/notifications"
 
 type TypedSupabaseClient = SupabaseClient<Database>
 
@@ -95,6 +96,41 @@ export async function followUser(
 
   if (error) {
     throw error
+  }
+
+  // Notify the followed user about the new follower (fire and forget - non-critical)
+  if (data) {
+    void (async () => {
+      try {
+        // Get follower's profile for notification
+        const { data: followerProfile } = await client
+          .from("users")
+          .select("username, first_name, last_name")
+          .eq("id", followerId)
+          .single()
+
+        const followerName = followerProfile
+          ? `${followerProfile.first_name} ${followerProfile.last_name}`.trim() || followerProfile.username
+          : "Someone"
+
+        // Create notification for the followed user
+        await createNotification({
+          userId: targetUserId,
+          type: "follow",
+          title: "New follower",
+          body: `${followerName} started following you`,
+          actionUrl: `/profile/${followerProfile?.username || followerId}`,
+          metadata: {
+            follower_id: followerId,
+            follower_name: followerName,
+            follower_username: followerProfile?.username,
+          }
+        })
+      } catch (error) {
+        console.error("[followUser] Error creating follow notification:", error)
+        // Non-critical error - don't fail the follow operation
+      }
+    })()
   }
 
   return (data as UserFollow) ?? null

@@ -1228,6 +1228,60 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
       if (error) throw error
 
+      // Create notification for post author (fire and forget - non-critical)
+      if (postAuthorId && postAuthorId !== user.id) {
+        void (async () => {
+          try {
+            // Get booster's profile
+            const { data: boosterProfile } = await supabase
+              .from("users")
+              .select("username, first_name, last_name")
+              .eq("id", user.id)
+              .single()
+
+            const boosterName = boosterProfile
+              ? `${boosterProfile.first_name} ${boosterProfile.last_name}`.trim() || boosterProfile.username
+              : "Someone"
+
+            // Get post info for notification link
+            const { data: postData } = await supabase
+              .from("posts")
+              .select("id, community_id, communities!posts_community_id_fkey(slug)")
+              .eq("id", postId)
+              .single()
+
+            const communitySlug = Array.isArray(postData?.communities) 
+              ? postData.communities[0]?.slug 
+              : (postData?.communities as any)?.slug
+            const postUrl = communitySlug 
+              ? `/${communitySlug}/feed?post=${postId}`
+              : `/profile/${postAuthorId}`
+
+            // Create notification
+            await fetch("/api/notifications/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: postAuthorId,
+                type: "post_boost",
+                title: "Post boosted!",
+                body: `${boosterName} boosted your post`,
+                actionUrl: postUrl,
+                metadata: {
+                  post_id: postId,
+                  booster_id: user.id,
+                  booster_name: boosterName,
+                  booster_username: boosterProfile?.username,
+                }
+              })
+            })
+          } catch (error) {
+            console.error("[handleBoostToggle] Error creating boost notification:", error)
+            // Non-critical error - don't fail the boost
+          }
+        })()
+      }
+
       toast.success("🚀 Creator boosted! You made their day!")
     } catch (error: any) {
       console.error("Error toggling boost:", error)

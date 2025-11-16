@@ -718,6 +718,62 @@ export function InlinePostComposer({
         }
       }
 
+      // Create notification for parent post author if this is a comment
+      if (parentPostId && insertedPost) {
+        void (async () => {
+          try {
+            // Get parent post to find author
+            const { data: parentPost } = await supabase
+              .from("posts")
+              .select("id, author_id, community_id, communities!posts_community_id_fkey(slug)")
+              .eq("id", parentPostId)
+              .single()
+
+            if (parentPost && parentPost.author_id !== user.id) {
+              // Get commenter's profile
+              const commenterName = userProfile
+                ? `${userProfile.first_name} ${userProfile.last_name}`.trim() || userProfile.username
+                : "Someone"
+
+              // Determine if this is a comment or reply
+              const isReply = createdPost.depth > 1
+              const commentPreview = contentToSave.slice(0, 50) + (contentToSave.length > 50 ? "..." : "")
+              
+              const communitySlug = Array.isArray(parentPost.communities) 
+                ? parentPost.communities[0]?.slug 
+                : (parentPost.communities as any)?.slug
+              const postUrl = communitySlug
+                ? `/${communitySlug}/feed?post=${parentPost.id}`
+                : `/profile/${parentPost.author_id}`
+
+              // Create notification
+              await fetch("/api/notifications/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  userId: parentPost.author_id,
+                  type: "post_comment",
+                  title: isReply ? "New reply" : "New comment",
+                  body: `${commenterName} ${isReply ? "replied to your comment" : "commented on your post"}: ${commentPreview || "(no text)"}`,
+                  actionUrl: postUrl,
+                  metadata: {
+                    post_id: insertedPost.id,
+                    parent_post_id: parentPostId,
+                    commenter_id: user.id,
+                    commenter_name: commenterName,
+                    commenter_username: userProfile?.username,
+                    is_reply: isReply,
+                  }
+                })
+              })
+            }
+          } catch (error) {
+            console.error("[InlinePostComposer] Error creating comment notification:", error)
+            // Non-critical error - don't fail the comment creation
+          }
+        })()
+      }
+
       if (onPostCreated && createdPost) {
         onPostCreated(createdPost as PostWithAuthor)
       }

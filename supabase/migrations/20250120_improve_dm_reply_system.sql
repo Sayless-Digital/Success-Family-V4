@@ -53,3 +53,4 @@ COMMENT ON INDEX idx_dm_messages_reply_to_message_id
 COMMENT ON INDEX idx_dm_messages_thread_reply
   IS 'Composite index for efficient lookups of replies within a thread';
 
+
