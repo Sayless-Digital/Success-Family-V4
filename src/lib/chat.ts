@@ -611,13 +611,24 @@ export async function appendMessage(
   )
 
   // Notify other participants about the new message (fire and forget - non-critical)
+  // IMPORTANT: Capture all message data before async function to avoid race conditions
+  // when multiple messages are sent quickly
+  const messageContent = input.content
+  const messageAttachments = input.attachments ?? []
+  const hasAttachments = messageAttachments.length > 0
+  const attachmentCount = messageAttachments.length
+  const messageType = input.messageType || "text"
+  const threadId = input.threadId
+  const senderId = input.senderId
+  const messageId = messageRow.id
+
   void (async () => {
     try {
-      console.log("[appendMessage] Starting notification creation for message:", messageRow.id)
+      console.log("[appendMessage] Starting notification creation for message:", messageId)
       
       // Get all participants in the thread
-      const participants = await loadThreadParticipants(supabase, input.threadId)
-      const otherParticipants = participants.filter(p => p.user_id !== input.senderId)
+      const participants = await loadThreadParticipants(supabase, threadId)
+      const otherParticipants = participants.filter(p => p.user_id !== senderId)
 
       console.log("[appendMessage] Found participants:", participants.length, "other participants:", otherParticipants.length)
 
@@ -630,7 +641,7 @@ export async function appendMessage(
       const { data: senderProfile } = await client
         .from("users")
         .select("username, first_name, last_name")
-        .eq("id", input.senderId)
+        .eq("id", senderId)
         .single()
 
       const senderName = senderProfile
@@ -662,14 +673,15 @@ export async function appendMessage(
           const senderFirstName = senderProfile?.first_name || senderName
           
           // Generate engaging notification using neuromarketing techniques
+          // Use captured values to ensure correct message content
           const { title, body } = generateEngagingNotification({
             senderFirstName,
             senderName,
             recipientFirstName,
-            messageContent: input.content,
-            hasAttachments: !!(input.attachments && input.attachments.length > 0),
-            attachmentCount: input.attachments?.length || 0,
-            messageType: input.messageType || "text",
+            messageContent,
+            hasAttachments,
+            attachmentCount,
+            messageType,
           })
 
           const notificationId = await createNotification({
@@ -677,11 +689,11 @@ export async function appendMessage(
             type: "new_message",
             title,
             body,
-            actionUrl: `/messages?thread=${input.threadId}`,
+            actionUrl: `/messages?thread=${threadId}`,
             metadata: {
-              thread_id: input.threadId,
-              message_id: messageRow.id,
-              sender_id: input.senderId,
+              thread_id: threadId,
+              message_id: messageId,
+              sender_id: senderId,
               sender_name: senderName,
             }
           })

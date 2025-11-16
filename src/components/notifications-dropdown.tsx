@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Bell, Check } from 'lucide-react'
+import { Bell, Check, MessageCircle, Heart, UserPlus, DollarSign, Calendar, AtSign, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -149,7 +149,7 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 p-0">
+      <DropdownMenuContent align="end" className="w-96 p-0">
         <div className="px-3 py-2 border-b border-white/20 flex items-center justify-between">
           <DropdownMenuLabel className="font-semibold text-white/90 px-0 text-sm">
             Notifications
@@ -178,35 +178,40 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
           ) : (
             <div className="space-y-1">
               {notifications.map((notification) => {
-                const content = notification.action_url ? (
-                  <Link
-                    href={notification.action_url}
-                    className="block"
-                    onClick={() => handleNotificationClick(notification)}
-                  >
-                    <NotificationItem notification={notification} />
-                  </Link>
-                ) : (
-                  <div onClick={() => handleNotificationClick(notification)}>
-                    <NotificationItem notification={notification} />
-                  </div>
+                const itemContent = (
+                  <NotificationItem notification={notification} />
                 )
 
-                return (
+                return notification.action_url ? (
                   <DropdownMenuItem
                     key={notification.id}
                     className={cn(
-                      "p-0 cursor-pointer focus:bg-white/10",
-                      !notification.is_read && "bg-white/5"
+                      "p-0 cursor-pointer bg-white/5 hover:bg-white/10 focus:bg-white/10",
+                      !notification.is_read && "bg-white/10"
                     )}
                     onSelect={(e) => {
                       e.preventDefault()
-                      if (!notification.action_url) {
-                        handleNotificationClick(notification)
-                      }
+                      handleNotificationClick(notification)
+                    }}
+                    asChild
+                  >
+                    <Link href={notification.action_url}>
+                      {itemContent}
+                    </Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className={cn(
+                      "p-0 cursor-pointer bg-white/5 hover:bg-white/10 focus:bg-white/10",
+                      !notification.is_read && "bg-white/10"
+                    )}
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      handleNotificationClick(notification)
                     }}
                   >
-                    {content}
+                    {itemContent}
                   </DropdownMenuItem>
                 )
               })}
@@ -219,19 +224,50 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
 }
 
 function NotificationItem({ notification }: { notification: Notification }) {
+  // Get icon based on notification type
+  const getNotificationIcon = () => {
+    const iconClass = "h-4 w-4 text-white/70 flex-shrink-0"
+    
+    switch (notification.type) {
+      case 'new_message':
+        return <MessageCircle className={iconClass} />
+      case 'post_comment':
+        return <MessageCircle className={iconClass} />
+      case 'post_boost':
+        return <Heart className={iconClass} />
+      case 'follow':
+        return <UserPlus className={iconClass} />
+      case 'community_invite':
+        return <Users className={iconClass} />
+      case 'payment_verified':
+        return <DollarSign className={iconClass} />
+      case 'event_reminder':
+        return <Calendar className={iconClass} />
+      case 'mention':
+        return <AtSign className={iconClass} />
+      default:
+        return <Bell className={iconClass} />
+    }
+  }
+
   return (
-    <div className="px-2.5 py-2 w-full hover:bg-white/5 transition-colors relative rounded-md">
-      <div className="font-medium text-white/90 text-sm leading-tight">
-        {notification.title}
+    <div className="px-3 py-2.5 w-full transition-colors relative rounded-md flex gap-3">
+      <div className="mt-0.5">
+        {getNotificationIcon()}
       </div>
-      <div className="text-white/70 text-xs mt-1 line-clamp-2 leading-snug">
-        {notification.body}
-      </div>
-      <div className="text-white/50 text-xs mt-1.5">
-        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+      <div className="flex-1 min-w-0">
+        <div className="font-medium text-white/90 text-sm leading-tight pr-6">
+          {notification.title}
+        </div>
+        <div className="text-white/70 text-xs mt-1.5 line-clamp-2 leading-snug break-words">
+          {notification.body}
+        </div>
+        <div className="text-white/50 text-xs mt-2">
+          {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+        </div>
       </div>
       {!notification.is_read && (
-        <div className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-primary" />
+        <div className="absolute top-3 right-3 h-2 w-2 rounded-full bg-primary" />
       )}
     </div>
   )
