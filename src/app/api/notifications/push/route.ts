@@ -3,20 +3,29 @@ import { sendPushNotification } from '@/lib/push-notifications-server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { notificationId } = await request.json()
+    const body = await request.json()
+    const { notificationId, notificationData } = body
 
-    if (!notificationId) {
-      console.error('[push-notifications] ❌ Missing notificationId in request')
+    // Support both old format (notificationId) and new format (notificationData)
+    if (!notificationId && !notificationData) {
+      console.error('[push-notifications] ❌ Missing notificationId or notificationData in request')
       return NextResponse.json(
-        { error: 'Missing notificationId' },
+        { error: 'Missing notificationId or notificationData' },
         { status: 400 }
       )
     }
 
-    console.log('[push-notifications] Received push notification request for:', notificationId)
+    console.log('[push-notifications] Received push notification request:', {
+      notificationId,
+      hasNotificationData: !!notificationData
+    })
 
     // Call the shared push notification function
-    const result = await sendPushNotification(notificationId)
+    // If notificationData is provided, use it directly (avoids race conditions)
+    // Otherwise fall back to fetching by notificationId (backward compatibility)
+    const result = notificationData 
+      ? await sendPushNotification(notificationData)
+      : await sendPushNotification(notificationId)
 
     if (result.success) {
       return NextResponse.json({

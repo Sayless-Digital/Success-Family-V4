@@ -34,11 +34,16 @@ interface NotificationData {
 /**
  * Send push notification - can accept either notificationId or notification data directly
  * Passing data directly avoids race conditions when multiple notifications are created quickly
+ * 
+ * Version: 2.0 - Direct data passing to avoid race conditions
  */
 export async function sendPushNotification(
   notificationIdOrData: string | NotificationData
 ): Promise<SendPushNotificationResult> {
   try {
+    // Version identifier for debugging
+    console.log('[push-notifications] v2.0 - Using direct data passing to avoid race conditions')
+    
     // Check if VAPID keys are configured
     if (!env.VAPID_PRIVATE_KEY || !env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
       console.warn('[push-notifications] ⚠️ VAPID keys not configured, skipping push notification')
