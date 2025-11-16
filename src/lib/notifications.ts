@@ -1,6 +1,7 @@
 "use server"
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { sendPushNotification } from '@/lib/push-notifications-server'
 import type { NotificationType } from '@/types'
 
 type TypedSupabaseClient = ReturnType<typeof createServerSupabaseClient> extends Promise<infer T> ? T : never
@@ -20,49 +21,79 @@ interface CreateNotificationInput {
 export async function createNotification(
   input: CreateNotificationInput
 ): Promise<string | null> {
+  console.log('[notifications] Creating notification:', {
+    userId: input.userId,
+    type: input.type,
+    title: input.title
+  })
+
   const supabase = await createServerSupabaseClient()
   
-  const { data, error } = await supabase
-    .from('notifications')
-    .insert({
-      user_id: input.userId,
-      type: input.type,
-      title: input.title,
-      body: input.body,
-      action_url: input.actionUrl || null,
-      metadata: input.metadata || {}
-    })
-    .select('id')
-    .single()
+  // Use SECURITY DEFINER function to bypass RLS for server-side notification creation
+  // This allows creating notifications for any user (e.g., when Alice boosts Bob's post,
+  // Alice's server action creates a notification for Bob)
+  const { data, error } = await supabase.rpc('create_notification', {
+    p_user_id: input.userId,
+    p_type: input.type,
+    p_title: input.title,
+    p_body: input.body,
+    p_action_url: input.actionUrl || null,
+    p_metadata: input.metadata || {}
+  })
+  
+  // RPC returns the UUID directly, not a row object
+  const notificationId = data as string | null
 
   if (error) {
-    console.error('[notifications] Error creating notification:', error)
+    console.error('[notifications] ❌ Error creating notification:', error)
+    console.error('[notifications] Database error details:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code
+    })
     throw error
   }
 
+  console.log('[notifications] ✅ Notification created successfully:', notificationId)
+
   // Trigger push notification asynchronously (fire and forget)
   // This avoids blocking the main request
-  if (data?.id) {
-    // Use absolute URL for server-side fetch
-    // NEXT_PUBLIC_APP_URL should be set in production (e.g., https://yourdomain.com)
-    // In development, this will use localhost, but you may need to set NEXT_PUBLIC_APP_URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                    (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+  if (notificationId) {
+    console.log('[notifications] Triggering push notification for notification ID:', notificationId)
     
-    // Call API route to send push notification (non-blocking)
-    fetch(`${baseUrl}/api/notifications/push`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ notificationId: data.id })
-    }).catch(error => {
-      console.error('[notifications] Error triggering push notification:', error)
-      // Non-critical error - notification was still created in database
-    })
+    // Trigger push notification asynchronously (fire and forget)
+    // Small delay to ensure notification is committed before pushing
+    ;(async () => {
+      // Wait a bit for notification to be committed to database
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      try {
+        const result = await sendPushNotification(notificationId)
+        
+        if (result.success) {
+          console.log('[notifications] ✅ Push notification sent successfully:', {
+            sent: result.sent,
+            total: result.total
+          })
+        } else {
+          console.log('[notifications] ⚠️ Push notification not sent:', result.message || result.error)
+        }
+      } catch (error: any) {
+        console.error('[notifications] ❌ Error sending push notification:', error)
+        console.error('[notifications] Error details:', {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        })
+        // Non-critical error - notification was still created in database
+      }
+    })()
+  } else {
+    console.warn('[notifications] ⚠️ No notificationId returned, cannot trigger push notification')
   }
 
-  return data?.id || null
+  return notificationId || null
 }
 
 /**

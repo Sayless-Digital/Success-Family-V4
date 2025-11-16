@@ -75,17 +75,21 @@ export async function getPushSubscription(
 export async function subscribeToPushNotifications(
   userId: string
 ): Promise<PushSubscriptionData | null> {
+  console.log('[push-notifications] Starting push notification subscription for user:', userId)
+  
   const permission = await requestNotificationPermission()
   if (!permission) {
-    console.warn('[push-notifications] Permission denied, cannot subscribe')
+    console.warn('[push-notifications] ⚠️ Permission denied or not granted, cannot subscribe')
     return null
   }
+  console.log('[push-notifications] ✅ Notification permission granted')
 
   const registration = await registerServiceWorker()
   if (!registration) {
-    console.warn('[push-notifications] Service Worker not available, cannot subscribe')
+    console.warn('[push-notifications] ⚠️ Service Worker not available, cannot subscribe')
     return null
   }
+  console.log('[push-notifications] ✅ Service Worker registered')
 
   try {
     let subscription = await registration.pushManager.getSubscription()
@@ -95,14 +99,19 @@ export async function subscribeToPushNotifications(
       const vapidPublicKey = env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
       
       if (!vapidPublicKey) {
-        console.error('[push-notifications] VAPID public key not configured')
+        console.error('[push-notifications] ❌ VAPID public key not configured')
+        console.error('[push-notifications] Check that NEXT_PUBLIC_VAPID_PUBLIC_KEY is set in .env.local')
         return null
       }
       
+      console.log('[push-notifications] Creating new push subscription with VAPID key...')
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
       })
+      console.log('[push-notifications] ✅ New push subscription created')
+    } else {
+      console.log('[push-notifications] ✅ Existing push subscription found')
     }
 
     const subscriptionData: PushSubscriptionData = {
@@ -114,7 +123,8 @@ export async function subscribeToPushNotifications(
     }
 
     // Store subscription in Supabase
-    const { error } = await supabase
+    console.log('[push-notifications] Saving push subscription to database...')
+    const { error, data } = await supabase
       .from('push_subscriptions')
       .upsert({
         user_id: userId,
@@ -126,13 +136,20 @@ export async function subscribeToPushNotifications(
       }, {
         onConflict: 'user_id,endpoint'
       })
+      .select()
 
     if (error) {
-      console.error('[push-notifications] Error saving push subscription:', error)
+      console.error('[push-notifications] ❌ Error saving push subscription:', error)
+      console.error('[push-notifications] Database error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
       return null
     }
 
-    console.log('[push-notifications] Successfully subscribed to push notifications')
+    console.log('[push-notifications] ✅ Successfully subscribed to push notifications')
+    console.log('[push-notifications] Subscription saved to database:', data?.[0]?.id)
     return subscriptionData
   } catch (error) {
     console.error('[push-notifications] Error subscribing to push notifications:', error)

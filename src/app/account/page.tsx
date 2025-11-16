@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+import { NotificationDebug } from "@/components/notification-debug"
 
 export default function AccountPage() {
   const { user, userProfile, isLoading, refreshProfile } = useAuth()
@@ -567,6 +568,11 @@ export default function AccountPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Notification Debug Panel */}
+        <div className="mt-6">
+          <NotificationDebug />
+        </div>
       </div>
     </div>
   )

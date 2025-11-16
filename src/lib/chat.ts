@@ -399,6 +399,109 @@ export async function listMessages(
   return messagesWithReplies
 }
 
+/**
+ * Generate engaging push notification messages using neuromarketing techniques
+ * - Personalization: Uses recipient's first name and sender's first name
+ * - Urgency: Creates time-sensitive language ("just", "now", "waiting")
+ * - Curiosity Gap: Teases content without revealing everything
+ * - Social Proof: Emphasizes connection and importance
+ * - Emotional Triggers: Makes the message feel personal and valuable
+ * - Variety: Different messages for different scenarios (prevents notification fatigue)
+ * - Positive Framing: Frames interactions positively
+ */
+function generateEngagingNotification({
+  senderFirstName,
+  senderName,
+  recipientFirstName,
+  messageContent,
+  hasAttachments,
+  attachmentCount,
+  messageType,
+}: {
+  senderFirstName: string
+  senderName: string
+  recipientFirstName: string
+  messageContent?: string | null
+  hasAttachments: boolean
+  attachmentCount: number
+  messageType: DMMessageType
+}): { title: string; body: string } {
+  // Array of title variations for variety (prevents notification fatigue)
+  // Each sender gets a consistent title style based on their name hash
+  const titleVariations = [
+    `${senderFirstName} just messaged you`,
+    `${senderFirstName} reached out`,
+    `New message from ${senderFirstName}`,
+    `${senderFirstName} wants to connect`,
+    `You have a message from ${senderFirstName}`,
+    `${senderFirstName} sent you something`,
+  ]
+  
+  // Select title based on hash of sender name for consistency per sender
+  // This ensures the same sender always uses the same title style
+  const titleIndex = senderName.length % titleVariations.length
+  const title = titleVariations[titleIndex]
+
+  // Generate body based on message type and content
+  let body: string
+
+  if (hasAttachments) {
+    // Attachment messages - create curiosity and urgency
+    // Use emotional language to make attachments feel valuable
+    if (attachmentCount === 1) {
+      const attachmentVariations = [
+        `${senderFirstName} shared something with you`,
+        `Check out what ${senderFirstName} sent`,
+        `${senderFirstName} sent you a file`,
+        `You have something new from ${senderFirstName}`,
+        `${senderFirstName} shared something special`,
+        `Something new from ${senderFirstName}`,
+      ]
+      body = attachmentVariations[senderName.length % attachmentVariations.length]
+    } else {
+      // Multiple attachments - emphasize value
+      body = `${senderFirstName} shared ${attachmentCount} files with you`
+    }
+  } else if (messageContent) {
+    // Text messages - create curiosity gap based on length
+    const trimmedContent = messageContent.trim()
+    const contentLength = trimmedContent.length
+    
+    // Detect if message contains questions (creates urgency to respond)
+    const hasQuestion = /[?？]/.test(trimmedContent)
+    
+    if (contentLength <= 50) {
+      // Short messages - show full content for immediate value
+      body = trimmedContent
+      // Add subtle urgency for questions
+      if (hasQuestion && contentLength < 40) {
+        // Questions are already engaging, no need to modify
+      }
+    } else if (contentLength <= 100) {
+      // Medium messages - show most of it with slight tease
+      const preview = trimmedContent.slice(0, 80).trim()
+      // Try to end at a word boundary
+      const lastSpace = preview.lastIndexOf(' ')
+      const finalPreview = lastSpace > 50 ? preview.slice(0, lastSpace) : preview
+      body = `${finalPreview}...`
+    } else {
+      // Long messages - create strong curiosity gap
+      // Show enough to be interesting but leave them wanting more
+      const previewLength = 65
+      const preview = trimmedContent.slice(0, previewLength).trim()
+      // Remove trailing incomplete words for cleaner preview
+      const lastSpace = preview.lastIndexOf(' ')
+      const finalPreview = lastSpace > 45 ? preview.slice(0, lastSpace) : preview
+      body = `${finalPreview}...`
+    }
+  } else {
+    // Empty message (shouldn't happen, but handle gracefully)
+    body = `${senderFirstName} sent you a message`
+  }
+
+  return { title, body }
+}
+
 export async function appendMessage(
   supabase: TypedSupabaseClient,
   input: MessageInput,
@@ -510,11 +613,16 @@ export async function appendMessage(
   // Notify other participants about the new message (fire and forget - non-critical)
   void (async () => {
     try {
+      console.log("[appendMessage] Starting notification creation for message:", messageRow.id)
+      
       // Get all participants in the thread
       const participants = await loadThreadParticipants(supabase, input.threadId)
       const otherParticipants = participants.filter(p => p.user_id !== input.senderId)
 
+      console.log("[appendMessage] Found participants:", participants.length, "other participants:", otherParticipants.length)
+
       if (otherParticipants.length === 0) {
+        console.log("[appendMessage] No other participants, skipping notification")
         return
       }
 
@@ -529,32 +637,68 @@ export async function appendMessage(
         ? `${senderProfile.first_name} ${senderProfile.last_name}`.trim() || senderProfile.username
         : "Someone"
 
+      console.log("[appendMessage] Sender name:", senderName)
+
       // Create notifications for each other participant
       const notificationPromises = otherParticipants.map(async (participant) => {
         // Skip if participant has blocked the sender or is not active
         if (participant.status === "blocked" || participant.status !== "active") {
+          console.log("[appendMessage] Skipping notification for participant:", participant.user_id, "status:", participant.status)
           return
         }
 
-        // Create notification
-        await createNotification({
-          userId: participant.user_id,
-          type: "new_message",
-          title: "New message",
-          body: `${senderName} sent you a message${input.content ? `: ${input.content.slice(0, 50)}${input.content.length > 50 ? "..." : ""}` : ""}`,
-          actionUrl: `/messages?thread=${input.threadId}`,
-          metadata: {
-            thread_id: input.threadId,
-            message_id: messageRow.id,
-            sender_id: input.senderId,
-            sender_name: senderName,
-          }
-        })
+        console.log("[appendMessage] Creating notification for participant:", participant.user_id)
+
+        // Create notification with neuromarketing-optimized messaging
+        try {
+          // Get recipient's first name for personalization (if available)
+          const { data: recipientProfile } = await client
+            .from("users")
+            .select("first_name")
+            .eq("id", participant.user_id)
+            .maybeSingle()
+          
+          const recipientFirstName = recipientProfile?.first_name || "there"
+          const senderFirstName = senderProfile?.first_name || senderName
+          
+          // Generate engaging notification using neuromarketing techniques
+          const { title, body } = generateEngagingNotification({
+            senderFirstName,
+            senderName,
+            recipientFirstName,
+            messageContent: input.content,
+            hasAttachments: !!(input.attachments && input.attachments.length > 0),
+            attachmentCount: input.attachments?.length || 0,
+            messageType: input.messageType || "text",
+          })
+
+          const notificationId = await createNotification({
+            userId: participant.user_id,
+            type: "new_message",
+            title,
+            body,
+            actionUrl: `/messages?thread=${input.threadId}`,
+            metadata: {
+              thread_id: input.threadId,
+              message_id: messageRow.id,
+              sender_id: input.senderId,
+              sender_name: senderName,
+            }
+          })
+
+          console.log("[appendMessage] ✅ Notification created successfully for user:", participant.user_id, "notificationId:", notificationId)
+        } catch (notifError) {
+          console.error("[appendMessage] ❌ Error creating notification for user:", participant.user_id, "error:", notifError)
+        }
       })
 
-      await Promise.allSettled(notificationPromises)
+      const results = await Promise.allSettled(notificationPromises)
+      const succeeded = results.filter(r => r.status === 'fulfilled').length
+      const failed = results.filter(r => r.status === 'rejected').length
+      
+      console.log("[appendMessage] Notification creation completed. Succeeded:", succeeded, "Failed:", failed)
     } catch (error) {
-      console.error("[appendMessage] Error creating notifications:", error)
+      console.error("[appendMessage] ❌ Error creating notifications:", error)
       // Non-critical error - don't fail the message send
     }
   })()

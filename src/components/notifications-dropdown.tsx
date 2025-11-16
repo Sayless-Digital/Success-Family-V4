@@ -137,7 +137,7 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback relative hidden md:flex">
+        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback relative">
           <Bell className="h-4 w-4 text-white/70" />
           {unreadCount > 0 && (
             <Badge 
@@ -150,8 +150,8 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 p-0">
-        <div className="p-4 border-b border-white/20 flex items-center justify-between">
-          <DropdownMenuLabel className="font-semibold text-white/90 px-0">
+        <div className="px-3 py-2 border-b border-white/20 flex items-center justify-between">
+          <DropdownMenuLabel className="font-semibold text-white/90 px-0 text-sm">
             Notifications
           </DropdownMenuLabel>
           {unreadCount > 0 && (
@@ -166,49 +166,51 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
             </Button>
           )}
         </div>
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto p-1.5">
           {loading ? (
-            <div className="p-4 text-center text-white/60 text-sm">
+            <div className="p-3 text-center text-white/60 text-sm">
               Loading...
             </div>
           ) : notifications.length === 0 ? (
-            <div className="p-4 text-center text-white/60 text-sm">
+            <div className="p-3 text-center text-white/60 text-sm">
               No notifications
             </div>
           ) : (
-            notifications.map((notification) => {
-              const content = notification.action_url ? (
-                <Link
-                  href={notification.action_url}
-                  className="block"
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <NotificationItem notification={notification} />
-                </Link>
-              ) : (
-                <div onClick={() => handleNotificationClick(notification)}>
-                  <NotificationItem notification={notification} />
-                </div>
-              )
+            <div className="space-y-1">
+              {notifications.map((notification) => {
+                const content = notification.action_url ? (
+                  <Link
+                    href={notification.action_url}
+                    className="block"
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <NotificationItem notification={notification} />
+                  </Link>
+                ) : (
+                  <div onClick={() => handleNotificationClick(notification)}>
+                    <NotificationItem notification={notification} />
+                  </div>
+                )
 
-              return (
-                <DropdownMenuItem
-                  key={notification.id}
-                  className={cn(
-                    "p-0 cursor-pointer focus:bg-white/10",
-                    !notification.is_read && "bg-white/5"
-                  )}
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    if (!notification.action_url) {
-                      handleNotificationClick(notification)
-                    }
-                  }}
-                >
-                  {content}
-                </DropdownMenuItem>
-              )
-            })
+                return (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className={cn(
+                      "p-0 cursor-pointer focus:bg-white/10",
+                      !notification.is_read && "bg-white/5"
+                    )}
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      if (!notification.action_url) {
+                        handleNotificationClick(notification)
+                      }
+                    }}
+                  >
+                    {content}
+                  </DropdownMenuItem>
+                )
+              })}
+            </div>
           )}
         </div>
       </DropdownMenuContent>
@@ -218,18 +220,18 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
 
 function NotificationItem({ notification }: { notification: Notification }) {
   return (
-    <div className="p-4 w-full hover:bg-white/5 transition-colors relative">
-      <div className="font-medium text-white/90 text-sm">
+    <div className="px-2.5 py-2 w-full hover:bg-white/5 transition-colors relative rounded-md">
+      <div className="font-medium text-white/90 text-sm leading-tight">
         {notification.title}
       </div>
-      <div className="text-white/70 text-xs mt-1 line-clamp-2">
+      <div className="text-white/70 text-xs mt-1 line-clamp-2 leading-snug">
         {notification.body}
       </div>
-      <div className="text-white/50 text-xs mt-2">
+      <div className="text-white/50 text-xs mt-1.5">
         {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
       </div>
       {!notification.is_read && (
-        <div className="absolute top-4 right-4 h-2 w-2 rounded-full bg-primary" />
+        <div className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-primary" />
       )}
     </div>
   )

@@ -694,11 +694,9 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             </Link>
           )}
 
-          {/* Notifications dropdown - shown when user is logged in, desktop only */}
+          {/* Notifications dropdown - shown when user is logged in, all screen sizes */}
           {user && (
-            <div className="hidden md:flex">
-              <NotificationsDropdown userId={user.id} />
-            </div>
+            <NotificationsDropdown userId={user.id} />
           )}
 
           {/* Profile button - shown when user is logged in, farthest right, desktop only */}
