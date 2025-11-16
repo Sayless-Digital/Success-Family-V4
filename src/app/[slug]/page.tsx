@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getCommunityBySlug } from "@/lib/community-cache"
 import CommunityView from "./community-view"
@@ -58,13 +58,24 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
   const { data: { user } } = await supabase.auth.getUser()
   
   let userMembership = null
+  let isMember = false
+  let isOwner = false
   
   if (user) {
+    // Check if user is the owner
+    isOwner = community.owner_id === user.id
+    
     // Check if user is a member
     const membership = community.members?.find((m: any) => m.user.id === user.id)
     if (membership) {
       userMembership = membership
+      isMember = true
     }
+  }
+
+  // If user is a member or owner, redirect them to the feed
+  if (isMember || isOwner) {
+    redirect(`/${slug}/feed`)
   }
 
   return (

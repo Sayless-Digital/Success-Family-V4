@@ -272,6 +272,55 @@ export async function ensureThread(
   return { thread, viewer, peer, isNew }
 }
 
+/**
+ * Fetches replied message data with validation and attachments
+ * Ensures the replied message exists in the same thread and is not deleted
+ */
+async function fetchRepliedMessage(
+  supabase: TypedSupabaseClient,
+  replyToMessageId: string | null,
+  threadId: string,
+): Promise<{
+  id: string
+  sender_id: string
+  content?: string | null
+  has_attachments: boolean
+  created_at: string
+  attachments?: DirectMessageAttachment[]
+} | null> {
+  if (!replyToMessageId) return null
+
+  const client = supabase as SupabaseClient<any>
+  
+  // Fetch message and attachments in parallel
+  const [messageResult, attachmentsResult] = await Promise.all([
+    client
+      .from("dm_messages")
+      .select("id, sender_id, content, has_attachments, created_at, thread_id, is_deleted")
+      .eq("id", replyToMessageId)
+      .eq("thread_id", threadId) // Ensure same thread
+      .eq("is_deleted", false) // Ensure not deleted
+      .maybeSingle(),
+    client
+      .from("dm_message_media")
+      .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at, source_storage_path, source_bucket")
+      .eq("message_id", replyToMessageId),
+  ])
+
+  if (messageResult.error || !messageResult.data) {
+    return null
+  }
+
+  return {
+    id: messageResult.data.id,
+    sender_id: messageResult.data.sender_id,
+    content: messageResult.data.content ?? null,
+    has_attachments: messageResult.data.has_attachments ?? false,
+    created_at: messageResult.data.created_at,
+    attachments: (attachmentsResult.data ?? []) as DirectMessageAttachment[],
+  }
+}
+
 export async function listMessages(
   supabase: TypedSupabaseClient,
   threadId: string,
@@ -320,7 +369,7 @@ export async function listMessages(
     throw error
   }
 
-  const rows = (data ?? []) as Array<DirectMessage & { 
+  const rows = (data ?? []) as Array<DirectMessage & {
     attachments: DirectMessageAttachment[]
     read_receipts: Array<{
       id: string
@@ -330,11 +379,23 @@ export async function listMessages(
     }>
   }>
 
-  return rows.map((row) => ({
-    ...row,
-    attachments: row.attachments ?? [],
-    read_receipts: row.read_receipts ?? [],
-  }))
+  // Fetch replied messages for all messages that have replies
+  const messagesWithReplies = await Promise.all(
+    rows.map(async (row) => {
+      const repliedToMessage = row.reply_to_message_id
+        ? await fetchRepliedMessage(supabase, row.reply_to_message_id, threadId)
+        : null
+
+      return {
+        ...row,
+        attachments: row.attachments ?? [],
+        read_receipts: row.read_receipts ?? [],
+        replied_to_message: repliedToMessage,
+      }
+    }),
+  )
+
+  return messagesWithReplies
 }
 
 export async function appendMessage(
@@ -364,10 +425,18 @@ export async function appendMessage(
     throw new Error("You cannot send messages in this conversation")
   }
 
+  // Validate reply if provided (database trigger will also validate, but early validation gives better errors)
+  if (input.replyToMessageId) {
+    const repliedMessage = await fetchRepliedMessage(supabase, input.replyToMessageId, input.threadId)
+    if (!repliedMessage) {
+      throw new Error("Replied message not found, deleted, or not in this conversation")
+    }
+  }
+
   const attachments = input.attachments ?? []
   const nowIso = new Date().toISOString()
 
-  // Insert message
+  // Insert message (database trigger will validate reply_to_message_id)
   const inserted = await client
     .from("dm_messages")
     .insert({
@@ -430,9 +499,17 @@ export async function appendMessage(
     }
   })()
 
+  // Fetch replied_to_message using helper function (already validated above)
+  const repliedToMessage = await fetchRepliedMessage(
+    supabase,
+    messageRow.reply_to_message_id ?? null,
+    input.threadId,
+  )
+
   return {
     ...messageRow,
     attachments: storedAttachments,
+    replied_to_message: repliedToMessage,
   }
 }
 
@@ -531,5 +608,4 @@ export async function acceptMessageRequest(
     conversation,
   }
 }
-
 

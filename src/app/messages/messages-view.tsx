@@ -17,6 +17,7 @@ import {
   Mic,
   Paperclip,
   Play,
+  Reply,
   Search,
   Send,
   Trash2,
@@ -139,6 +140,8 @@ export default function MessagesView({
   const [composerValue, setComposerValue] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [attachments, setAttachments] = useState<AttachmentState[]>([])
+  const [replyingToMessage, setReplyingToMessage] = useState<MessageResult | null>(null)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   
   // Debug: Log attachments state changes
   useEffect(() => {
@@ -189,6 +192,8 @@ export default function MessagesView({
   const pathname = usePathname()
 
   const messageContainerRef = useRef<HTMLDivElement | null>(null)
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const highlightedMessageIdRef = useRef<string | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const messagesChannelRef = useRef<RealtimeChannel | null>(null)
   const threadsChannelRef = useRef<RealtimeChannel | null>(null)
@@ -504,6 +509,31 @@ export default function MessagesView({
     if (!selectedMessages.length) return
     ensureAttachmentUrls(selectedMessages.flatMap((message) => message.attachments ?? []))
   }, [selectedMessages, ensureAttachmentUrls])
+
+  // Ensure attachment URLs for replying to message
+  useEffect(() => {
+    if (!replyingToMessage?.attachments?.length) return
+    ensureAttachmentUrls(replyingToMessage.attachments)
+  }, [replyingToMessage?.attachments, ensureAttachmentUrls])
+
+  // Ensure attachment URLs for replied messages in current thread
+  useEffect(() => {
+    if (!selectedThreadId) return
+    const threadMessages = messagesByThread[selectedThreadId] ?? []
+    const repliedMessageIds = new Set<string>()
+    
+    // Collect attachments from replied_to_message data
+    const repliedAttachments: MessageResult["attachments"] = []
+    threadMessages.forEach(message => {
+      if (message.replied_to_message?.attachments) {
+        repliedAttachments.push(...message.replied_to_message.attachments)
+      }
+    })
+    
+    if (repliedAttachments.length > 0) {
+      ensureAttachmentUrls(repliedAttachments)
+    }
+  }, [selectedThreadId, messagesByThread, ensureAttachmentUrls])
 
   // Voice note audio elements are now managed by VoiceNotePlayer component
 
@@ -1090,8 +1120,8 @@ export default function MessagesView({
             return next
           })
 
-          // Fetch attachments and read receipts in parallel
-          const [attachmentsResult, readReceiptsResult] = await Promise.all([
+          // Fetch attachments, read receipts, and replied-to message in parallel
+          const [attachmentsResult, readReceiptsResult, repliedToResult] = await Promise.all([
             supabase
               .from("dm_message_media")
               .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at, source_storage_path, source_bucket")
@@ -1100,6 +1130,29 @@ export default function MessagesView({
               .from("dm_message_reads")
               .select("id, message_id, user_id, read_at")
               .eq("message_id", newMessage.id),
+            newMessage.reply_to_message_id
+              ? Promise.all([
+                  supabase
+                    .from("dm_messages")
+                    .select("id, sender_id, content, has_attachments, created_at, thread_id, is_deleted")
+                    .eq("id", newMessage.reply_to_message_id)
+                    .eq("thread_id", selectedThreadId) // Ensure same thread
+                    .eq("is_deleted", false) // Ensure not deleted
+                    .maybeSingle(),
+                  supabase
+                    .from("dm_message_media")
+                    .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at, source_storage_path, source_bucket")
+                    .eq("message_id", newMessage.reply_to_message_id),
+                ]).then(([messageResult, attachmentsResult]) => ({
+                  data: messageResult.data
+                    ? {
+                        ...messageResult.data,
+                        attachments: attachmentsResult.data ?? [],
+                      }
+                    : null,
+                  error: messageResult.error || attachmentsResult.error || null,
+                }))
+              : Promise.resolve({ data: null, error: null }),
           ])
 
           // If this is a boost reward message with attachments that need copying, copy them
@@ -1131,6 +1184,18 @@ export default function MessagesView({
             is_deleted: newMessage.is_deleted ?? false,
             attachments: attachmentsResult.data ?? [],
             read_receipts: readReceiptsResult.data ?? [],
+            replied_to_message: repliedToResult.data &&
+              repliedToResult.data.thread_id === selectedThreadId &&
+              !repliedToResult.data.is_deleted
+              ? {
+                  id: repliedToResult.data.id,
+                  sender_id: repliedToResult.data.sender_id,
+                  content: repliedToResult.data.content ?? null,
+                  has_attachments: repliedToResult.data.has_attachments ?? false,
+                  created_at: repliedToResult.data.created_at,
+                  attachments: (repliedToResult.data as any).attachments ?? [],
+                }
+              : null,
           }
 
           // Add message to state (append since messages are in ascending order)
@@ -1570,6 +1635,135 @@ export default function MessagesView({
     }
   }, [selectedThreadId, typingIndicators])
 
+  // Function to scroll to a message and highlight it
+  const scrollToMessage = useCallback(async (messageId: string) => {
+    const normalizedThreadId = selectedThreadId?.trim()
+    if (!normalizedThreadId) return
+
+    // Check if message exists in current messages
+    const currentMessages = messagesByThread[normalizedThreadId] ?? []
+    const messageExists = currentMessages.some(m => m.id === messageId)
+    
+    // If message doesn't exist and there are more messages to load, load them
+    if (!messageExists) {
+      const pagination = threadPagination[normalizedThreadId]
+      if (pagination?.hasMore && !loadingOlderMessages) {
+        // Load older messages until we find the target message or run out of messages
+        let found = false
+        let hasMore = pagination.hasMore
+        let nextCursor = pagination.nextCursor
+        let loadAttempts = 0
+        const MAX_LOAD_ATTEMPTS = 20 // Safety limit to prevent infinite loops
+        
+        while (!found && hasMore && !loadingOlderMessages && loadAttempts < MAX_LOAD_ATTEMPTS) {
+          loadAttempts++
+          try {
+            setLoadingOlderMessages(true)
+            const params = new URLSearchParams()
+            params.set("limit", String(DEFAULT_PAGE_SIZE))
+            if (nextCursor) {
+              params.set("before", nextCursor)
+            }
+
+            const response = await fetch(`/api/dm/threads/${normalizedThreadId}/messages?${params.toString()}`, {
+              cache: "no-store",
+            })
+            if (!response.ok) {
+              throw new Error("Failed to load older messages")
+            }
+            const data = await response.json()
+            const fetchedMessages: MessageResult[] = data.messages ?? []
+            
+            // Check if target message is in fetched messages
+            found = fetchedMessages.some(m => m.id === messageId)
+            
+            setMessagesByThread((prev) => ({
+              ...prev,
+              [normalizedThreadId]: [...fetchedMessages, ...(prev[normalizedThreadId] ?? [])],
+            }))
+            
+            hasMore = Boolean(data.pageInfo?.hasMore)
+            nextCursor = data.pageInfo?.nextCursor ?? null
+            
+            setThreadPagination((prev) => ({
+              ...prev,
+              [normalizedThreadId]: {
+                hasMore,
+                nextCursor,
+              },
+            }))
+            
+            ensureAttachmentUrls(fetchedMessages.flatMap((m) => m.attachments ?? []))
+            
+            // Wait a bit for DOM to update
+            await new Promise(resolve => setTimeout(resolve, 100))
+          } catch (error) {
+            console.error("Error loading older messages:", error)
+            setLoadingOlderMessages(false)
+            return
+          } finally {
+            setLoadingOlderMessages(false)
+          }
+        }
+      }
+    }
+
+    // Now try to scroll to the message
+    const attemptScroll = () => {
+      const messageElement = messageRefs.current.get(messageId)
+      const container = messageContainerRef.current
+      
+      if (!messageElement || !container) {
+        // If still not found, try again after a short delay
+        setTimeout(() => {
+          attemptScroll()
+        }, 100)
+        return
+      }
+      
+      // Highlight the message first
+      setHighlightedMessageId(messageId)
+      highlightedMessageIdRef.current = messageId
+      
+      // Use requestAnimationFrame to ensure DOM is updated before scrolling
+      requestAnimationFrame(() => {
+        // Scroll to message with better positioning
+        messageElement.scrollIntoView({ 
+          behavior: "smooth", 
+          block: "center",
+          inline: "nearest"
+        })
+        
+        // Also try scrolling the container if needed (for better centering)
+        setTimeout(() => {
+          const elementRect = messageElement.getBoundingClientRect()
+          const containerRect = container.getBoundingClientRect()
+          const elementCenter = elementRect.top + elementRect.height / 2
+          const containerCenter = containerRect.top + containerRect.height / 2
+          const scrollOffset = elementCenter - containerCenter
+          
+          if (Math.abs(scrollOffset) > 10) {
+            container.scrollBy({
+              top: scrollOffset,
+              behavior: "smooth"
+            })
+          }
+        }, 100)
+      })
+      
+      // Remove highlight after 2 seconds
+      setTimeout(() => {
+        setHighlightedMessageId(null)
+        highlightedMessageIdRef.current = null
+      }, 2000)
+    }
+    
+    // Wait a bit for DOM to update after loading messages
+    setTimeout(() => {
+      attemptScroll()
+    }, 150)
+  }, [selectedThreadId, messagesByThread, threadPagination, loadingOlderMessages, ensureAttachmentUrls])
+
   const notifyTyping = useCallback(
     (typing: boolean) => {
       if (!channelRef.current) return
@@ -1614,6 +1808,7 @@ export default function MessagesView({
 
   const resetComposer = useCallback(() => {
       setComposerValue("")
+      setReplyingToMessage(null)
       setAttachments((prev) => {
         prev.forEach((attachment) => {
           if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
@@ -2085,7 +2280,7 @@ export default function MessagesView({
       content: trimmed.length > 0 ? trimmed : null,
       metadata: null,
       has_attachments: readyAttachments.length > 0,
-      reply_to_message_id: null,
+      reply_to_message_id: replyingToMessage?.id ?? null,
       created_at: now,
       updated_at: now,
       is_deleted: false,
@@ -2101,6 +2296,15 @@ export default function MessagesView({
         created_at: now,
       })),
       read_receipts: [],
+      replied_to_message: replyingToMessage
+        ? {
+            id: replyingToMessage.id,
+            sender_id: replyingToMessage.sender_id,
+            content: replyingToMessage.content ?? null,
+            has_attachments: replyingToMessage.has_attachments ?? false,
+            created_at: replyingToMessage.created_at,
+          }
+        : null,
     }
 
     // Add optimistic message immediately
@@ -2160,6 +2364,7 @@ export default function MessagesView({
             durationSeconds: attachment.durationSeconds,
             fileName: attachment.fileName,
           })),
+          replyToMessageId: replyingToMessage?.id ?? null,
         }),
       })
 
@@ -2177,6 +2382,7 @@ export default function MessagesView({
           ...sentMessage,
           attachments: sentMessage.attachments ?? [],
           read_receipts: [],
+          replied_to_message: sentMessage.replied_to_message ?? null,
         }
 
         // Replace optimistic message with real message
@@ -2714,10 +2920,21 @@ export default function MessagesView({
                         const isDeleting = deletingMessageId === message.id
                         
                         return (
-                          <div key={message.id} className={cn("flex gap-1.5 sm:gap-2 group", isOwn ? "justify-end" : "justify-start")}>
+                          <div 
+                            key={message.id} 
+                            ref={(el) => {
+                              if (el) {
+                                messageRefs.current.set(message.id, el)
+                              } else {
+                                messageRefs.current.delete(message.id)
+                              }
+                            }}
+                            className={cn("flex gap-1.5 sm:gap-2 group", isOwn ? "justify-end" : "justify-start")}
+                          >
                             <div
                               className={cn(
-                                "rounded-2xl backdrop-blur-sm relative",
+                                "rounded-2xl backdrop-blur-sm relative transition-all duration-500",
+                                highlightedMessageId === message.id && "ring-4 ring-white/70 shadow-2xl shadow-white/30 z-10",
                                 isAudioOnly 
                                   ? "w-[280px] sm:w-[320px]"
                                   : "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
@@ -2729,7 +2946,7 @@ export default function MessagesView({
                                 isMobile && isOwn && !isDeleting && "select-none"
                               )}
                               onTouchStart={(e) => {
-                                if (isOwn && !isDeleting && isMobile) {
+                                if (!isDeleting && isMobile) {
                                   handleLongPressStart(message.id, e)
                                 }
                               }}
@@ -2770,6 +2987,21 @@ export default function MessagesView({
                                     <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation()
+                                        setReplyingToMessage(message)
+                                        // Focus composer after a brief delay to ensure it's rendered
+                                        setTimeout(() => {
+                                          const composer = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
+                                          composer?.focus()
+                                        }, 100)
+                                      }}
+                                      className="text-white/80 hover:text-white hover:bg-white/10 cursor-pointer focus:text-white focus:bg-white/10"
+                                    >
+                                      <Reply className="h-3.5 w-3.5 mr-2" />
+                                      Reply
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
                                         handleDeleteMessage(message.id)
                                       }}
                                       className="text-red-400 hover:text-red-300 hover:bg-red-500/20 cursor-pointer focus:text-red-300 focus:bg-red-500/20"
@@ -2780,6 +3012,141 @@ export default function MessagesView({
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               )}
+                              {!isOwn && !isDeleting && (
+                                <DropdownMenu open={isMobile ? longPressMenuOpen === message.id : undefined} onOpenChange={(open) => {
+                                  if (isMobile && !open) {
+                                    setLongPressMenuOpen(null)
+                                  }
+                                }}>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-white/70 hover:text-white/90 focus:outline-none focus-visible:outline-none active:outline-none cursor-pointer p-2 z-40 rounded-full"
+                                      style={{
+                                        background: 'radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.03) 70%, transparent 100%)'
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                      }}
+                                      onTouchStart={(e) => {
+                                        e.stopPropagation()
+                                      }}
+                                    >
+                                      <ChevronDown className="h-5 w-5" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="end"
+                                    side="bottom"
+                                    sideOffset={8}
+                                    className="bg-white/10 border border-white/20 backdrop-blur-xl"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setReplyingToMessage(message)
+                                        // Focus composer after a brief delay to ensure it's rendered
+                                        setTimeout(() => {
+                                          const composer = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
+                                          composer?.focus()
+                                        }, 100)
+                                      }}
+                                      className="text-white/80 hover:text-white hover:bg-white/10 cursor-pointer focus:text-white focus:bg-white/10"
+                                    >
+                                      <Reply className="h-3.5 w-3.5 mr-2" />
+                                      Reply
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                              {message.replied_to_message?.id && (() => {
+                                // Use attachments from replied_to_message if available, otherwise try to find in thread messages
+                                const repliedMessageAttachments = message.replied_to_message.attachments ?? 
+                                  (messagesByThread[selectedThreadId] ?? [])
+                                    .find(m => m.id === message.replied_to_message?.id)
+                                    ?.attachments ?? []
+                                const imageAttachments = repliedMessageAttachments.filter(a => a.media_type === "image")
+                                const videoAttachments = repliedMessageAttachments.filter(a => a.media_type === "video")
+                                const documentAttachments = repliedMessageAttachments.filter(a => a.media_type === "file")
+                                const firstImage = imageAttachments[0]
+                                const firstVideo = videoAttachments[0]
+                                const firstDocument = documentAttachments[0]
+                                const hasImageOrVideo = firstImage || firstVideo
+                                const hasDocument = firstDocument && !hasImageOrVideo
+                                
+                                return (
+                                  <div 
+                                    className={cn(
+                                      "mb-1.5 w-full py-1.5 px-2 rounded-lg border-l-2 flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity",
+                                      isOwn 
+                                        ? "bg-black/20 border-white/30" 
+                                        : "bg-white/5 border-white/20"
+                                    )}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (message.replied_to_message?.id) {
+                                        scrollToMessage(message.replied_to_message.id)
+                                      }
+                                    }}
+                                  >
+                                    {(hasImageOrVideo || hasDocument) && (
+                                      <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0 relative">
+                                        {firstImage && attachmentUrls[firstImage.id]?.url ? (
+                                          <Image
+                                            src={attachmentUrls[firstImage.id].url}
+                                            alt="Shared image"
+                                            width={40}
+                                            height={40}
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : firstVideo && attachmentUrls[firstVideo.id]?.url ? (
+                                          <>
+                                            <video
+                                              src={attachmentUrls[firstVideo.id].url}
+                                              className="h-full w-full object-cover"
+                                              muted
+                                              playsInline
+                                            />
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                              <Video className="h-3 w-3 sm:h-4 sm:w-4 text-white/80" />
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="h-full w-full flex items-center justify-center bg-white/5">
+                                            {firstImage ? (
+                                              <ImageIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/50" />
+                                            ) : firstVideo ? (
+                                              <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/50" />
+                                            ) : (
+                                              <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/50" />
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                        <Reply className="h-3 w-3 text-white/50 flex-shrink-0" />
+                                        <span className="text-[10px] text-white/60 font-medium">
+                                          {message.replied_to_message.sender_id === viewer.id ? "You" : peerName}
+                                        </span>
+                                      </div>
+                                      {message.replied_to_message.content ? (
+                                        <p className="text-[10px] text-white/50 line-clamp-2 truncate">
+                                          {message.replied_to_message.content}
+                                        </p>
+                                      ) : message.replied_to_message.has_attachments ? (
+                                        <p className="text-[10px] text-white/50 italic">
+                                          {firstImage ? "[image]" : firstVideo ? "[video]" : firstDocument ? (firstDocument.file_name || "[document]") : "[attachment]"}
+                                        </p>
+                                      ) : (
+                                        <p className="text-[10px] text-white/50 italic">[message]</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })()}
                              <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-1.5", !hasImages && !hasVideos && !isAudioOnly && "pr-12 sm:pr-14")}>
                                 {attachmentsForMessage.length > 0 && (
                                   <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-2", message.content && "mb-1.5")}>
@@ -3309,6 +3676,97 @@ export default function MessagesView({
                         autoStart={true}
                       />
                     )}
+                    {replyingToMessage && (
+                      <div className="w-full mb-2">
+                        <div 
+                          className="py-2.5 sm:py-3 px-3 sm:px-4 bg-white/5 border-l-2 border-white/30 rounded-lg flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => {
+                            if (replyingToMessage.id) {
+                              scrollToMessage(replyingToMessage.id)
+                            }
+                          }}
+                        >
+                          {(() => {
+                            const imageAttachments = replyingToMessage.attachments?.filter(a => a.media_type === "image") ?? []
+                            const videoAttachments = replyingToMessage.attachments?.filter(a => a.media_type === "video") ?? []
+                            const documentAttachments = replyingToMessage.attachments?.filter(a => a.media_type === "file") ?? []
+                            const firstImage = imageAttachments[0]
+                            const firstVideo = videoAttachments[0]
+                            const firstDocument = documentAttachments[0]
+                            const hasImageOrVideo = firstImage || firstVideo
+                            const hasDocument = firstDocument && !hasImageOrVideo
+                            
+                            return (
+                              <>
+                                {(hasImageOrVideo || hasDocument) && (
+                                  <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0 relative">
+                                    {firstImage && attachmentUrls[firstImage.id]?.url ? (
+                                      <Image
+                                        src={attachmentUrls[firstImage.id].url}
+                                        alt="Shared image"
+                                        width={64}
+                                        height={64}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : firstVideo && attachmentUrls[firstVideo.id]?.url ? (
+                                      <>
+                                        <video
+                                          src={attachmentUrls[firstVideo.id].url}
+                                          className="h-full w-full object-cover"
+                                          muted
+                                          playsInline
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                          <Video className="h-4 w-4 sm:h-5 sm:w-5 text-white/80" />
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="h-full w-full flex items-center justify-center bg-white/5">
+                                        {firstImage ? (
+                                          <ImageIcon className="h-5 w-5 sm:h-6 sm:w-6 text-white/50" />
+                                        ) : firstVideo ? (
+                                          <Video className="h-5 w-5 sm:h-6 sm:w-6 text-white/50" />
+                                        ) : (
+                                          <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-white/50" />
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 mb-0.5">
+                                    <Reply className="h-3 w-3 text-white/50 flex-shrink-0" />
+                                    <span className="text-[10px] text-white/60 font-medium">
+                                      Replying to {replyingToMessage.sender_id === viewer.id ? "yourself" : peerName}
+                                    </span>
+                                  </div>
+                                  {replyingToMessage.content ? (
+                                    <p className="text-[10px] text-white/50 line-clamp-2 truncate">
+                                      {replyingToMessage.content}
+                                    </p>
+                                  ) : replyingToMessage.has_attachments ? (
+                                    <p className="text-[10px] text-white/50 italic">
+                                      {firstImage ? "[image]" : firstVideo ? "[video]" : firstDocument ? (firstDocument.file_name || "[document]") : "[attachment]"}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] text-white/50 italic">[message]</p>
+                                  )}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 rounded-full text-white/50 hover:text-white hover:bg-white/10 flex-shrink-0"
+                                  onClick={() => setReplyingToMessage(null)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                    )}
                     <div
                       className={cn(
                         "flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3",
@@ -3545,6 +4003,8 @@ export default function MessagesView({
                         placeholder={
                           selectedConversation.participant_status === "blocked"
                             ? "Cannot send messages"
+                            : replyingToMessage
+                            ? "Type your reply..."
                             : "Type a message"
                         }
                         className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-0.5 sm:pb-1.5"

@@ -49,11 +49,12 @@ export function TopUpAmount({
       return presetsWith1000.sort((a, b) => a - b)
     }
     if (buyPricePerPoint <= 0) return [minPoints, 1000]
-    const basePresets = [150, 200, 300, 1000]
-      .map((amt) => Math.ceil(amt / buyPricePerPoint))
+    // Start at 125 points ($50 TTD) and increment accordingly
+    const basePointPresets = [125, 250, 375, 500, 1000]
       .map((pts) => Math.ceil(pts / multipleForWholeDollars) * multipleForWholeDollars)
-    return basePresets.sort((a, b) => a - b)
-  }, [presets, buyPricePerPoint, multipleForWholeDollars, minPoints])
+      .filter((pts) => pts >= minPointsRounded) // Only include presets >= minimum
+    return basePointPresets.sort((a, b) => a - b)
+  }, [presets, buyPricePerPoint, multipleForWholeDollars, minPoints, minPointsRounded])
 
   const [pointsValue, setPointsValue] = React.useState<string>(String(defaultPoints || ''))
 

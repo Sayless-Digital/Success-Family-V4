@@ -22,6 +22,14 @@ export interface ConversationListItem extends DirectMessageConversationSummary {
 
 export interface MessageResult extends DirectMessage {
   attachments: DirectMessageAttachment[]
+  replied_to_message?: {
+    id: string
+    sender_id: string
+    content?: string | null
+    has_attachments: boolean
+    created_at: string
+    attachments?: DirectMessageAttachment[]
+  } | null
 }
 
 export function getThreadChannelName(threadId: string) {
@@ -56,4 +64,5 @@ export function buildDmMediaStoragePath(userId: string, extension?: string) {
     storagePath,
   }
 }
+
 

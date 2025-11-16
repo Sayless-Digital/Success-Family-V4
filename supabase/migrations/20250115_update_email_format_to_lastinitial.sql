@@ -123,3 +123,4 @@ COMMENT ON FUNCTION public.generate_personalized_email IS 'Generates a personali
 
 
 
+
