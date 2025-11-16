@@ -21,21 +21,24 @@ export interface SendPushNotificationResult {
   error?: string
 }
 
+interface NotificationData {
+  id: string
+  user_id: string
+  title: string
+  body: string
+  action_url?: string | null
+  type: string
+  is_read: boolean
+}
+
 /**
- * Send push notification for a given notification ID
- * This function can be called directly from server actions/API routes
+ * Send push notification - can accept either notificationId or notification data directly
+ * Passing data directly avoids race conditions when multiple notifications are created quickly
  */
 export async function sendPushNotification(
-  notificationId: string
+  notificationIdOrData: string | NotificationData
 ): Promise<SendPushNotificationResult> {
   try {
-    if (!notificationId) {
-      console.error('[push-notifications] ❌ Missing notificationId')
-      return { success: false, error: 'Missing notificationId' }
-    }
-
-    console.log('[push-notifications] Sending push notification for:', notificationId)
-
     // Check if VAPID keys are configured
     if (!env.VAPID_PRIVATE_KEY || !env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
       console.warn('[push-notifications] ⚠️ VAPID keys not configured, skipping push notification')
@@ -43,24 +46,44 @@ export async function sendPushNotification(
     }
 
     const supabase = await createServerSupabaseClient()
+    let notification: NotificationData
 
-    // Get notification using RPC function that bypasses RLS
-    // This is necessary because the server needs to read notifications for any user
-    // to send push notifications, but RLS only allows users to read their own notifications
-    const { data: notifications, error: notificationError } = await supabase
-      .rpc('get_notification_for_push', { p_notification_id: notificationId })
+    // Handle both notificationId (string) and notification data (object)
+    if (typeof notificationIdOrData === 'string') {
+      const notificationId = notificationIdOrData
+      if (!notificationId) {
+        console.error('[push-notifications] ❌ Missing notificationId')
+        return { success: false, error: 'Missing notificationId' }
+      }
 
-    if (notificationError || !notifications || notifications.length === 0) {
-      console.error('[push-notifications] ❌ Error fetching notification:', notificationError)
-      return { success: false, error: 'Notification not found' }
+      console.log('[push-notifications] Fetching notification by ID:', notificationId)
+
+      // Get notification using RPC function that bypasses RLS
+      const { data: notifications, error: notificationError } = await supabase
+        .rpc('get_notification_for_push', { p_notification_id: notificationId })
+
+      if (notificationError || !notifications || notifications.length === 0) {
+        console.error('[push-notifications] ❌ Error fetching notification:', notificationError)
+        return { success: false, error: 'Notification not found' }
+      }
+
+      notification = notifications[0]
+    } else {
+      // Use notification data directly - avoids database fetch and race conditions
+      notification = notificationIdOrData
+      console.log('[push-notifications] Using notification data directly:', {
+        id: notification.id,
+        userId: notification.user_id,
+        title: notification.title,
+        body: notification.body?.substring(0, 50) || '(no body)'
+      })
     }
 
-    const notification = notifications[0]
-
-    console.log('[push-notifications] Notification found:', {
+    console.log('[push-notifications] Sending push notification:', {
       id: notification.id,
       userId: notification.user_id,
       title: notification.title,
+      body: notification.body?.substring(0, 50) || '(no body)',
       isRead: notification.is_read
     })
 

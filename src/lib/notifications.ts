@@ -55,21 +55,39 @@ export async function createNotification(
     throw error
   }
 
-  console.log('[notifications] ✅ Notification created successfully:', notificationId)
+  console.log('[notifications] ✅ Notification created successfully:', notificationId, {
+    title: input.title,
+    body: input.body.substring(0, 50),
+    messageId: (input.metadata as any)?.message_id || 'N/A'
+  })
 
   // Trigger push notification asynchronously (fire and forget)
   // This avoids blocking the main request
   if (notificationId) {
-    console.log('[notifications] Triggering push notification for notification ID:', notificationId)
+    console.log('[notifications] Triggering push notification for notification ID:', notificationId, {
+      title: input.title,
+      body: input.body.substring(0, 50),
+      messageId: (input.metadata as any)?.message_id || 'N/A'
+    })
     
     // Trigger push notification asynchronously (fire and forget)
-    // Small delay to ensure notification is committed before pushing
+    // Pass notification data directly to avoid race conditions from database fetch
     ;(async () => {
-      // Wait a bit for notification to be committed to database
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Small delay to ensure notification is committed to database (for is_read check)
+      await new Promise(resolve => setTimeout(resolve, 50))
       
       try {
-        const result = await sendPushNotification(notificationId)
+        // Pass notification data directly instead of fetching from database
+        // This ensures we use the exact data that was created, avoiding race conditions
+        const result = await sendPushNotification({
+          id: notificationId,
+          user_id: input.userId,
+          title: input.title,
+          body: input.body,
+          action_url: input.actionUrl || null,
+          type: input.type,
+          is_read: false // Notification is just created, so it's unread
+        })
         
         if (result.success) {
           console.log('[notifications] ✅ Push notification sent successfully:', {

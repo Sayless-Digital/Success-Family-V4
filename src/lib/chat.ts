@@ -684,6 +684,16 @@ export async function appendMessage(
             messageType,
           })
 
+          // Log the exact content being used for this notification to debug race conditions
+          console.log("[appendMessage] Creating notification with:", {
+            messageId,
+            messageContent: messageContent?.substring(0, 50) || '(no content)',
+            title,
+            body: body.substring(0, 50),
+            threadId,
+            senderId
+          })
+
           const notificationId = await createNotification({
             userId: participant.user_id,
             type: "new_message",
@@ -698,7 +708,7 @@ export async function appendMessage(
             }
           })
 
-          console.log("[appendMessage] ✅ Notification created successfully for user:", participant.user_id, "notificationId:", notificationId)
+          console.log("[appendMessage] ✅ Notification created successfully for user:", participant.user_id, "notificationId:", notificationId, "messageId:", messageId)
         } catch (notifError) {
           console.error("[appendMessage] ❌ Error creating notification for user:", participant.user_id, "error:", notifError)
         }
