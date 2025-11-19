@@ -291,6 +291,15 @@ const Avatar = React.forwardRef<
   // Show hover card if we have userId and either fetched data or props with required fields
   const canShowHoverCard = showHoverCard && userId && (userData || (username && firstName && lastName))
 
+  // Check if it's Christmas season (December or January)
+  const [isChristmasSeason, setIsChristmasSeason] = React.useState(true) // Default to always show
+  React.useEffect(() => {
+    // Uncomment below to make it seasonal (December & January only):
+    // const now = new Date()
+    // const month = now.getMonth() // 0-11, where 0 is January
+    // setIsChristmasSeason(month === 11 || month === 0) // December or January
+  }, [])
+
   // Extract size from className to enforce square dimensions via inline styles
   const classStr = className || ''
   let explicitSize: number | undefined
@@ -340,36 +349,71 @@ const Avatar = React.forwardRef<
   }
 
   const avatarRoot = (
-    <AvatarPrimitive.Root
-      ref={ref}
-      className={cn(
-        "relative inline-block align-middle shrink-0 rounded-full transition-all duration-200 z-10",
-        "overflow-hidden box-border avatar-enforce-square",
-        canShowHoverCard && "cursor-pointer",
-        showOnlineIndicator
-          ? ""
-          : "border border-white/20 hover:border-white/40",
-        className
-      )}
+    <div
+      className="relative inline-block"
       style={{
-        aspectRatio: "1 / 1",
         ...(explicitSize ? {
           width: `${explicitSize}px`,
           height: `${explicitSize}px`,
-          minWidth: `${explicitSize}px`,
-          maxWidth: `${explicitSize}px`,
-          minHeight: `${explicitSize}px`,
-          maxHeight: `${explicitSize}px`,
         } : {}),
-        ...props.style,
       }}
-      onClick={canShowHoverCard ? handleClick : undefined}
-      onMouseEnter={canShowHoverCard ? handleMouseEnter : undefined}
-      onMouseLeave={canShowHoverCard ? handleMouseLeave : undefined}
-      {...props}
     >
-      {children}
-    </AvatarPrimitive.Root>
+      <AvatarPrimitive.Root
+        ref={ref}
+        className={cn(
+          "relative inline-block align-middle shrink-0 rounded-full transition-all duration-200 z-10",
+          "overflow-hidden box-border avatar-enforce-square",
+          canShowHoverCard && "cursor-pointer",
+          showOnlineIndicator
+            ? ""
+            : "border border-white/20 hover:border-white/40",
+          className
+        )}
+        style={{
+          aspectRatio: "1 / 1",
+          ...(explicitSize ? {
+            width: `${explicitSize}px`,
+            height: `${explicitSize}px`,
+            minWidth: `${explicitSize}px`,
+            maxWidth: `${explicitSize}px`,
+            minHeight: `${explicitSize}px`,
+            maxHeight: `${explicitSize}px`,
+          } : {}),
+          ...props.style,
+        }}
+        onClick={canShowHoverCard ? handleClick : undefined}
+        onMouseEnter={canShowHoverCard ? handleMouseEnter : undefined}
+        onMouseLeave={canShowHoverCard ? handleMouseLeave : undefined}
+        {...props}
+      >
+        {children}
+      </AvatarPrimitive.Root>
+      {/* Santa Hat Overlay - Christmas season */}
+      {isChristmasSeason && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: explicitSize ? `${-explicitSize * 0.3}px` : '-30%',
+            left: explicitSize ? `${explicitSize * 0.15}px` : '15%',
+            transform: 'translateX(-50%) rotate(5deg) scaleX(-1)',
+            transformOrigin: '50% 100%',
+            width: explicitSize ? `${explicitSize * 1.1}px` : '110%',
+            height: explicitSize ? `${explicitSize * 0.75}px` : '75%',
+            zIndex: 20,
+          }}
+        >
+          {/* Santa Hat - Using provided SVG, flipped horizontally */}
+          <img
+            src="/santa-hat.svg"
+            alt="Santa hat"
+            className="w-full h-full object-contain"
+            style={{ 
+              filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))',
+            }}
+          />
+        </div>
+      )}
+    </div>
   )
 
   // Wrap in Popover if hover card is enabled

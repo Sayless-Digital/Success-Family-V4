@@ -27,6 +27,7 @@ import { PlatformLogo } from "@/components/platform-logo"
 import { useUnreadMessagesCount } from "@/hooks/use-unread-messages-count"
 import { Badge } from "@/components/ui/badge"
 import { NotificationsDropdown } from "@/components/notifications-dropdown"
+import { ChristmasLights } from "@/components/christmas-lights"
 
 interface GlobalHeaderProps {
   onMenuClick: () => void
@@ -377,7 +378,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
     <>
     <header 
       className={cn(
-        "fixed z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md",
+        "fixed z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md relative overflow-visible",
         // In fullscreen mode on mobile: rounded on all edges, border all around, spaced from edges
         isFullscreen && isMobile 
           ? "rounded-lg border border-white/20 left-2 right-2"
@@ -388,6 +389,8 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
         top: isFullscreen && isMobile ? "calc(env(safe-area-inset-top, 0) + 8px)" : "0",
       }}
     >
+      {/* Christmas Lights at the bottom of header */}
+      <ChristmasLights lightCount={isMobile ? 12 : 24} spacing={12} edges="bottom" />
       <div className="h-full px-1 flex items-center justify-between">
         {/* Left side - Menu Button (desktop only) and Logo */}
         <div className="flex items-center gap-2">

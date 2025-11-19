@@ -10,6 +10,7 @@ import { MobileBottomNav } from "./mobile-bottom-nav"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
 import { Toaster } from "@/components/toaster"
+import { SnowEffect } from "@/components/snow-effect"
 import dynamic from "next/dynamic"
 
 // Dynamically import Silk with no SSR
@@ -426,6 +427,9 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         </div>
       )}
       
+      {/* Snow Effect - Christmas theme (December & January) */}
+      {!isStreamPage && <SnowEffect />}
+      
       {!isStreamPage && (
         <>
           <GlobalHeader
@@ -497,13 +501,17 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
               "absolute inset-0 overflow-y-auto pl-3 pr-2.5 sm:pl-4 sm:pr-3.5 lg:pl-6 lg:pr-5",
               isMobile ? "pb-16" : "pb-4" // Extra padding on mobile for bottom nav (48px nav + 16px spacing = 64px)
             )}
-            style={{
-              // In fullscreen mode on mobile, account for header being pushed down by notch + 8px spacing
-              top: isFullscreen && isMobile 
-                ? 'calc(env(safe-area-inset-top, 0) + 8px + 3rem)' 
-                : '3rem', // Start below header
-              paddingTop: '12px', // Reduced content padding
-            }}
+            style={(() => {
+              const headerOffset = isFullscreen && isMobile
+                ? "calc(env(safe-area-inset-top, 0) + 8px)"
+                : "0px"
+              return {
+                // Shift the scrollable surface upward by the header height so content can glide beneath it
+                top: `calc(${headerOffset} - 3rem)`,
+                // Add equal padding so content isn't hidden when at rest (header height + 12px spacing)
+                paddingTop: `calc(${headerOffset} + 3rem + 12px)`,
+              }
+            })()}
           >
             {children}
           </div>

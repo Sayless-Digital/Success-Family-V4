@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation"
+import { headers } from "next/headers"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getCommunityBySlug } from "@/lib/community-cache"
 import CommunityView from "./community-view"
@@ -74,8 +75,19 @@ export default async function CommunityPage({ params }: CommunityPageProps) {
   }
 
   // If user is a member or owner, redirect them to the feed
+  // BUT only if navigating from outside the community (not already on a community page)
   if (isMember || isOwner) {
-    redirect(`/${slug}/feed`)
+    const headersList = await headers()
+    const referer = headersList.get('referer') || ''
+    
+    // Check if referer contains the same community slug
+    // If it does, user is navigating within the community, so don't redirect
+    const isNavigatingWithinCommunity = referer.includes(`/${slug}/`)
+    
+    // Only redirect if coming from outside the community
+    if (!isNavigatingWithinCommunity) {
+      redirect(`/${slug}/feed`)
+    }
   }
 
   return (

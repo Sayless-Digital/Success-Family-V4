@@ -1,17 +1,26 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { SnowBuildup } from "@/components/snow-buildup"
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+function Card({ className, children, ...props }: React.ComponentProps<"div">) {
+  // Extract cardId from data attributes or generate from props
+  const cardId = (props as any)['data-post-id'] || 
+                 (props as any).id || 
+                 `card-${Math.random().toString(36).substr(2, 9)}`
+  
   return (
     <div
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border shadow-sm",
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border shadow-sm relative overflow-hidden",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      <SnowBuildup cardId={cardId} />
+    </div>
   )
 }
 

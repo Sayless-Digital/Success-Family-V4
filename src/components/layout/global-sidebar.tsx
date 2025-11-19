@@ -169,7 +169,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   const shouldShowSidebar = isMobile ? isOpen : (isPinned || isOpen)
 
   const sidebarClasses = cn(
-    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg border border-white/20",
+    "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out z-[9000] rounded-lg border border-white/20 overflow-visible",
     {
       // Mobile: slide from right
       // Header is h-12 (3rem) fixed at top, bottom nav is h-12 (3rem) fixed at bottom
@@ -209,7 +209,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
           }
         }}
       >
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col relative z-10">
           {/* Navigation */}
           <nav className="flex-1 p-4 pt-6 overflow-y-auto">
             <ul className="space-y-2">

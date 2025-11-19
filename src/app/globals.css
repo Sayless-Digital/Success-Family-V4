@@ -273,6 +273,36 @@
     }
   }
   
+  /* Christmas lights twinkle animation */
+  @keyframes twinkle {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+  }
+  
+  .animate-twinkle {
+    animation: twinkle 1.5s ease-in-out infinite;
+  }
+
+  /* Christmas lights blink animation */
+  @keyframes blink {
+    0%, 50% {
+      opacity: 1;
+    }
+    51%, 100% {
+      opacity: 0.2;
+    }
+  }
+  
+  .animate-blink {
+    animation: blink 1s ease-in-out infinite;
+  }
+  
   @keyframes shimmer-opacity {
     0% {
       opacity: 1;

@@ -3,7 +3,7 @@
 import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Heart, Coins } from "lucide-react"
+import { Users, Calendar, Crown, AlertCircle, CheckCircle2, Globe, MessageSquare, Star, TrendingUp, Heart, Coins, Share2, Copy, Check, Twitter, Facebook, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +59,10 @@ export default function CommunityView({
   // Join dialog state
   const [joinDialogOpen, setJoinDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Share dialog state
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const handleJoinCommunity = async () => {
     if (!currentUserId) {
@@ -120,6 +124,70 @@ export default function CommunityView({
     } catch (error: any) {
       console.error('Error leaving community:', error)
       toast.error(error.message || "Failed to leave community")
+    }
+  }
+
+  // Share functionality
+  const communityUrl = typeof window !== "undefined" 
+    ? `${window.location.origin}/${community.slug}` 
+    : ""
+  const shareText = `Check out ${community.name} on Success Family! ${community.description ? community.description.substring(0, 100) : ''}`
+  const canUseNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+  const handleCopyLink = async () => {
+    if (!communityUrl) return
+    try {
+      await navigator.clipboard.writeText(communityUrl)
+      setLinkCopied(true)
+      toast.success("Community link copied to clipboard!")
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch (error) {
+      toast.error("Failed to copy link")
+    }
+  }
+
+  const handleNativeShare = async () => {
+    if (!canUseNativeShare) {
+      // Fallback to copy if Web Share API not available
+      handleCopyLink()
+      return
+    }
+
+    try {
+      await navigator.share({
+        title: community.name,
+        text: shareText,
+        url: communityUrl,
+      })
+      setShareDialogOpen(false)
+    } catch (error: any) {
+      // User cancelled or error occurred
+      if (error.name !== 'AbortError') {
+        console.error('Error sharing:', error)
+      }
+    }
+  }
+
+  const handleSocialShare = (platform: 'twitter' | 'facebook' | 'whatsapp') => {
+    const encodedUrl = encodeURIComponent(communityUrl)
+    const encodedText = encodeURIComponent(shareText)
+    
+    let shareUrl = ""
+    switch (platform) {
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`
+        break
+      case 'facebook':
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`
+        break
+      case 'whatsapp':
+        shareUrl = `https://wa.me/?text=${encodedText}%20${encodedUrl}`
+        break
+    }
+    
+    if (shareUrl) {
+      window.open(shareUrl, '_blank', 'noopener,noreferrer')
+      setShareDialogOpen(false)
     }
   }
 
@@ -260,6 +328,16 @@ export default function CommunityView({
               Leave Community
             </Button>
           )}
+          
+          <Button 
+            onClick={() => setShareDialogOpen(true)}
+            variant="outline"
+            size="default"
+            className="border-white/20 text-white hover:bg-white/10 touch-feedback text-sm sm:text-base"
+          >
+            <Share2 className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+            Share
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -457,6 +535,141 @@ export default function CommunityView({
                   </>
                 )}
               </Button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </Dialog>
+
+      {/* Share Dialog */}
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[2147483646] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Content
+            onInteractOutside={(event) => {
+              const target = event.target as HTMLElement
+              if (target?.closest('[data-sonner-toaster]')) {
+                event.preventDefault()
+              }
+            }}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className={cn(
+              "fixed z-[2147483647] flex flex-col border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md shadow-lg duration-200 rounded-lg",
+              "data-[state=open]:animate-in data-[state=closed]:animate-out",
+              "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+              "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+              // Mobile: full screen with fixed footer
+              "top-2 left-2 right-2 bottom-2",
+              "w-[calc(100vw-1rem)] h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)]",
+              "overflow-hidden",
+              // Desktop: centered with max-width
+              "sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto",
+              "sm:w-full sm:max-w-lg",
+              "sm:translate-x-[-50%] sm:translate-y-[-50%]",
+              "sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:min-h-0",
+              "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+              "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
+            )}
+          >
+            {/* Close Button */}
+            <DialogPrimitive.Close 
+              tabIndex={-1}
+              className="absolute right-4 top-4 rounded-sm opacity-70 text-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-white/20 data-[state=open]:text-white cursor-pointer z-10"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+
+            {/* Scrollable Content Area */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6">
+              <div className="text-center space-y-4">
+                {/* Community Logo */}
+                <div className="flex justify-center">
+                  <CommunityLogo
+                    name={community.name}
+                    logoUrl={community.logo_url}
+                    size="xl"
+                    className="border-4 border-white/20"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <DialogPrimitive.Title className="text-2xl font-bold text-white">
+                    Share {community.name}
+                  </DialogPrimitive.Title>
+                  <DialogPrimitive.Description className="text-white/70 text-base">
+                    Invite others to join this community
+                  </DialogPrimitive.Description>
+                </div>
+              </div>
+              
+              <div className="space-y-6 py-6">
+                {/* Copy Link Section */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium text-white/60 uppercase tracking-wide">Community Link</div>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex-1 min-w-0 truncate text-white/90 text-sm font-medium">{communityUrl || '—'}</div>
+                    <Button 
+                      type="button" 
+                      onClick={handleCopyLink} 
+                      disabled={!communityUrl}
+                      size="icon"
+                      className="bg-white/10 text-white/70 hover:bg-white/20 hover:text-white/90 h-8 w-8 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {linkCopied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Native Share (Mobile) */}
+                {canUseNativeShare && (
+                  <Button
+                    onClick={handleNativeShare}
+                    size="lg"
+                    className="w-full bg-white/10 text-white hover:bg-white/20 border border-white/20"
+                  >
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Share via...
+                  </Button>
+                )}
+
+                {/* Social Media Sharing */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium text-white/60 uppercase tracking-wide">Share on Social Media</div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Button
+                      onClick={() => handleSocialShare('twitter')}
+                      variant="outline"
+                      size="lg"
+                      className="flex flex-col items-center gap-2 h-auto py-4 border-white/20 text-white hover:bg-white/10"
+                    >
+                      <Twitter className="h-5 w-5 text-white/70" />
+                      <span className="text-xs">Twitter</span>
+                    </Button>
+                    <Button
+                      onClick={() => handleSocialShare('facebook')}
+                      variant="outline"
+                      size="lg"
+                      className="flex flex-col items-center gap-2 h-auto py-4 border-white/20 text-white hover:bg-white/10"
+                    >
+                      <Facebook className="h-5 w-5 text-white/70" />
+                      <span className="text-xs">Facebook</span>
+                    </Button>
+                    <Button
+                      onClick={() => handleSocialShare('whatsapp')}
+                      variant="outline"
+                      size="lg"
+                      className="flex flex-col items-center gap-2 h-auto py-4 border-white/20 text-white hover:bg-white/10"
+                    >
+                      <MessageCircle className="h-5 w-5 text-white/70" />
+                      <span className="text-xs">WhatsApp</span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>

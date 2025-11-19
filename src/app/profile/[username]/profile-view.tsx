@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { Zap, Pin, Crown, Building2, Bookmark, LayoutGrid, TrendingUp, Loader2, MessageCircle, UserPlus, UserCheck } from "lucide-react"
+import { Zap, Pin, Crown, Building2, Bookmark, LayoutGrid, TrendingUp, Loader2, MessageCircle, UserPlus, UserCheck, Share2, Copy, Check, Twitter, Facebook } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
 import confetti from "canvas-confetti"
@@ -9,6 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Dialog } from "@/components/ui/dialog"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { X } from "lucide-react"
 import { PostMediaSlider } from "@/components/post-media-slider"
 import { supabase } from "@/lib/supabase"
 import type { Post, PostMedia, User as UserType } from "@/types"
@@ -19,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { CommunityLogo } from "@/components/community-logo"
 import { TwemojiText } from "@/components/twemoji-text"
+import { cn } from "@/lib/utils"
 
 interface User {
   id: string
@@ -103,6 +107,10 @@ export default function ProfileView({
   const [isFollowLoading, setIsFollowLoading] = React.useState(false)
   const [isFollowActionLoading, setIsFollowActionLoading] = React.useState(false)
   const [isMessageLoading, setIsMessageLoading] = React.useState(false)
+  
+  // Share dialog state
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   // Fetch image URLs for all posts
   React.useEffect(() => {
@@ -297,6 +305,70 @@ export default function ProfileView({
       toast.error(errorMessage)
     } finally {
       setIsMessageLoading(false)
+    }
+  }
+
+  // Share functionality
+  const profileUrl = typeof window !== "undefined" 
+    ? `${window.location.origin}/profile/${user.username}` 
+    : ""
+  const shareText = `Check out ${user.first_name} ${user.last_name} (@${user.username}) on Success Family!${user.bio ? ` ${user.bio.substring(0, 100)}` : ''}`
+  const canUseNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+  const handleCopyLink = async () => {
+    if (!profileUrl) return
+    try {
+      await navigator.clipboard.writeText(profileUrl)
+      setLinkCopied(true)
+      toast.success("Profile link copied to clipboard!")
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch (error) {
+      toast.error("Failed to copy link")
+    }
+  }
+
+  const handleNativeShare = async () => {
+    if (!canUseNativeShare) {
+      // Fallback to copy if Web Share API not available
+      handleCopyLink()
+      return
+    }
+
+    try {
+      await navigator.share({
+        title: `${user.first_name} ${user.last_name} (@${user.username})`,
+        text: shareText,
+        url: profileUrl,
+      })
+      setShareDialogOpen(false)
+    } catch (error: any) {
+      // User cancelled or error occurred
+      if (error.name !== 'AbortError') {
+        console.error('Error sharing:', error)
+      }
+    }
+  }
+
+  const handleSocialShare = (platform: 'twitter' | 'facebook' | 'whatsapp') => {
+    const encodedUrl = encodeURIComponent(profileUrl)
+    const encodedText = encodeURIComponent(shareText)
+    
+    let shareUrl = ""
+    switch (platform) {
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`
+        break
+      case 'facebook':
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`
+        break
+      case 'whatsapp':
+        shareUrl = `https://wa.me/?text=${encodedText}%20${encodedUrl}`
+        break
+    }
+    
+    if (shareUrl) {
+      window.open(shareUrl, '_blank', 'noopener,noreferrer')
+      setShareDialogOpen(false)
     }
   }
 
@@ -1833,6 +1905,18 @@ export default function ProfileView({
                 )}
               </div>
             )}
+            {/* Share button - available for all profiles */}
+            <div className="flex justify-center mt-4">
+              <Button
+                onClick={() => setShareDialogOpen(true)}
+                variant="outline"
+                size="default"
+                className="border-white/20 text-white hover:bg-white/10 touch-feedback text-sm sm:text-base"
+              >
+                <Share2 className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                Share
+              </Button>
+            </div>
               </div>
 
         </div>
@@ -1949,6 +2033,142 @@ export default function ProfileView({
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Share Dialog */}
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[2147483646] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Content
+            onInteractOutside={(event) => {
+              const target = event.target as HTMLElement
+              if (target?.closest('[data-sonner-toaster]')) {
+                event.preventDefault()
+              }
+            }}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className={cn(
+              "fixed z-[2147483647] flex flex-col border border-white/20 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md shadow-lg duration-200 rounded-lg",
+              "data-[state=open]:animate-in data-[state=closed]:animate-out",
+              "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+              "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+              // Mobile: full screen with fixed footer
+              "top-2 left-2 right-2 bottom-2",
+              "w-[calc(100vw-1rem)] h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)]",
+              "overflow-hidden",
+              // Desktop: centered with max-width
+              "sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto",
+              "sm:w-full sm:max-w-lg",
+              "sm:translate-x-[-50%] sm:translate-y-[-50%]",
+              "sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:min-h-0",
+              "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+              "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
+            )}
+          >
+            {/* Close Button */}
+            <DialogPrimitive.Close 
+              tabIndex={-1}
+              className="absolute right-4 top-4 rounded-sm opacity-70 text-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-white/20 data-[state=open]:text-white cursor-pointer z-10"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+
+            {/* Scrollable Content Area */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6">
+              <div className="text-center space-y-4">
+                {/* Profile Avatar */}
+                <div className="flex justify-center">
+                  <Avatar className="h-24 w-24 border-4 border-white/20" userId={user.id}>
+                    <AvatarImage src={user.profile_picture || ''} alt={user.username} />
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-3xl">
+                      {user.first_name?.[0] || ''}
+                      {user.last_name?.[0] || ''}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+                
+                <div className="space-y-2">
+                  <DialogPrimitive.Title className="text-2xl font-bold text-white">
+                    Share {user.first_name} {user.last_name}
+                  </DialogPrimitive.Title>
+                  <DialogPrimitive.Description className="text-white/70 text-base">
+                    Share this profile with others
+                  </DialogPrimitive.Description>
+                </div>
+              </div>
+              
+              <div className="space-y-6 py-6">
+                {/* Copy Link Section */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium text-white/60 uppercase tracking-wide">Profile Link</div>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex-1 min-w-0 truncate text-white/90 text-sm font-medium">{profileUrl || '—'}</div>
+                    <Button 
+                      type="button" 
+                      onClick={handleCopyLink} 
+                      disabled={!profileUrl}
+                      size="icon"
+                      className="bg-white/10 text-white/70 hover:bg-white/20 hover:text-white/90 h-8 w-8 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {linkCopied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Native Share (Mobile) */}
+                {canUseNativeShare && (
+                  <Button
+                    onClick={handleNativeShare}
+                    size="lg"
+                    className="w-full bg-white/10 text-white hover:bg-white/20 border border-white/20"
+                  >
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Share via...
+                  </Button>
+                )}
+
+                {/* Social Media Sharing */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium text-white/60 uppercase tracking-wide">Share on Social Media</div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Button
+                      onClick={() => handleSocialShare('twitter')}
+                      variant="outline"
+                      size="lg"
+                      className="flex flex-col items-center gap-2 h-auto py-4 border-white/20 text-white hover:bg-white/10"
+                    >
+                      <Twitter className="h-5 w-5 text-white/70" />
+                      <span className="text-xs">Twitter</span>
+                    </Button>
+                    <Button
+                      onClick={() => handleSocialShare('facebook')}
+                      variant="outline"
+                      size="lg"
+                      className="flex flex-col items-center gap-2 h-auto py-4 border-white/20 text-white hover:bg-white/10"
+                    >
+                      <Facebook className="h-5 w-5 text-white/70" />
+                      <span className="text-xs">Facebook</span>
+                    </Button>
+                    <Button
+                      onClick={() => handleSocialShare('whatsapp')}
+                      variant="outline"
+                      size="lg"
+                      className="flex flex-col items-center gap-2 h-auto py-4 border-white/20 text-white hover:bg-white/10"
+                    >
+                      <MessageCircle className="h-5 w-5 text-white/70" />
+                      <span className="text-xs">WhatsApp</span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </Dialog>
     </div>
   )
 }
