@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useMemo } from "react"
 import { cn } from "@/lib/utils"
+import { useIsChristmasMode } from "@/components/holiday-mode-context"
 
 /**
  * Snow buildup effect for the bottom of cards
@@ -9,7 +10,7 @@ import { cn } from "@/lib/utils"
  * Each card gets a unique variation
  */
 export function SnowBuildup({ className, cardId }: { className?: string; cardId?: string }) {
-  const [isChristmasSeason, setIsChristmasSeason] = useState(true) // Default to always show
+  const isChristmasSeason = useIsChristmasMode()
 
   // Generate a consistent variation based on cardId or random seed
   const variation = useMemo(() => {
@@ -25,13 +26,6 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
     // Random variation if no cardId
     return Math.floor(Math.random() * 100)
   }, [cardId])
-
-  useEffect(() => {
-    // Uncomment below to make it seasonal (December & January only):
-    // const now = new Date()
-    // const month = now.getMonth() // 0-11, where 0 is January
-    // setIsChristmasSeason(month === 11 || month === 0) // December or January
-  }, [])
 
   if (!isChristmasSeason) return null
 

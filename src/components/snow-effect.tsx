@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import Snowfall from "react-snowfall"
+import { useIsChristmasMode } from "@/components/holiday-mode-context"
 
 /**
  * Snow effect component for Christmas theme
@@ -11,14 +11,7 @@ import Snowfall from "react-snowfall"
  * To make it seasonal only, change the condition in useEffect
  */
 export function SnowEffect() {
-  const [isChristmasSeason, setIsChristmasSeason] = useState(true) // Default to always show
-
-  useEffect(() => {
-    // Uncomment below to make it seasonal (December & January only):
-    // const now = new Date()
-    // const month = now.getMonth() // 0-11, where 0 is January
-    // setIsChristmasSeason(month === 11 || month === 0) // December or January
-  }, [])
+  const isChristmasSeason = useIsChristmasMode()
 
   if (!isChristmasSeason) return null
 

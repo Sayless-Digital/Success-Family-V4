@@ -14,9 +14,9 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { CheckedState } from "@radix-ui/react-checkbox"
 import { Checkbox } from "@/components/ui/checkbox"
-import { signIn, signUp } from "@/lib/auth"
+import { signIn, signUp, signInWithGoogle } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X } from "lucide-react"
+import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X, Chrome } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 
@@ -31,6 +31,7 @@ const REMEMBER_ME_STORAGE_KEY = "sf-auth-remember-v1"
 export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDialogProps) {
   const [activeTab, setActiveTab] = React.useState(defaultTab)
   const [isLoading, setIsLoading] = React.useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [showSignUpSuccess, setShowSignUpSuccess] = React.useState(false)
   const [showSignInPassword, setShowSignInPassword] = React.useState(false)
@@ -253,6 +254,12 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     }
   }, [open])
 
+  React.useEffect(() => {
+    if (!open && isGoogleLoading) {
+      setIsGoogleLoading(false)
+    }
+  }, [open, isGoogleLoading])
+
   const handleSelectReferrer = (user: {
     id: string
     username: string
@@ -370,6 +377,28 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       setIsLoading(false)
     }
   }
+
+  const handleGoogleSignIn = React.useCallback(async () => {
+    if (isGoogleLoading) {
+      return
+    }
+
+    setError(null)
+    setIsGoogleLoading(true)
+
+    try {
+      const result = await signInWithGoogle()
+
+      if (!result.success) {
+        setError(result.error?.message || "Failed to connect with Google. Please try again.")
+        setIsGoogleLoading(false)
+      }
+    } catch (googleError) {
+      console.error("Google sign-in error:", googleError)
+      setError("An unexpected error occurred while starting Google sign in. Please try again.")
+      setIsGoogleLoading(false)
+    }
+  }, [isGoogleLoading])
 
   const handleRememberMeChange = (checked: CheckedState) => {
     const isChecked = checked === true
@@ -498,281 +527,337 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
 
           {/* Sign In Tab */}
           <TabsContent value="signin">
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="signin-email">Email</Label>
-                <Input
-                  id="signin-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={signInData.email}
-                  onChange={(e) => setSignInData({ ...signInData, email: e.target.value })}
-                  required
-                  disabled={isLoading}
-                />
+            <div className="space-y-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading || isGoogleLoading}
+              >
+                {isGoogleLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Connecting to Google...</span>
+                  </>
+                ) : (
+                  <>
+                    <Chrome className="h-4 w-4" />
+                    <span>Continue with Google</span>
+                  </>
+                )}
+              </Button>
+
+              <div className="relative flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-white/60">
+                <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+                <span>or continue with email</span>
+                <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="signin-password">Password</Label>
-                <div className="relative">
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signin-email">Email</Label>
                   <Input
-                    ref={signInPasswordRef}
-                    id="signin-password"
-                    type={showSignInPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={signInData.password}
-                    onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
+                    id="signin-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={signInData.email}
+                    onChange={(e) => setSignInData({ ...signInData, email: e.target.value })}
                     required
                     disabled={isLoading}
-                    className="pr-10"
                   />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      const input = signInPasswordRef.current
-                      if (input) {
-                        signInPasswordCursorRef.current = input.selectionStart || 0
-                        setShowSignInPassword(!showSignInPassword)
-                      } else {
-                        setShowSignInPassword(!showSignInPassword)
-                      }
-                    }}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                    }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signin-password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      ref={signInPasswordRef}
+                      id="signin-password"
+                      type={showSignInPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={signInData.password}
+                      onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
+                      required
+                      disabled={isLoading}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        const input = signInPasswordRef.current
+                        if (input) {
+                          signInPasswordCursorRef.current = input.selectionStart || 0
+                          setShowSignInPassword(!showSignInPassword)
+                        } else {
+                          setShowSignInPassword(!showSignInPassword)
+                        }
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                      disabled={isLoading}
+                    >
+                      {showSignInPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="signin-remember"
+                    checked={rememberMe}
+                    onCheckedChange={handleRememberMeChange}
                     disabled={isLoading}
+                  />
+                  <Label
+                    htmlFor="signin-remember"
+                    className="text-sm text-white/80"
                   >
-                    {showSignInPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
+                    Remember me on this device
+                  </Label>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id="signin-remember"
-                  checked={rememberMe}
-                  onCheckedChange={handleRememberMeChange}
-                  disabled={isLoading}
-                />
-                <Label
-                  htmlFor="signin-remember"
-                  className="text-sm text-white/80"
-                >
-                  Remember me on this device
-                </Label>
-              </div>
+                {error && (
+                  <div className="text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
 
-              {error && (
-                <div className="text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-
-              <Button type="submit" className="w-full relative" disabled={isLoading}>
-                {isLoading ? (
-                  <span className="flex items-center gap-2 justify-center">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Signing in...</span>
-                  </span>
-                ) : "Sign In"}
-              </Button>
-            </form>
+                <Button type="submit" className="w-full relative" disabled={isLoading}>
+                  {isLoading ? (
+                    <span className="flex items-center gap-2 justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Signing in...</span>
+                    </span>
+                  ) : "Sign In"}
+                </Button>
+              </form>
+            </div>
           </TabsContent>
 
           {/* Sign Up Tab */}
           <TabsContent value="signup">
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-firstname">First Name</Label>
-                  <Input
-                    id="signup-firstname"
-                    type="text"
-                    placeholder="John"
-                    value={signUpData.firstName}
-                    onChange={(e) => setSignUpData({ ...signUpData, firstName: e.target.value })}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
+            <div className="space-y-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading || isGoogleLoading}
+              >
+                {isGoogleLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Connecting to Google...</span>
+                  </>
+                ) : (
+                  <>
+                    <Chrome className="h-4 w-4" />
+                    <span>Continue with Google</span>
+                  </>
+                )}
+              </Button>
 
-                <div className="space-y-2">
-                  <Label htmlFor="signup-lastname">Last Name</Label>
-                  <Input
-                    id="signup-lastname"
-                    type="text"
-                    placeholder="Doe"
-                    value={signUpData.lastName}
-                    onChange={(e) => setSignUpData({ ...signUpData, lastName: e.target.value })}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
+              <div className="relative flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-white/60">
+                <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+                <span>or create with email</span>
+                <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="signup-email">Email</Label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={signUpData.email}
-                  onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="signup-password">Password</Label>
-                <div className="relative">
-                  <Input
-                    ref={signUpPasswordRef}
-                    id="signup-password"
-                    type={showSignUpPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={signUpData.password}
-                    onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
-                    required
-                    disabled={isLoading}
-                    minLength={6}
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      const input = signUpPasswordRef.current
-                      if (input) {
-                        signUpPasswordCursorRef.current = input.selectionStart || 0
-                        setShowSignUpPassword(!showSignUpPassword)
-                      } else {
-                        setShowSignUpPassword(!showSignUpPassword)
-                      }
-                    }}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                    }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
-                    disabled={isLoading}
-                  >
-                    {showSignUpPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Password must be at least 6 characters
-                </p>
-              </div>
-
-              {!topupBonusEnabled && (
-              <div className="space-y-2">
-                <Label htmlFor="signup-referral">Referred By (Optional)</Label>
-                <div className="relative" ref={referralDropdownRef}>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-firstname">First Name</Label>
                     <Input
-                      id="signup-referral"
+                      id="signup-firstname"
                       type="text"
-                      placeholder="Search for user by username, name, or email..."
-                      value={referralSearch}
-                      onChange={(e) => {
-                        setReferralSearch(e.target.value)
-                        if (selectedReferrer) {
-                          setSelectedReferrer(null)
-                          setSignUpData(prev => ({ ...prev, referredByUserId: undefined }))
-                        }
-                      }}
-                      onFocus={() => {
-                        if (referralSearch.length >= 2 && referralUsers.length > 0) {
-                          setShowReferralDropdown(true)
-                        }
-                      }}
+                      placeholder="John"
+                      value={signUpData.firstName}
+                      onChange={(e) => setSignUpData({ ...signUpData, firstName: e.target.value })}
+                      required
                       disabled={isLoading}
-                      className="pl-10 pr-10"
                     />
-                    {selectedReferrer && (
-                      <button
-                        type="button"
-                        onClick={handleClearReferrer}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-lastname">Last Name</Label>
+                    <Input
+                      id="signup-lastname"
+                      type="text"
+                      placeholder="Doe"
+                      value={signUpData.lastName}
+                      onChange={(e) => setSignUpData({ ...signUpData, lastName: e.target.value })}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">Email</Label>
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={signUpData.email}
+                    onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      ref={signUpPasswordRef}
+                      id="signup-password"
+                      type={showSignUpPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={signUpData.password}
+                      onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
+                      required
+                      disabled={isLoading}
+                      minLength={6}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        const input = signUpPasswordRef.current
+                        if (input) {
+                          signUpPasswordCursorRef.current = input.selectionStart || 0
+                          setShowSignUpPassword(!showSignUpPassword)
+                        } else {
+                          setShowSignUpPassword(!showSignUpPassword)
+                        }
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                      disabled={isLoading}
+                    >
+                      {showSignUpPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Password must be at least 6 characters
+                  </p>
+                </div>
+
+                {!topupBonusEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="signup-referral">Referred By (Optional)</Label>
+                  <div className="relative" ref={referralDropdownRef}>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+                      <Input
+                        id="signup-referral"
+                        type="text"
+                        placeholder="Search for user by username, name, or email..."
+                        value={referralSearch}
+                        onChange={(e) => {
+                          setReferralSearch(e.target.value)
+                          if (selectedReferrer) {
+                            setSelectedReferrer(null)
+                            setSignUpData(prev => ({ ...prev, referredByUserId: undefined }))
+                          }
+                        }}
+                        onFocus={() => {
+                          if (referralSearch.length >= 2 && referralUsers.length > 0) {
+                            setShowReferralDropdown(true)
+                          }
+                        }}
                         disabled={isLoading}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                        className="pl-10 pr-10"
+                      />
+                      {selectedReferrer && (
+                        <button
+                          type="button"
+                          onClick={handleClearReferrer}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white/90 transition-colors"
+                          disabled={isLoading}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {showReferralDropdown && referralUsers.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-md border border-white/20 bg-white/5 backdrop-blur-md shadow-lg">
+                        {referralUsers.map((user) => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => handleSelectReferrer(user)}
+                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-3"
+                          >
+                            {user.profile_picture ? (
+                              <img
+                                src={user.profile_picture}
+                                alt={user.username}
+                                className="h-8 w-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-semibold">
+                                {user.first_name[0]}{user.last_name[0]}
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">
+                                {user.first_name} {user.last_name}
+                              </div>
+                              <div className="text-xs text-white/60 truncate">
+                                @{user.username}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  {showReferralDropdown && referralUsers.length > 0 && (
-                    <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-md border border-white/20 bg-white/5 backdrop-blur-md shadow-lg">
-                      {referralUsers.map((user) => (
-                        <button
-                          key={user.id}
-                          type="button"
-                          onClick={() => handleSelectReferrer(user)}
-                          className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-3"
-                        >
-                          {user.profile_picture ? (
-                            <img
-                              src={user.profile_picture}
-                              alt={user.username}
-                              className="h-8 w-8 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-semibold">
-                              {user.first_name[0]}{user.last_name[0]}
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">
-                              {user.first_name} {user.last_name}
-                            </div>
-                            <div className="text-xs text-white/60 truncate">
-                              @{user.username}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  {selectedReferrer && (
+                    <p className="text-xs text-white/60 flex items-center gap-1">
+                      <UserIcon className="h-3 w-3" />
+                      {selectedReferrer.first_name} will earn bonus points when you top up!
+                    </p>
                   )}
-                </div>
-                {selectedReferrer && (
-                  <p className="text-xs text-white/60 flex items-center gap-1">
-                    <UserIcon className="h-3 w-3" />
-                    {selectedReferrer.first_name} will earn bonus points when you top up!
+                  <p className="text-xs text-white/40">
+                    Optional: Search for the person who referred you
                   </p>
-                )}
-                <p className="text-xs text-white/40">
-                  Optional: Search for the person who referred you
-                </p>
-              </div>
-              )}
-
-              {error && (
-                <div className="text-sm text-destructive">
-                  {error}
                 </div>
-              )}
+                )}
 
-              <Button type="submit" className="w-full relative" disabled={isLoading}>
-                {isLoading ? (
-                  <span className="flex items-center gap-2 justify-center">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Creating account...</span>
-                  </span>
-                ) : "Sign Up"}
-              </Button>
-            </form>
+                {error && (
+                  <div className="text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full relative" disabled={isLoading}>
+                  {isLoading ? (
+                    <span className="flex items-center gap-2 justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Creating account...</span>
+                    </span>
+                  ) : "Sign Up"}
+                </Button>
+              </form>
+            </div>
           </TabsContent>
         </Tabs>
           </>

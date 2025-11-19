@@ -1,3 +1,5 @@
+import type { HolidayMode } from "./holiday"
+
 // Social media links
 export interface UserSocials {
   twitter?: string
@@ -137,6 +139,7 @@ export interface PlatformSettings {
   storage_monthly_cost_per_gb?: number // Monthly cost per GB in points (for storage over 1 GB free)
   payout_minimum_ttd: number
   mandatory_topup_ttd: number
+  holiday_mode?: HolidayMode
   updated_at: string
 }
 

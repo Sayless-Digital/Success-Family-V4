@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
+import { useIsChristmasMode } from "@/components/holiday-mode-context"
 
 interface AvatarProps extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root> {
   userId?: string
@@ -292,13 +293,7 @@ const Avatar = React.forwardRef<
   const canShowHoverCard = showHoverCard && userId && (userData || (username && firstName && lastName))
 
   // Check if it's Christmas season (December or January)
-  const [isChristmasSeason, setIsChristmasSeason] = React.useState(true) // Default to always show
-  React.useEffect(() => {
-    // Uncomment below to make it seasonal (December & January only):
-    // const now = new Date()
-    // const month = now.getMonth() // 0-11, where 0 is January
-    // setIsChristmasSeason(month === 11 || month === 0) // December or January
-  }, [])
+  const isChristmasSeason = useIsChristmasMode()
 
   // Extract size from className to enforce square dimensions via inline styles
   const classStr = className || ''

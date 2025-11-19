@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { env } from './env'
 import type { User } from '@supabase/supabase-js'
 
 export interface SignUpData {
@@ -22,6 +23,34 @@ export interface AuthResult {
   success: boolean
   error?: AuthError
   user?: User | null
+}
+
+function resolveAppBaseUrl() {
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return window.location.origin
+  }
+
+  return env.NEXT_PUBLIC_APP_URL || null
+}
+
+function buildOAuthRedirectUrl() {
+  const baseUrl = resolveAppBaseUrl()
+  if (!baseUrl) {
+    return undefined
+  }
+
+  try {
+    const redirectUrl = new URL('/auth/callback', baseUrl)
+    if (typeof window !== 'undefined') {
+      const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      const sanitizedNext = nextPath && nextPath.startsWith('/') ? nextPath : '/'
+      redirectUrl.searchParams.set('next', sanitizedNext || '/')
+    }
+
+    return redirectUrl.toString()
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -99,6 +128,44 @@ export async function signIn(data: SignInData): Promise<AuthResult> {
     return {
       success: false,
       error: { message: 'An unexpected error occurred during sign in' },
+    }
+  }
+}
+
+/**
+ * Begin the Google OAuth flow using Supabase
+ * Automatically handles redirects and cookie persistence
+ */
+export async function signInWithGoogle(): Promise<AuthResult> {
+  try {
+    const redirectTo = buildOAuthRedirectUrl()
+    const options: Parameters<typeof supabase.auth.signInWithOAuth>[0]["options"] = {
+      queryParams: {
+        prompt: 'select_account',
+      },
+    }
+
+    if (redirectTo) {
+      options.redirectTo = redirectTo
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options,
+    })
+
+    if (error) {
+      return {
+        success: false,
+        error: { message: error.message },
+      }
+    }
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: { message: 'Failed to start Google sign in. Please try again.' },
     }
   }
 }

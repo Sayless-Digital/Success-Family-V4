@@ -11,6 +11,9 @@ import { ScrollToTop } from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
 import { Toaster } from "@/components/toaster"
 import { SnowEffect } from "@/components/snow-effect"
+import { HolidayModeProvider } from "@/components/holiday-mode-context"
+import type { HolidayMode } from "@/types/holiday"
+import { DEFAULT_HOLIDAY_MODE } from "@/types/holiday"
 import dynamic from "next/dynamic"
 
 // Dynamically import Silk with no SSR
@@ -21,9 +24,10 @@ const Silk = dynamic(() => import("@/components/Silk"), {
 
 interface ClientLayoutWrapperProps {
   children: React.ReactNode
+  holidayMode?: HolidayMode
 }
 
-export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
+export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MODE }: ClientLayoutWrapperProps) {
   const pathname = usePathname()
   // Initialize with false to match server-side rendering, then update in useEffect
   const [isMobile, setIsMobile] = useState(false)
@@ -384,6 +388,7 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
   const contentRightMargin = !isStreamPage && !isMobile && isOnlineUsersSidebarPinned ? '16.5rem' : '0'
 
   return (
+    <HolidayModeProvider mode={holidayMode}>
     <div
       ref={fullscreenTargetRef}
       className="bg-background flex flex-col relative overflow-hidden"
@@ -541,5 +546,6 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
         }}
       />
     </div>
+    </HolidayModeProvider>
   )
 }

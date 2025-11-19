@@ -2,6 +2,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { PageHeader } from '@/components/ui/page-header'
 import AdminSettingsView from './admin-settings-view'
 import { revalidatePath } from 'next/cache'
+import { HOLIDAY_MODES, type HolidayMode } from '@/types/holiday'
 
 async function getSettings() {
   const supabase = await createServerSupabaseClient()
@@ -22,12 +23,14 @@ async function getSettings() {
     topup_bonus_points: 0,
     topup_bonus_end_time: null,
     auto_join_community_id: null,
+    holiday_mode: 'none',
   }
   
   // Convert null to 'none' for Select component (Select doesn't allow empty string values)
   return {
     ...settings,
     auto_join_community_id: settings.auto_join_community_id || 'none',
+    holiday_mode: settings.holiday_mode || 'none',
   }
 }
 
@@ -79,6 +82,8 @@ async function updateSettings(formData: FormData) {
   const autoJoinCommunityId = autoJoinCommunityIdStr && autoJoinCommunityIdStr.trim() 
     ? autoJoinCommunityIdStr 
     : null
+  const holidayModeStr = (formData.get('holiday_mode') as string | null)?.trim().toLowerCase() || 'none'
+  const holidayMode = HOLIDAY_MODES.includes(holidayModeStr as HolidayMode) ? (holidayModeStr as HolidayMode) : 'none'
 
   if (!Number.isFinite(buyPrice) || buyPrice <= 0) {
     throw new Error('Invalid buy price per point')
@@ -132,6 +137,7 @@ async function updateSettings(formData: FormData) {
       topup_bonus_points: Math.floor(topupBonusPoints),
       topup_bonus_end_time: topupBonusEndTime,
       auto_join_community_id: autoJoinCommunityId,
+      holiday_mode: holidayMode,
     })
 
   if (error) {

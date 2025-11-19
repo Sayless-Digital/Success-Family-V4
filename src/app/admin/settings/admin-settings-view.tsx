@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TopUpBonusCheckbox } from '@/components/topup-bonus-checkbox'
 import { DateTimeInput } from '@/components/datetime-input'
-import { DollarSign, Video, HardDrive, Wallet, Users, Gift, UserPlus, Loader2 } from 'lucide-react'
+import { DollarSign, Video, HardDrive, Wallet, Users, Gift, UserPlus, Loader2, Snowflake } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import type { HolidayMode } from '@/types/holiday'
 
 interface AdminSettingsViewProps {
   settings: {
@@ -29,6 +30,7 @@ interface AdminSettingsViewProps {
     topup_bonus_points: number
     topup_bonus_end_time: string | null
     auto_join_community_id: string | null | 'none'
+    holiday_mode: HolidayMode | null
   }
   communities: Array<{
     id: string
@@ -43,6 +45,7 @@ export default function AdminSettingsView({ settings, communities, updateSetting
   const searchParams = useSearchParams()
   const formRef = React.useRef<HTMLFormElement>(null)
   const [autoJoinCommunityId, setAutoJoinCommunityId] = React.useState(settings.auto_join_community_id || 'none')
+  const [holidayMode, setHolidayMode] = React.useState<HolidayMode>(settings.holiday_mode || 'none')
   const [isSaving, setIsSaving] = React.useState(false)
   const tabsListRef = React.useRef<HTMLDivElement>(null)
   const isDraggingRef = React.useRef(false)
@@ -194,6 +197,7 @@ export default function AdminSettingsView({ settings, communities, updateSetting
       formData.set('topup_bonus_points', getValue('topup_bonus_points'))
       formData.set('topup_bonus_end_time', getValue('topup_bonus_end_time'))
       formData.set('auto_join_community_id', autoJoinCommunityId === 'none' ? '' : autoJoinCommunityId)
+      formData.set('holiday_mode', getValue('holiday_mode') || 'none')
 
       await updateSettings(formData)
       toast.success('Settings saved successfully!')
@@ -310,6 +314,7 @@ export default function AdminSettingsView({ settings, communities, updateSetting
           return `${year}-${month}-${day}T${hours}:${minutes}`
         })() : ''} />
         <input type="hidden" name="auto_join_community_id" defaultValue={autoJoinCommunityId === 'none' ? '' : autoJoinCommunityId} />
+        <input type="hidden" name="holiday_mode" defaultValue={settings.holiday_mode || 'none'} />
       </div>
       
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 w-full">
@@ -344,6 +349,10 @@ export default function AdminSettingsView({ settings, communities, updateSetting
           <TabsTrigger value="user-onboarding" className="whitespace-nowrap snap-start">
             <UserPlus className="h-4 w-4 mr-2" />
             User Onboarding
+          </TabsTrigger>
+          <TabsTrigger value="holiday-mode" className="whitespace-nowrap snap-start">
+            <Snowflake className="h-4 w-4 mr-2" />
+            Holiday Mode
           </TabsTrigger>
         </TabsList>
 
@@ -562,6 +571,34 @@ export default function AdminSettingsView({ settings, communities, updateSetting
               </Select>
               <p className="text-white/60 text-xs">
                 Users who sign up will automatically be joined to this community. Select "None" to disable auto-join.
+              </p>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="holiday-mode" className="space-y-6 max-w-xl">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="holiday_mode" className="text-white/80">Holiday Theme</Label>
+              <Select
+                value={holidayMode}
+                onValueChange={(value: HolidayMode) => {
+                  setHolidayMode(value)
+                  const hiddenInput = document.querySelector('input[name="holiday_mode"]') as HTMLInputElement
+                  if (hiddenInput) {
+                    hiddenInput.value = value
+                  }
+                }}
+              >
+                <SelectTrigger id="holiday_mode" className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Select a holiday theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Off - No holiday theme</SelectItem>
+                  <SelectItem value="christmas">Christmas</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-white/60 text-xs">
+                Toggle seasonal experiences like snow, lights, and Santa hats across the platform with a single setting.
               </p>
             </div>
           </div>

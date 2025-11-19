@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { cn } from "@/lib/utils"
+import { useIsChristmasMode } from "@/components/holiday-mode-context"
 
 interface ChristmasLightsProps {
   className?: string
@@ -21,19 +22,16 @@ export function ChristmasLights({
   spacing = 12,
   edges = 'all'
 }: ChristmasLightsProps) {
-  const [isChristmasSeason, setIsChristmasSeason] = useState(true) // Default to always show
   const containerRef = useRef<HTMLDivElement>(null)
   const [lightPositions, setLightPositions] = useState<Array<{ x: number; y: number; color: string; delay: number; rotation: number }>>([])
+  const isChristmasSeason = useIsChristmasMode()
 
   useEffect(() => {
-    // Uncomment below to make it seasonal (December & January only):
-    // const now = new Date()
-    // const month = now.getMonth() // 0-11, where 0 is January
-    // setIsChristmasSeason(month === 11 || month === 0) // December or January
-  }, [])
-
-  useEffect(() => {
-    if (!containerRef.current || !isChristmasSeason) return
+    if (!isChristmasSeason) {
+      setLightPositions([])
+      return
+    }
+    if (!containerRef.current) return
 
     const updatePositions = () => {
       const container = containerRef.current
@@ -240,7 +238,7 @@ export function ChristmasLights({
     
     window.addEventListener('resize', updatePositions)
     return () => window.removeEventListener('resize', updatePositions)
-  }, [lightCount, spacing, isChristmasSeason])
+  }, [lightCount, spacing, isChristmasSeason, edges])
 
   if (!isChristmasSeason) return null
 

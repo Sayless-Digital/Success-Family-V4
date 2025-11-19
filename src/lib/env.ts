@@ -10,6 +10,7 @@ export function validateEnv() {
     INBOUND_API_KEY: process.env.INBOUND_API_KEY,
     INBOUND_WEBHOOK_SECRET: process.env.INBOUND_WEBHOOK_SECRET,
     INBOUND_WEBHOOK_URL: process.env.INBOUND_WEBHOOK_URL, // Production webhook URL (always used, even in dev)
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     CRON_SECRET: process.env.CRON_SECRET,
     GETSTREAM_API_KEY: process.env.GETSTREAM_API_KEY,
     GETSTREAM_API_SECRET: process.env.GETSTREAM_API_SECRET,
