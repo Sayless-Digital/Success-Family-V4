@@ -165,7 +165,18 @@ Make sure your `.env` file contains:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 ```
+
+### Google One Tap Requirements
+
+1. Create (or reuse) a **Web application** OAuth client inside Google Cloud Console → APIs & Services → Credentials.
+2. Add both your production domain (e.g. `https://successfamily.online`) and local HTTPS dev domain (`https://localhost:3000`) to **Authorized JavaScript origins**.
+3. Add `https://successfamily.online/auth/callback` and `https://localhost:3000/auth/callback` to **Authorized redirect URIs**.
+4. Copy the generated Client ID into `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
+5. The new One Tap prompt will automatically appear whenever a logged-out visitor already has an active Google session. If they select an account, we exchange the One Tap credential with Supabase via `signInWithIdToken`, so no extra backend work is required.
+
+> The One Tap widget only renders on secure origins (HTTPS or `localhost`). Use `pnpm dev` (HTTPS) in development to test it.
 
 ## 🚀 Next Steps (Future Enhancements)
 

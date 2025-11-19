@@ -14,6 +14,7 @@ import { SnowEffect } from "@/components/snow-effect"
 import { HolidayModeProvider } from "@/components/holiday-mode-context"
 import type { HolidayMode } from "@/types/holiday"
 import { DEFAULT_HOLIDAY_MODE } from "@/types/holiday"
+import { GoogleOneTap } from "@/components/google-one-tap"
 import dynamic from "next/dynamic"
 
 // Dynamically import Silk with no SSR
@@ -524,7 +525,13 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
       </main>
 
       {!isStreamPage && <MobileBottomNav isMobile={isMobile} />}
-      
+
+      <div
+        id="google-one-tap-anchor"
+        className="fixed top-2 right-2 z-[2147483646] flex items-start justify-end"
+        aria-hidden="true"
+      />
+      <GoogleOneTap />
       <ScrollToTop />
       
       <Toaster
