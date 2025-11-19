@@ -11,9 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { EmojiPicker } from "@/components/emoji-picker"
 import { cn } from "@/lib/utils"
 
 interface BoostRewardAttachment {
@@ -50,6 +50,7 @@ export function BoostRewardsDialog({
   const [messageEnabled, setMessageEnabled] = React.useState((boostRewardMessage?.length || 0) > 0 || boostRewardAttachments.length > 0)
   const [attachMenuOpen, setAttachMenuOpen] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
     setMessageEnabled((boostRewardMessage?.length || 0) > 0 || boostRewardAttachments.length > 0)
@@ -67,9 +68,69 @@ export function BoostRewardsDialog({
     }
   }
 
+  // Auto-resize textarea based on content
+  const autoResizeTextarea = React.useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = "auto"
+    // Set height to scrollHeight, but respect max-height
+    const scrollHeight = textarea.scrollHeight
+    // Calculate max-height based on breakpoint (sm is 640px)
+    const isSmallScreen = typeof window !== "undefined" && window.innerWidth < 640
+    const maxHeight = isSmallScreen ? 96 : 128 // max-h-24 (96px) or sm:max-h-32 (128px)
+    // Min height should account for padding (4px top + 4px bottom = 8px) plus text height
+    const minHeight = 32 // Adjusted to better align with buttons
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight)
+    textarea.style.height = `${newHeight}px`
+  }, [])
+
   const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onBoostRewardMessageChange?.(e.target.value)
+    // Auto-resize textarea after state update
+    setTimeout(() => {
+      autoResizeTextarea()
+    }, 0)
   }
+
+  const handleEmojiSelect = React.useCallback((emoji: string) => {
+    if (!textareaRef.current) return
+    
+    const textarea = textareaRef.current
+    // Focus the textarea first to ensure selection is valid
+    textarea.focus()
+    
+    // Get cursor position (default to end if no selection)
+    const currentValue = boostRewardMessage || ""
+    const start = textarea.selectionStart ?? currentValue.length
+    const end = textarea.selectionEnd ?? currentValue.length
+    const textBefore = currentValue.substring(0, start)
+    const textAfter = currentValue.substring(end)
+    
+    const newValue = textBefore + emoji + textAfter
+    onBoostRewardMessageChange?.(newValue)
+    
+    // Set cursor position after the inserted emoji
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPosition = start + emoji.length
+        textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition)
+        textareaRef.current.focus()
+        // Auto-resize after emoji insertion
+        autoResizeTextarea()
+      }
+    }, 0)
+  }, [boostRewardMessage, onBoostRewardMessageChange, autoResizeTextarea])
+
+  // Auto-resize on mount and when message changes
+  React.useEffect(() => {
+    if (messageEnabled) {
+      setTimeout(() => {
+        autoResizeTextarea()
+      }, 0)
+    }
+  }, [messageEnabled, boostRewardMessage, autoResizeTextarea])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -253,19 +314,19 @@ export function BoostRewardsDialog({
                   )}
 
                   {/* Composer area with textarea and attach button */}
-                  <div className="flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3">
-                    {onBoostRewardAttachmentsChange && (
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                  <div className="flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-2 sm:px-3 py-1.5 sm:py-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      {onBoostRewardAttachmentsChange && (
                         <DropdownMenu open={attachMenuOpen} onOpenChange={setAttachMenuOpen}>
                           <DropdownMenuTrigger asChild>
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 active:scale-100 active:bg-white/15 active:transform-none transition-colors !transition-colors"
+                              className="group relative flex items-center justify-center h-8 w-8 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
                               title="Attach file"
                             >
-                              <Paperclip className="h-4 w-4" />
+                              <Paperclip className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
@@ -312,8 +373,12 @@ export function BoostRewardsDialog({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
-                    )}
+                      )}
+                      <EmojiPicker
+                        onEmojiSelect={handleEmojiSelect}
+                        disabled={false}
+                      />
+                    </div>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -322,12 +387,13 @@ export function BoostRewardsDialog({
                       onChange={handleFileSelect}
                       className="hidden"
                     />
-                    <Textarea
+                    <textarea
+                      ref={textareaRef}
                       id="boost-reward-message"
-                      placeholder="e.g., Thanks for boosting! Here are some helpful resources: https://example.com"
+                      placeholder="Write something man"
                       value={boostRewardMessage || ""}
                       onChange={handleMessageChange}
-                      className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-0.5 sm:pb-1.5"
+                      className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-2 sm:pb-1.5 placeholder:whitespace-nowrap placeholder:overflow-hidden placeholder:text-ellipsis"
                       maxLength={2000}
                       rows={1}
                     />

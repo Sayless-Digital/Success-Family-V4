@@ -18,6 +18,7 @@ import { LoadingSpinner } from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { CommunityLogo } from "@/components/community-logo"
+import { TwemojiText } from "@/components/twemoji-text"
 
 interface User {
   id: string
@@ -1660,8 +1661,8 @@ export default function ProfileView({
                   </div>
 
                   {/* Content */}
-                  <p className="text-white/80 text-base mb-3">
-                    {post.content}
+                  <p className="text-white/80 text-base mb-3 whitespace-pre-wrap break-words">
+                    <TwemojiText text={post.content} size={20} />
                   </p>
 
                   {/* Post Media Slider */}

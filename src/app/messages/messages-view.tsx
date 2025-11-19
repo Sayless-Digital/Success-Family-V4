@@ -9,6 +9,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronUp,
   Download,
   FileText,
   Image as ImageIcon,
@@ -47,6 +48,7 @@ import { MessageImageLightbox } from "@/components/message-image-lightbox"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { EmojiPicker } from "@/components/emoji-picker"
 
 type ViewerProfile = {
   id: string
@@ -142,6 +144,7 @@ export default function MessagesView({
   const [attachments, setAttachments] = useState<AttachmentState[]>([])
   const [replyingToMessage, setReplyingToMessage] = useState<MessageResult | null>(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   
   // Debug: Log attachments state changes
   useEffect(() => {
@@ -1788,6 +1791,33 @@ export default function MessagesView({
     }, TYPING_EXPIRATION_MS)
   }, [notifyTyping])
 
+  // Handle emoji selection
+  const handleEmojiSelect = useCallback((emoji: string) => {
+    if (!textareaRef.current) return
+    
+    const textarea = textareaRef.current
+    // Focus the textarea first to ensure selection is valid
+    textarea.focus()
+    
+    // Get cursor position (default to end if no selection)
+    const start = textarea.selectionStart ?? composerValue.length
+    const end = textarea.selectionEnd ?? composerValue.length
+    const textBefore = composerValue.substring(0, start)
+    const textAfter = composerValue.substring(end)
+    
+    const newValue = textBefore + emoji + textAfter
+    setComposerValue(newValue)
+    
+    // Set cursor position after the inserted emoji
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPosition = start + emoji.length
+        textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition)
+        textareaRef.current.focus()
+      }
+    }, 0)
+  }, [composerValue])
+
   // Auto-resize textarea based on content
   const autoResizeTextarea = useCallback(() => {
     const textarea = textareaRef.current
@@ -2666,6 +2696,52 @@ export default function MessagesView({
       })
     }
   }, [typingActive, selectedThreadId])
+
+  // Check scroll position to show/hide scroll to bottom button
+  useEffect(() => {
+    const container = messageContainerRef.current
+    if (!container || !selectedThreadId) {
+      setShowScrollToBottom(false)
+      return
+    }
+
+    const checkScrollPosition = () => {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+      setShowScrollToBottom(!isNearBottom)
+    }
+
+    container.addEventListener('scroll', checkScrollPosition)
+    // Check after messages load
+    setTimeout(checkScrollPosition, 100)
+
+    return () => {
+      container.removeEventListener('scroll', checkScrollPosition)
+    }
+  }, [selectedThreadId])
+
+  // Re-check scroll position when messages change
+  useEffect(() => {
+    if (!selectedThreadId) return
+    const container = messageContainerRef.current
+    if (container) {
+      const checkScrollPosition = () => {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+        setShowScrollToBottom(!isNearBottom)
+      }
+      setTimeout(checkScrollPosition, 100)
+    }
+  }, [selectedMessages, selectedThreadId])
+
+  const scrollToBottom = useCallback(() => {
+    const container = messageContainerRef.current
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      })
+    }
+  }, [])
+
   const peerName = getDisplayName(peerProfile)
   const peerInitials = getInitials(peerProfile)
   const peerAvatar = peerProfile?.profile_picture ?? null
@@ -2875,7 +2951,7 @@ export default function MessagesView({
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden relative">
                   <div ref={messageContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
                     {loadingThreadId === selectedThreadId && selectedMessages.length === 0 ? (
                       // Show loading state while fetching messages for the first time
@@ -3534,8 +3610,18 @@ export default function MessagesView({
                       </div>
                     )}
                   </div>
+                  {showScrollToBottom && (
+                    <Button
+                      type="button"
+                      onClick={scrollToBottom}
+                      className="absolute bottom-24 right-4 h-10 w-10 rounded-full border border-white/20 bg-white/10 backdrop-blur-md text-white/70 hover:bg-white/15 hover:text-white/90 hover:border-white/30 flex items-center justify-center shadow-lg z-10"
+                      title="Scroll to bottom"
+                    >
+                      <ChevronDown className="h-5 w-5" />
+                    </Button>
+                  )}
                   <Separator className="bg-white/10" />
-                  <div className="p-3 sm:p-4 space-y-3">
+                  <div className="p-2 sm:p-3 space-y-2">
                     {selectedConversation.participant_status === "blocked" && (
                       <div className="bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white/70 text-sm">
                         <div>
@@ -3769,7 +3855,7 @@ export default function MessagesView({
                     )}
                     <div
                       className={cn(
-                        "flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3",
+                        "flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-2 sm:px-3 py-1.5 sm:py-2",
                         composerDisabled && "opacity-60 pointer-events-none",
                       )}
                     >
@@ -3780,10 +3866,10 @@ export default function MessagesView({
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
+                              className="group relative flex items-center justify-center h-8 w-8 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
                               title="Attach file"
                             >
-                              <Paperclip className="h-4 w-4" />
+                              <Paperclip className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
@@ -3982,19 +4068,24 @@ export default function MessagesView({
                               }}
                               multiple
                             />
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                setIsVoiceRecorderOpen(true)
+                                setAttachMenuOpen(false)
+                              }}
+                              className="cursor-pointer"
+                              disabled={isVoiceRecorderOpen}
+                            >
+                              <Mic className="h-4 w-4 text-white/70 mr-2" />
+                              <span className="text-white/90">Voice Note</span>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
-                          onClick={() => setIsVoiceRecorderOpen(true)}
-                          disabled={isVoiceRecorderOpen}
-                          title="Record voice note"
-                        >
-                          <Mic className="h-4 w-4" />
-                        </Button>
+                        <EmojiPicker
+                          onEmojiSelect={handleEmojiSelect}
+                          disabled={isSending || isVoiceRecorderOpen || composerDisabled}
+                        />
                       </div>
                       <textarea
                         ref={textareaRef}
@@ -4007,7 +4098,7 @@ export default function MessagesView({
                             ? "Type your reply..."
                             : "Type a message"
                         }
-                        className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-0.5 sm:pb-1.5"
+                        className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-2 sm:pb-1.5"
                         rows={1}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.keyCode === 13) {
@@ -4044,9 +4135,13 @@ export default function MessagesView({
                         type="button"
                         disabled={isSending || composerDisabled}
                         onClick={handleSendMessage}
-                        className="rounded-full border border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white/90 hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center flex-shrink-0 transition-colors"
+                        className="group relative flex items-center justify-center h-8 w-8 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
                       >
-                        {isSending ? <Loader2 className="h-4 w-4 animate-spin text-white/70" /> : <Send className="h-4 w-4" />}
+                        {isSending ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-white/70 group-hover:text-white/80 transition-all" />
+                        ) : (
+                          <Send className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
+                        )}
                       </Button>
                     </div>
                   </div>

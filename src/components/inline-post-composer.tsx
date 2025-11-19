@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
 import { BoostRewardsDialog } from "@/components/boost-rewards-dialog"
+import { EmojiPicker } from "@/components/emoji-picker"
 import {
   Select,
   SelectContent,
@@ -397,6 +398,32 @@ export function InlinePostComposer({
       newFiles.splice(index, 1)
       return newFiles
     })
+  }
+
+  const handleEmojiSelect = (emoji: string) => {
+    if (!textareaRef.current) return
+    
+    const textarea = textareaRef.current
+    // Focus the textarea first to ensure selection is valid
+    textarea.focus()
+    
+    // Get cursor position (default to end if no selection)
+    const start = textarea.selectionStart ?? content.length
+    const end = textarea.selectionEnd ?? content.length
+    const textBefore = content.substring(0, start)
+    const textAfter = content.substring(end)
+    
+    const newContent = textBefore + emoji + textAfter
+    setContent(newContent)
+    
+    // Set cursor position after the inserted emoji
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPosition = start + emoji.length
+        textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition)
+        textareaRef.current.focus()
+      }
+    }, 0)
   }
 
   React.useEffect(() => {
@@ -1080,6 +1107,11 @@ export function InlinePostComposer({
             
             {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-2">
+              <EmojiPicker
+                onEmojiSelect={handleEmojiSelect}
+                disabled={submitting || showVoiceRecorder}
+              />
+
               {resolvedAllowImages && (
                 <button
                   type="button"

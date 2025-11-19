@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2 } from "lucide-react"
+import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2, Bookmark } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
 import type { Community } from "@/types"
+import { TwemojiText } from "@/components/twemoji-text"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
@@ -51,6 +52,7 @@ interface DiscoveryFeedViewProps {
     points_to_payout?: number
     popular_score?: number
     created_timestamp?: number
+    user_has_saved?: boolean
     community?: {
       id: string
       name: string
@@ -80,6 +82,7 @@ export default function DiscoveryFeedView({
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
+  const [savingPosts, setSavingPosts] = useState<Set<string>>(new Set())
   const postIdsRef = React.useRef<Set<string>>(new Set(initialPosts.map(p => p.id)))
   const [newPostsCount, setNewPostsCount] = useState(0)
   // If we have 100 posts initially, there might be more
@@ -288,6 +291,92 @@ export default function DiscoveryFeedView({
     }
   }
 
+  // Fetch saved status for posts
+  useEffect(() => {
+    if (!user || posts.length === 0) return
+
+    const fetchSavedStatus = async () => {
+      const postIds = posts.map(p => p.id)
+      
+      const { data: savedPostsData } = await supabase
+        .from('saved_posts')
+        .select('post_id')
+        .eq('user_id', user.id)
+        .in('post_id', postIds)
+
+      if (savedPostsData) {
+        const savedPostIds = new Set(savedPostsData.map(sp => sp.post_id))
+        setPosts(prevPosts =>
+          prevPosts.map(p => ({
+            ...p,
+            user_has_saved: savedPostIds.has(p.id)
+          }))
+        )
+      }
+    }
+
+    fetchSavedStatus()
+  }, [user, posts.length])
+
+  // Handle save toggle
+  const handleSaveToggle = async (postId: string) => {
+    if (!user) return
+
+    // Prevent multiple simultaneous saves
+    if (savingPosts.has(postId)) return
+
+    const post = posts.find(p => p.id === postId)
+    if (!post) return
+
+    const wasSaved = post.user_has_saved
+
+    // Optimistic update
+    setPosts(prevPosts =>
+      prevPosts.map(p =>
+        p.id === postId
+          ? { ...p, user_has_saved: !wasSaved }
+          : p
+      )
+    )
+
+    setSavingPosts(prev => new Set(prev).add(postId))
+
+    try {
+      const { data, error } = await supabase.rpc('toggle_save_post', {
+        p_post_id: postId,
+        p_user_id: user.id
+      })
+
+      if (error) throw error
+
+      // Show success message
+      if (wasSaved) {
+        toast.success("Bookmark removed")
+      } else {
+        toast.success("Post saved!")
+      }
+    } catch (error: any) {
+      console.error('Error toggling save:', error)
+      
+      // Revert optimistic update on error
+      setPosts(prevPosts =>
+        prevPosts.map(p =>
+          p.id === postId
+            ? { ...p, user_has_saved: wasSaved }
+            : p
+        )
+      )
+      
+      toast.error('Failed to save post. Please try again.')
+    } finally {
+      setSavingPosts(prev => {
+        const next = new Set(prev)
+        next.delete(postId)
+        return next
+      })
+    }
+  }
+
   // Update postIds ref when posts change
   useEffect(() => {
     postIdsRef.current = new Set(posts.map(p => p.id))
@@ -373,7 +462,8 @@ export default function DiscoveryFeedView({
         recentBoostsResult,
         authorTotalsResult,
         authorEarningsResult,
-        userBoostStatusResult
+        userBoostStatusResult,
+        savedStatusResult
       ] = await Promise.all([
         supabase.rpc('get_posts_boost_counts', { p_post_ids: newPostIds }),
         supabase
@@ -391,6 +481,13 @@ export default function DiscoveryFeedView({
               p_post_ids: newPostIds,
               p_user_id: user.id
             })
+          : Promise.resolve({ data: [] }),
+        user && newPostIds.length > 0
+          ? supabase
+              .from('saved_posts')
+              .select('post_id')
+              .eq('user_id', user.id)
+              .in('post_id', newPostIds)
           : Promise.resolve({ data: [] })
       ])
 
@@ -416,6 +513,10 @@ export default function DiscoveryFeedView({
           b.post_id,
           { user_has_boosted: b.user_has_boosted, can_unboost: b.can_unboost }
         ])
+      )
+
+      const savedPostIds = new Set(
+        (savedStatusResult.data || []).map((s: { post_id: string }) => s.post_id)
       )
 
       // Use payoutMinimumPoints from props
@@ -453,6 +554,7 @@ export default function DiscoveryFeedView({
           created_timestamp: postDate.getTime(),
           user_has_boosted: boostStatus.user_has_boosted,
           can_unboost: boostStatus.can_unboost,
+          user_has_saved: savedPostIds.has(post.id),
           community: communityData ? {
             id: communityData.id,
             name: communityData.name,
@@ -1403,7 +1505,7 @@ export default function DiscoveryFeedView({
                         <>
                           <div className="mb-3">
                             <p className="text-white/80 text-base whitespace-pre-wrap break-words">
-                              {post.content}
+                              <TwemojiText text={post.content} size={20} />
                             </p>
 
                             {/* Post Media Slider */}
@@ -1420,70 +1522,95 @@ export default function DiscoveryFeedView({
                             )}
                           </div>
 
-                          {/* Boost and Contribute Buttons */}
-                          <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => handleBoostToggle(post.id, post.author_id, e)}
-                          disabled={!user || boostingPosts.has(post.id) || post.user_has_boosted}
-                          className={cn(
-                            "group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
-                            post.user_has_boosted
-                              ? "bg-yellow-400/10 border-yellow-400/40"
-                              : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30",
-                            animatingBoosts.has(post.id) && "animate-boost-pulse"
-                          )}
-                        >
-                          <Crown
-                            className={cn(
-                              "h-4 w-4 transition-all",
-                              post.user_has_boosted
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-white/70 group-hover:text-yellow-400",
-                              animatingBoosts.has(post.id) && "animate-boost-icon"
-                            )}
-                            style={{
-                              filter: post.user_has_boosted
-                                ? "drop-shadow(0 0 8px rgba(250, 204, 21, 0.6))"
-                                : "none",
-                            }}
-                          />
-                          <span
-                            className={cn(
-                              "text-xs font-medium transition-colors",
-                              post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
-                            )}
-                          >
-                            {post.user_has_boosted ? "Boosted" : "Boost"}
-                          </span>
-                          <span
-                            className={cn(
-                              "text-xs font-semibold transition-colors",
-                              post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white",
-                              animatingBoosts.has(post.id) && "animate-boost-count"
-                            )}
-                          >
-                            {post.boost_count || 0}
-                          </span>
-                        </button>
+                          {/* Boost, Contribute, and Save Buttons */}
+                          <div className="flex items-center justify-between gap-4 mt-3">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => handleBoostToggle(post.id, post.author_id, e)}
+                                disabled={!user || boostingPosts.has(post.id) || post.user_has_boosted}
+                                className={cn(
+                                  "group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                                  post.user_has_boosted
+                                    ? "bg-yellow-400/10 border-yellow-400/40"
+                                    : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30",
+                                  animatingBoosts.has(post.id) && "animate-boost-pulse"
+                                )}
+                              >
+                                <Crown
+                                  className={cn(
+                                    "h-4 w-4 transition-all",
+                                    post.user_has_boosted
+                                      ? "fill-yellow-400 text-yellow-400"
+                                      : "text-white/70 group-hover:text-yellow-400",
+                                    animatingBoosts.has(post.id) && "animate-boost-icon"
+                                  )}
+                                  style={{
+                                    filter: post.user_has_boosted
+                                      ? "drop-shadow(0 0 8px rgba(250, 204, 21, 0.6))"
+                                      : "none",
+                                  }}
+                                />
+                                <span
+                                  className={cn(
+                                    "text-xs font-medium transition-colors",
+                                    post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
+                                  )}
+                                >
+                                  {post.user_has_boosted ? "Boosted" : "Boost"}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-xs font-semibold transition-colors",
+                                    post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white",
+                                    animatingBoosts.has(post.id) && "animate-boost-count"
+                                  )}
+                                >
+                                  {post.boost_count || 0}
+                                </span>
+                              </button>
 
-                        {community && user && membershipByCommunityId[community.id] && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openContributionDialog(post.id, displayPosts.findIndex(p => p.id === post.id))
-                            }}
-                            className="group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
-                          >
-                            <Feather className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
-                            <span className="text-xs font-medium text-white/70 group-hover:text-white">
-                              Contribute
-                            </span>
-                            <span className="text-xs font-semibold text-white/60 group-hover:text-white/80">
-                              {(commentsByPostId[post.id]?.length || 0) + (commentsByPostId[post.id]?.reduce((sum, c) => sum + (c.replies?.length || 0), 0) || 0)}
-                            </span>
-                          </button>
-                        )}
-                      </div>
+                              {community && user && membershipByCommunityId[community.id] && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openContributionDialog(post.id, displayPosts.findIndex(p => p.id === post.id))
+                                  }}
+                                  className="group relative flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                                >
+                                  <Feather className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
+                                  <span className="text-xs font-medium text-white/70 group-hover:text-white">
+                                    Contribute
+                                  </span>
+                                  <span className="text-xs font-semibold text-white/60 group-hover:text-white/80">
+                                    {(commentsByPostId[post.id]?.length || 0) + (commentsByPostId[post.id]?.reduce((sum, c) => sum + (c.replies?.length || 0), 0) || 0)}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+
+                            {user && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleSaveToggle(post.id)
+                                }}
+                                disabled={savingPosts.has(post.id)}
+                                className={`group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  post.user_has_saved
+                                    ? "bg-white/10 border-white/30"
+                                    : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                                }`}
+                              >
+                                <Bookmark
+                                  className={`h-4 w-4 transition-all ${
+                                    post.user_has_saved
+                                      ? "fill-white/80 text-white/80"
+                                      : "text-white/70 group-hover:text-white/80"
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </div>
                         </>
                       )}
                     </CardContent>
@@ -1638,7 +1765,7 @@ export default function DiscoveryFeedView({
 
                     {post.content && (
                       <p className="text-white/80 text-sm whitespace-pre-wrap break-words">
-                        {post.content}
+                        <TwemojiText text={post.content} size={18} />
                       </p>
                     )}
 
@@ -1788,7 +1915,7 @@ export default function DiscoveryFeedView({
 
                             {comment.content && (
                               <p className="text-white/80 text-sm whitespace-pre-wrap break-words">
-                                {comment.content}
+                                <TwemojiText text={comment.content} size={18} />
                               </p>
                             )}
 
