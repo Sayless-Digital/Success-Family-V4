@@ -1952,7 +1952,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
             <Card
               key={post.id}
               data-post-id={post.id}
-              className="group bg-white/10 backdrop-blur-3xl border-0 hover:bg-white/20 transition-colors"
+              className="group bg-white/10 backdrop-blur-2xl border-0 hover:bg-white/20 transition-colors"
             >
               <CardContent className="p-3">
                 {/* Post Header */}
@@ -2917,7 +2917,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
 
         {/* Empty State */}
         {sortedPosts.length === 0 && (
-          <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+          <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-2xl border-0">
             <CardContent className="p-12 text-center">
               <div className="mx-auto w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-6">
                 <FileText className="h-8 w-8 text-white/60" />

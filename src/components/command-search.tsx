@@ -279,7 +279,7 @@ export function CommandSearch({ onSelect, activeView, activeTopicId }: CommandSe
         <button
           onClick={() => setOpen(true)}
           className={cn(
-            "flex items-center gap-3 w-full px-4 py-3 rounded-xl",
+            "flex items-center gap-3 w-full px-4 py-2 rounded-xl",
             "bg-white/10 backdrop-blur-sm border border-white/20 text-white/70",
             "hover:bg-white/15 hover:border-white/30 hover:text-white/90",
             "transition-all duration-200 cursor-pointer text-left",

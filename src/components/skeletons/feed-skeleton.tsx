@@ -8,7 +8,7 @@ export function FeedSkeleton() {
   return (
     <>
       {/* Inline Post Composer - Collapsed State - Exact match */}
-        <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0">
+        <Card className="bg-gradient-to-br from-white/10 to-transparent backdrop-blur-2xl border-0">
           <CardContent className="p-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 bg-white/10 rounded-full border-4 border-white/20 animate-pulse flex-shrink-0" />
@@ -20,7 +20,7 @@ export function FeedSkeleton() {
         {/* Posts List - Exact match */}
         <div className="space-y-4">
           {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="group bg-white/10 backdrop-blur-3xl border-0">
+            <Card key={i} className="group bg-white/10 backdrop-blur-2xl border-0">
               <CardContent className="p-3">
                 {/* Post Header - Exact match */}
                 <div className="flex gap-4 mb-3">

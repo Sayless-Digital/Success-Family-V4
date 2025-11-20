@@ -63,7 +63,7 @@ export function ProfilePageSkeleton() {
             {/* Posts List - Exact match */}
             <div className="flex flex-col gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <Card key={i} className="group bg-white/10 backdrop-blur-3xl border-0">
+                <Card key={i} className="group bg-white/10 backdrop-blur-2xl border-0">
                   <CardContent className="p-3">
                     {/* Post Header - Exact match */}
                     <div className="flex gap-4 mb-3">
