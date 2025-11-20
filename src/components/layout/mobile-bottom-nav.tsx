@@ -98,7 +98,10 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 z-[9999] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20">
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-[9999] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md rounded-t-lg border-t border-white/20"
+        data-mobile-bottom-nav
+      >
         <div className="h-full px-1 flex items-center justify-between">
           {/* Left side - Wallet & Earnings (when logged in) OR Sign In/Sign Up (when logged out) */}
           <div className="flex items-center gap-1">

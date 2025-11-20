@@ -290,7 +290,6 @@ export function CommandSearch({ onSelect, activeView, activeTopicId }: CommandSe
           <span className="flex-1 text-sm font-medium">
             {activeViewInfo ? (
               <span className="flex items-center gap-2">
-                <span>Viewing:</span>
                 {ActiveViewIcon && <ActiveViewIcon className="h-4 w-4 text-white/80" />}
                 <span className="font-semibold text-white/90">{activeViewInfo.label}</span>
               </span>

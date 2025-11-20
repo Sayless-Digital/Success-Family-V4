@@ -30,25 +30,25 @@ interface AvatarProps extends React.ComponentPropsWithoutRef<typeof AvatarPrimit
 const Avatar = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Root>,
   AvatarProps
->(({ 
-  className, 
-  userId, 
-  isOnline, 
-  loading, 
+>(({
+  className,
+  userId,
+  isOnline,
+  loading,
   showHoverCard = false,
   username,
   firstName,
   lastName,
   bio,
   profilePicture,
-  children, 
-  ...props 
+  children,
+  ...props
 }, ref) => {
   const { isUserOnline } = useOnlineStatus()
   const router = useRouter()
   const { user: currentUser } = useAuth()
-  const showOnlineIndicator = isOnline !== undefined 
-    ? isOnline 
+  const showOnlineIndicator = isOnline !== undefined
+    ? isOnline
     : userId ? isUserOnline(userId) : false
 
   // Hover card state
@@ -117,15 +117,15 @@ const Avatar = React.forwardRef<
   }, [showHoverCard, userId])
 
   // Handle hover for desktop, click for mobile
-  const handleMouseEnter = () => {
+  const handleMouseEnter = React.useCallback(() => {
     if (isMobileRef.current || !showHoverCard) return
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
     }
     setHoverCardOpen(true)
-  }
+  }, [showHoverCard])
 
-  const handleMouseLeave = () => {
+  const handleMouseLeave = React.useCallback(() => {
     if (isMobileRef.current || !showHoverCard) return
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -133,16 +133,16 @@ const Avatar = React.forwardRef<
     timeoutRef.current = setTimeout(() => {
       setHoverCardOpen(false)
     }, 150)
-  }
+  }, [showHoverCard])
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = React.useCallback((e: React.MouseEvent) => {
     if (!showHoverCard) return
     e.preventDefault()
     e.stopPropagation()
     if (isMobileRef.current) {
       setHoverCardOpen(!hoverCardOpen)
     }
-  }
+  }, [showHoverCard, hoverCardOpen])
 
   // Cleanup timeout on unmount
   React.useEffect(() => {
@@ -257,9 +257,9 @@ const Avatar = React.forwardRef<
 
       const data = await response.json()
       const threadId = data?.thread?.id ?? data?.threadId
-      
+
       setHoverCardOpen(false)
-      
+
       router.push(threadId ? `/messages?thread=${threadId}` : "/messages")
     } catch (error: any) {
       console.error("Error starting conversation:", error)
@@ -272,12 +272,12 @@ const Avatar = React.forwardRef<
   const handleViewProfile = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     const finalUsername = username || userData?.username
     if (!finalUsername) return
-    
+
     setHoverCardOpen(false)
-    
+
     router.push(`/profile/${finalUsername}`)
   }
 
@@ -296,41 +296,70 @@ const Avatar = React.forwardRef<
   const isChristmasSeason = useIsChristmasMode()
 
   // Extract size from className to enforce square dimensions via inline styles
-  const classStr = className || ''
-  let explicitSize: number | undefined
-  
-  if (classStr.includes('h-24') && classStr.includes('w-24')) {
-    explicitSize = 96 // 6rem = 96px
-  } else if (classStr.includes('h-10') && classStr.includes('w-10')) {
-    explicitSize = 40 // 2.5rem = 40px
-  } else if (classStr.includes('h-16') && classStr.includes('w-16')) {
-    explicitSize = 64 // 4rem = 64px
-  } else if (classStr.includes('h-8') && classStr.includes('w-8')) {
-    explicitSize = 32 // 2rem = 32px
-  }
+  // Memoize to prevent unnecessary recalculations
+  const explicitSize = React.useMemo(() => {
+    const classStr = className || ''
 
-  // If loading, show skeleton
+    if (classStr.includes('h-24') && classStr.includes('w-24')) {
+      return 96 // 6rem = 96px
+    } else if (classStr.includes('h-10') && classStr.includes('w-10')) {
+      return 40 // 2.5rem = 40px
+    } else if (classStr.includes('h-16') && classStr.includes('w-16')) {
+      return 64 // 4rem = 64px
+    } else if (classStr.includes('h-8') && classStr.includes('w-8')) {
+      return 32 // 2rem = 32px
+    }
+    return undefined
+  }, [className])
+
+  // Memoize all styles BEFORE any conditional returns to maintain consistent hook order
+  // Memoize skeleton style to prevent re-renders
+  const skeletonStyle = React.useMemo(() => ({
+    aspectRatio: "1 / 1",
+    ...(explicitSize ? {
+      width: `${explicitSize}px`,
+      height: `${explicitSize}px`,
+      minWidth: `${explicitSize}px`,
+      maxWidth: `${explicitSize}px`,
+      minHeight: `${explicitSize}px`,
+      maxHeight: `${explicitSize}px`,
+    } : {}),
+  }), [explicitSize])
+
+  // Memoize container style to prevent re-renders
+  const containerStyle = React.useMemo(() => ({
+    ...(explicitSize ? {
+      width: `${explicitSize}px`,
+      height: `${explicitSize}px`,
+    } : {}),
+  }), [explicitSize])
+
+  // Memoize avatar root style to prevent re-renders
+  const avatarRootStyle = React.useMemo(() => ({
+    aspectRatio: "1 / 1",
+    ...(explicitSize ? {
+      width: `${explicitSize}px`,
+      height: `${explicitSize}px`,
+      minWidth: `${explicitSize}px`,
+      maxWidth: `${explicitSize}px`,
+      minHeight: `${explicitSize}px`,
+      maxHeight: `${explicitSize}px`,
+    } : {}),
+    ...props.style,
+  }), [explicitSize, props.style])
+
+  // If loading, show skeleton (conditional return AFTER all hooks)
   if (loading) {
     const skeletonElement = (
-      <Skeleton 
+      <Skeleton
         className={cn(
           "rounded-full shrink-0",
           className
         )}
-        style={{
-          aspectRatio: "1 / 1",
-          ...(explicitSize ? {
-            width: `${explicitSize}px`,
-            height: `${explicitSize}px`,
-            minWidth: `${explicitSize}px`,
-            maxWidth: `${explicitSize}px`,
-            minHeight: `${explicitSize}px`,
-            maxHeight: `${explicitSize}px`,
-          } : {}),
-        }}
+        style={skeletonStyle}
       />
     )
-    
+
     // Wrap skeleton in online ripple div if needed for consistency
     if (showOnlineIndicator) {
       return (
@@ -339,19 +368,14 @@ const Avatar = React.forwardRef<
         </div>
       )
     }
-    
+
     return skeletonElement
   }
 
   const avatarRoot = (
     <div
       className="relative inline-block"
-      style={{
-        ...(explicitSize ? {
-          width: `${explicitSize}px`,
-          height: `${explicitSize}px`,
-        } : {}),
-      }}
+      style={containerStyle}
     >
       <AvatarPrimitive.Root
         ref={ref}
@@ -364,18 +388,7 @@ const Avatar = React.forwardRef<
             : "border border-white/20 hover:border-white/40",
           className
         )}
-        style={{
-          aspectRatio: "1 / 1",
-          ...(explicitSize ? {
-            width: `${explicitSize}px`,
-            height: `${explicitSize}px`,
-            minWidth: `${explicitSize}px`,
-            maxWidth: `${explicitSize}px`,
-            minHeight: `${explicitSize}px`,
-            maxHeight: `${explicitSize}px`,
-          } : {}),
-          ...props.style,
-        }}
+        style={avatarRootStyle}
         onClick={canShowHoverCard ? handleClick : undefined}
         onMouseEnter={canShowHoverCard ? handleMouseEnter : undefined}
         onMouseLeave={canShowHoverCard ? handleMouseLeave : undefined}
@@ -402,7 +415,7 @@ const Avatar = React.forwardRef<
             src="/santa-hat.svg"
             alt="Santa hat"
             className="w-full h-full object-contain"
-            style={{ 
+            style={{
               filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))',
             }}
           />
@@ -422,7 +435,7 @@ const Avatar = React.forwardRef<
     return (
       <Popover open={hoverCardOpen} onOpenChange={setHoverCardOpen} modal={false}>
         <PopoverTrigger asChild>
-          <div 
+          <div
             onClick={handleClick}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
@@ -432,7 +445,7 @@ const Avatar = React.forwardRef<
             {wrappedAvatar}
           </div>
         </PopoverTrigger>
-        <PopoverContent 
+        <PopoverContent
           className="w-80 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-0 p-0"
           align="start"
           side="bottom"
@@ -449,8 +462,8 @@ const Avatar = React.forwardRef<
             <div className="flex items-start gap-3">
               <AvatarPrimitive.Root className="h-14 w-14 border-2 border-white/20 flex-shrink-0 rounded-full overflow-hidden relative inline-block">
                 {finalProfilePicture ? (
-                  <AvatarPrimitive.Image 
-                    src={finalProfilePicture} 
+                  <AvatarPrimitive.Image
+                    src={finalProfilePicture}
                     alt={`${finalFirstName} ${finalLastName}`}
                     className="absolute inset-0 h-full w-full object-cover object-center rounded-full"
                   />
@@ -459,7 +472,7 @@ const Avatar = React.forwardRef<
                   {finalFirstName?.[0]}{finalLastName?.[0]}
                 </AvatarPrimitive.Fallback>
               </AvatarPrimitive.Root>
-              
+
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-white text-sm truncate">
                   {finalFirstName} {finalLastName}
@@ -495,7 +508,7 @@ const Avatar = React.forwardRef<
                     </>
                   )}
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -513,7 +526,7 @@ const Avatar = React.forwardRef<
                     </>
                   )}
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -567,42 +580,42 @@ const Avatar = React.forwardRef<
 })
 Avatar.displayName = AvatarPrimitive.Root.displayName
 
-const AvatarImage = React.forwardRef<
+const AvatarImage = React.memo(React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Image
-    ref={ref}
-    className={cn(
-      "absolute inset-0 h-full w-full object-cover object-center rounded-full",
-      className
-    )}
-    style={{
-      transformOrigin: 'center center',
-      ...props.style,
-    }}
-    {...props}
-  />
-))
+>(({ className, src, ...props }, ref) => {
+  if (!src) return null
+
+  return (
+    <AvatarPrimitive.Image
+      ref={ref}
+      src={src}
+      className={cn(
+        "absolute inset-0 h-full w-full object-cover object-center rounded-full",
+        className
+      )}
+      {...props}
+    />
+  )
+}))
 AvatarImage.displayName = AvatarPrimitive.Image.displayName
 
 const AvatarFallback = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Fallback>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Fallback
-    ref={ref}
-    className={cn(
-      "absolute inset-0 flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground backdrop-blur-md",
-      className
-    )}
-    style={{
-      transformOrigin: 'center center',
-      ...props.style,
-    }}
-    {...props}
-  />
-))
+>(({ className, ...props }, ref) => {
+  return (
+    <AvatarPrimitive.Fallback
+      ref={ref}
+      className={cn(
+        "absolute inset-0 flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground backdrop-blur-md",
+        className
+      )}
+      {...props}
+    />
+  )
+})
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName
 
-export { Avatar, AvatarImage, AvatarFallback }
+const AvatarRoot = AvatarPrimitive.Root
+export { Avatar, AvatarImage, AvatarFallback, AvatarRoot }

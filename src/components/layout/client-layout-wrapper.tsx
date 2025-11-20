@@ -38,6 +38,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
   const [isSidebarPinned, setIsSidebarPinned] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const fullscreenTargetRef = useRef<HTMLDivElement | null>(null)
+  const [hasResolvedScreenSize, setHasResolvedScreenSize] = useState(false)
   
   const isStreamPage = pathname?.includes('/stream')
   
@@ -89,6 +90,9 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
   useEffect(() => {
     const pathnameChanged = prevPathnameRef.current !== pathname
     // Always update state when pathname or mobile state changes
+    if (!hasResolvedScreenSize) {
+      return
+    }
     if (!hasInitializedRef.current || pathnameChanged) {
       prevPathnameRef.current = pathname
       hasInitializedRef.current = true
@@ -99,7 +103,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
       setIsOnlineUsersSidebarOpen(isMobile ? false : shouldOpen)
       setIsOnlineUsersSidebarPinned(isMobile ? false : shouldPin)
     }
-  }, [isMobile, onlineUsersSidebarConfig, pathname])
+  }, [isMobile, onlineUsersSidebarConfig, pathname, hasResolvedScreenSize])
 
   // Set mounted state and initial mobile/desktop state after hydration
   useEffect(() => {
@@ -119,6 +123,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
     }
     
     checkMobile()
+    setHasResolvedScreenSize(true)
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
@@ -130,6 +135,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
     const checkMobile = () => {
       const mobile = window.innerWidth < 768
       setIsMobile(mobile)
+      setHasResolvedScreenSize(true)
       
       if (mobile && !isMobile) {
         // Switching to mobile - close both sidebars

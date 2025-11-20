@@ -1952,7 +1952,7 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
             <Card
               key={post.id}
               data-post-id={post.id}
-              className="group bg-white/10 backdrop-blur-md border-0 hover:bg-white/15 transition-colors"
+              className="group bg-white/10 backdrop-blur-3xl border-0 hover:bg-white/20 transition-colors"
             >
               <CardContent className="p-3">
                 {/* Post Header */}

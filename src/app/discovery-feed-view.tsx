@@ -40,6 +40,11 @@ import type { Community } from "@/types"
 import { TwemojiText } from "@/components/twemoji-text"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
+const INITIAL_VISIBLE_POSTS = 8
+const VISIBLE_POST_INCREMENT = 6
+// Focus mode - TikTok style: everything fits in viewport with internal scroll
+// Account for: global header (4rem) + search/buttons row (3rem) + spacing (2rem) + mobile bottom nav (4rem)
+const SINGLE_VIEW_CONTAINER_HEIGHT = "calc(100dvh - 13rem)"
 
 type TabValue = "for-you" | "trending" | "popular" | "recent" | "new-creators" | "near-payout" | "topic"
 
@@ -81,38 +86,56 @@ export default function DiscoveryFeedView({
   const [activeTab, setActiveTab] = useState<TabValue>(currentUserId ? "for-you" : "trending")
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "single">("list")
-  const [currentPostIndex, setCurrentPostIndex] = useState(0)
+    const [currentPostIndex, setCurrentPostIndex] = useState(0)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [animationDirection, setAnimationDirection] = useState<'next' | 'prev' | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
   const [seenPostIds, setSeenPostIds] = useState<Set<string>>(new Set())
+  const [visiblePostCount, setVisiblePostCount] = useState(INITIAL_VISIBLE_POSTS)
   
-  // Swipe support for single post view - refs only, handlers defined after displayPosts
+  // Swipe support for single post view - horizontal swipes (left/right)
   const singlePostContainerRef = React.useRef<HTMLDivElement>(null)
-  const touchStartY = React.useRef<number | null>(null)
-  const touchEndY = React.useRef<number | null>(null)
+  const touchStartX = React.useRef<number | null>(null)
+  const touchEndX = React.useRef<number | null>(null)
   
-  // Check for topic query param on mount (client-side only to avoid hydration mismatch)
+  // Initialize from URL params on mount (client-side only to avoid hydration mismatch)
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+    
+    // Restore topic
     const topicId = params.get('topic')
     if (topicId) {
       setActiveTab("topic")
       setActiveTopicId(topicId)
     }
+    
+    // Restore view mode
+    const viewParam = params.get('view')
+    if (viewParam === 'focus' || viewParam === 'single') {
+      setViewMode('single')
+    }
+    
+    setIsInitialized(true)
   }, [])
   
   // Update URL when topic changes
   React.useEffect(() => {
+    if (!isInitialized) return
+    
+    const url = new URL(window.location.href)
+    
+    // Handle topic
     if (activeTab === "topic" && activeTopicId) {
-      const url = new URL(window.location.href)
       url.searchParams.set('topic', activeTopicId)
-      window.history.replaceState({}, '', url.toString())
-    } else if (activeTab !== "topic") {
-      const url = new URL(window.location.href)
+    } else {
       url.searchParams.delete('topic')
-      window.history.replaceState({}, '', url.toString())
     }
-  }, [activeTab, activeTopicId])
+    
+    window.history.replaceState({}, '', url.toString())
+  }, [activeTab, activeTopicId, isInitialized])
+  
   const [posts, setPosts] = useState(initialPosts)
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
@@ -124,12 +147,14 @@ export default function DiscoveryFeedView({
   const [hasMore, setHasMore] = useState(initialPosts.length >= 100)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loadMoreRef = React.useRef<HTMLDivElement>(null)
+  const renderMoreRef = React.useRef<HTMLDivElement>(null)
   const [contributionDialogOpen, setContributionDialogOpen] = useState<string | null>(null)
   const [contributionDialogIndex, setContributionDialogIndex] = useState<number | null>(null)
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, HierarchicalPost[]>>({})
   const [commentsLoading, setCommentsLoading] = useState<Record<string, boolean>>({})
   const [membershipByCommunityId, setMembershipByCommunityId] = useState<Record<string, boolean>>({})
   const fetchedCommentsRef = React.useRef<Set<string>>(new Set())
+  const feedFingerprintRef = React.useRef<string>("")
   
   // Edit and delete state
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
@@ -362,6 +387,63 @@ export default function DiscoveryFeedView({
     return sortedPosts.slice(0, 50)
   }, [sortedPosts])
   
+  const postsToRender = useMemo(() => {
+    if (viewMode === "list") {
+      return displayPosts.slice(0, Math.min(visiblePostCount, displayPosts.length))
+    }
+    return displayPosts
+  }, [displayPosts, viewMode, visiblePostCount])
+  
+  // Restore post index when displayPosts become available
+  React.useEffect(() => {
+    if (!isInitialized || displayPosts.length === 0) return
+    
+    const params = new URLSearchParams(window.location.search)
+    const postId = params.get('post')
+    
+    if (postId) {
+      const index = displayPosts.findIndex(p => p.id === postId)
+      if (index !== -1) {
+        setCurrentPostIndex(index)
+      }
+    }
+  }, [displayPosts, isInitialized])
+  
+  // Update URL when view mode or post changes
+  React.useEffect(() => {
+    if (!isInitialized || displayPosts.length === 0) return
+    
+    const url = new URL(window.location.href)
+    
+    // Handle view mode
+    if (viewMode === 'single') {
+      url.searchParams.set('view', 'focus')
+      // Add current post ID if in focus mode
+      const currentPost = displayPosts[currentPostIndex]
+      if (currentPost) {
+        url.searchParams.set('post', currentPost.id)
+      }
+    } else {
+      url.searchParams.delete('view')
+      url.searchParams.delete('post')
+    }
+    
+    window.history.replaceState({}, '', url.toString())
+  }, [viewMode, currentPostIndex, displayPosts, isInitialized])
+  
+  // Trigger animation when post index changes
+  React.useEffect(() => {
+    if (viewMode !== "single") return
+    
+    setIsAnimating(true)
+    const timer = setTimeout(() => {
+      setIsAnimating(false)
+      setAnimationDirection(null)
+    }, 300)
+    
+    return () => clearTimeout(timer)
+  }, [currentPostIndex, viewMode])
+  
   // Track which posts have been seen (scrolled into view)
   useEffect(() => {
     if (displayPosts.length === 0) return
@@ -393,23 +475,95 @@ export default function DiscoveryFeedView({
     }
   }, [displayPosts])
   
+  // Reset or clamp visible post count when feed changes
+  useEffect(() => {
+    if (viewMode !== "list") return
+    
+    const fingerprint = displayPosts.slice(0, 5).map(post => post.id).join("|")
+    
+    setVisiblePostCount(prev => {
+      const clampedPrev = Math.min(prev, displayPosts.length || INITIAL_VISIBLE_POSTS)
+      if (feedFingerprintRef.current !== fingerprint) {
+        feedFingerprintRef.current = fingerprint
+        return Math.min(INITIAL_VISIBLE_POSTS, displayPosts.length)
+      }
+      return clampedPrev
+    })
+  }, [displayPosts, viewMode])
+  
+  // Observer to progressively reveal more posts without server fetch
+  useEffect(() => {
+    if (viewMode !== "list") return
+    if (visiblePostCount >= displayPosts.length) return
+    
+    const currentRef = renderMoreRef.current
+    if (!currentRef) return
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry.isIntersecting) {
+          setVisiblePostCount(prev => {
+            if (prev >= displayPosts.length) return prev
+            return Math.min(prev + VISIBLE_POST_INCREMENT, displayPosts.length)
+          })
+        }
+      },
+      {
+        root: null,
+        rootMargin: "300px",
+        threshold: 0.1,
+      }
+    )
+    
+    observer.observe(currentRef)
+    
+    return () => {
+      observer.disconnect()
+    }
+  }, [viewMode, visiblePostCount, displayPosts.length])
+  
   // Reset post index when posts change or view mode changes
   useEffect(() => {
     if (viewMode === "single" && displayPosts.length > 0) {
       setCurrentPostIndex(0)
     }
   }, [displayPosts.length, viewMode])
-  
-  // Keyboard navigation for single post view
+
+  // Disable page scroll when in single view mode
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const html = document.documentElement
+    const body = document.body
+    const previousHtmlOverflow = html.style.overflow
+    const previousBodyOverflow = body.style.overflow
+
+    if (viewMode === "single") {
+      html.style.overflow = "hidden"
+      body.style.overflow = "hidden"
+    } else {
+      html.style.overflow = previousHtmlOverflow || ""
+      body.style.overflow = previousBodyOverflow || ""
+    }
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow || ""
+      body.style.overflow = previousBodyOverflow || ""
+    }
+  }, [viewMode])
+
+  // Keyboard navigation for single post view - left/right arrows
   useEffect(() => {
     if (viewMode !== "single") return
     
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      if (e.key === "ArrowRight") {
         e.preventDefault()
+        setAnimationDirection('next')
         setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))
-      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      } else if (e.key === "ArrowLeft") {
         e.preventDefault()
+        setAnimationDirection('prev')
         setCurrentPostIndex(prev => Math.max(0, prev - 1))
       }
     }
@@ -419,31 +573,33 @@ export default function DiscoveryFeedView({
   }, [viewMode, displayPosts.length])
   
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY
+    touchStartX.current = e.touches[0].clientX
   }, [])
   
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    touchEndY.current = e.touches[0].clientY
+    touchEndX.current = e.touches[0].clientX
   }, [])
   
   const handleTouchEnd = useCallback(() => {
-    if (!touchStartY.current || !touchEndY.current) return
+    if (!touchStartX.current || !touchEndX.current) return
     
-    const diff = touchStartY.current - touchEndY.current
+    const diff = touchStartX.current - touchEndX.current
     const minSwipeDistance = 50
     
     if (Math.abs(diff) > minSwipeDistance) {
       if (diff > 0) {
-        // Swipe up - next post
+        // Swipe left - next post
+        setAnimationDirection('next')
         setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))
       } else {
-        // Swipe down - previous post
+        // Swipe right - previous post
+        setAnimationDirection('prev')
         setCurrentPostIndex(prev => Math.max(0, prev - 1))
       }
     }
     
-    touchStartY.current = null
-    touchEndY.current = null
+    touchStartX.current = null
+    touchEndX.current = null
   }, [displayPosts.length])
 
   const fireGoldConfetti = (element: HTMLElement | null) => {
@@ -1639,19 +1795,25 @@ export default function DiscoveryFeedView({
 
         <div className="mt-4">
           {viewMode === "single" ? (
-            /* Single Post View */
-            <div 
+            /* Single Post View - TikTok Style */
+            <div
               ref={singlePostContainerRef}
-              className="relative overflow-hidden"
+              className="flex flex-col"
+              style={{
+                height: SINGLE_VIEW_CONTAINER_HEIGHT
+              }}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              {/* Navigation Controls - Top */}
+              {/* Navigation Controls - Fixed at top */}
               {displayPosts.length > 1 && (
-                <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="flex items-center justify-center gap-4 py-2 flex-shrink-0">
                   <button
-                    onClick={() => setCurrentPostIndex(prev => Math.max(0, prev - 1))}
+                    onClick={() => {
+                    setAnimationDirection('prev')
+                    setCurrentPostIndex(prev => Math.max(0, prev - 1))
+                  }}
                     disabled={currentPostIndex === 0}
                     className="flex items-center justify-center h-10 w-10 rounded-full bg-white/10 border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all text-white/80 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Previous post"
@@ -1660,7 +1822,10 @@ export default function DiscoveryFeedView({
                   </button>
                   
                   <button
-                    onClick={() => setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))}
+                    onClick={() => {
+                    setAnimationDirection('next')
+                    setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))
+                  }}
                     disabled={currentPostIndex === displayPosts.length - 1}
                     className="flex items-center justify-center h-10 w-10 rounded-full bg-white/10 border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all text-white/80 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Next post"
@@ -1671,7 +1836,7 @@ export default function DiscoveryFeedView({
               )}
               
               {displayPosts.length > 0 ? (
-                <div className="space-y-4">
+                <div className="flex-1 relative overflow-hidden">
                   {displayPosts.map((post, index) => {
                     const community = post.community || (post as any).communities
                     const isActive = index === currentPostIndex
@@ -1680,17 +1845,18 @@ export default function DiscoveryFeedView({
                       <div
                         key={post.id}
                         className={cn(
-                          "w-full flex items-center justify-center transition-opacity max-h-[calc(100vh-12rem)]",
-                          isActive ? "opacity-100" : "opacity-0 absolute pointer-events-none"
+                          "absolute inset-0 flex items-center justify-center",
+                          isActive ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none",
+                          isActive && isAnimating && "card-flip-in"
                         )}
                       >
-                        <Card 
-                          className="group bg-white/10 backdrop-blur-md border-0 w-full max-w-2xl mx-auto max-h-[calc(100vh-12rem)] flex flex-col overflow-hidden"
+                        <Card
+                          className="group bg-white/10 backdrop-blur-md border-0 w-full h-full max-w-2xl flex flex-col overflow-hidden rounded-[32px]"
                           data-post-id={post.id}
                         >
-                          <CardContent className="p-6 overflow-y-auto flex-1 flex flex-col min-h-0">
-                            {/* Post Header */}
-                            <div className="flex gap-4 mb-4">
+                          <CardContent className="p-4 h-full flex flex-col overflow-hidden">
+                            {/* Post Header - Fixed */}
+                            <div className="flex gap-2 mb-2 flex-shrink-0">
                               <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
                                 <Avatar 
                                   className="h-12 w-12 border-4 border-white/20" 
@@ -1785,8 +1951,8 @@ export default function DiscoveryFeedView({
                               </div>
                             </div>
 
-                            {/* Tags */}
-                            <div className="flex items-center gap-2 mb-4 flex-wrap">
+                            {/* Tags - Fixed */}
+                            <div className="flex items-center gap-1.5 mb-2 flex-wrap flex-shrink-0">
                               {post.is_low_visibility && (
                                 <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20 text-xs">
                                   <Sparkles className="h-3 w-3 mr-1" />
@@ -1820,53 +1986,57 @@ export default function DiscoveryFeedView({
                               )}
                             </div>
 
-                            {/* Content */}
-                            <div className="mb-4 flex flex-col min-h-0">
-                              {post.content && (
-                                <div className="mb-4 overflow-y-auto max-h-[200px]">
-                                  <p className="text-white/80 text-lg whitespace-pre-wrap break-words">
-                                    <TwemojiText text={post.content} size={20} />
-                                  </p>
-                                </div>
-                              )}
+                            {/* TikTok-style Scrollable Content - Fills remaining space */}
+                            <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+                              <div className="space-y-2">
+                                {post.content && (
+                                  <div>
+                                    <p className="text-white/80 text-base whitespace-pre-wrap break-words">
+                                      <TwemojiText text={post.content} size={20} />
+                                    </p>
+                                  </div>
+                                )}
 
-                              {/* Post Media Slider */}
-                              {post.media && post.media.length > 0 && (
-                                <div className="mt-0 flex-shrink-0 max-h-[400px] overflow-hidden">
-                                  <PostMediaSlider 
-                                    media={post.media} 
-                                    author={post.author}
-                                    userHasBoosted={post.user_has_boosted || false}
-                                    authorId={post.author_id}
-                                    currentUserId={user?.id}
-                                  />
-                                </div>
-                              )}
+                                {/* Post Media Slider */}
+                                {post.media && post.media.length > 0 && (
+                                  <div>
+                                    <PostMediaSlider
+                                      media={post.media}
+                                      author={post.author}
+                                      userHasBoosted={post.user_has_boosted || false}
+                                      authorId={post.author_id}
+                                      currentUserId={user?.id}
+                                    />
+                                  </div>
+                                )}
 
-                              {/* Topic Tags */}
-                              {(post as any).topics && Array.isArray((post as any).topics) && (post as any).topics.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mt-4">
-                                  {(post as any).topics
-                                    .filter((pt: any) => pt.topic)
-                                    .map((pt: any) => (
-                                      <button
-                                        key={pt.topic.id}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          setActiveTab("topic")
-                                          setActiveTopicId(pt.topic.id)
-                                        }}
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
-                                      >
-                                        #{(pt.topic as any).label}
-                                      </button>
-                                    ))}
-                                </div>
-                              )}
+                                {/* Topic Tags */}
+                                {(post as any).topics && Array.isArray((post as any).topics) && (post as any).topics.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(post as any).topics
+                                      .filter((pt: any) => pt.topic)
+                                      .map((pt: any) => (
+                                        <button
+                                          key={pt.topic.id}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setActiveTab("topic")
+                                            setActiveTopicId(pt.topic.id)
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
+                                        >
+                                          #{(pt.topic as any).label}
+                                        </button>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
-                            {/* Boost, Contribute, and Save Buttons */}
-                            <div className="flex items-center justify-between gap-4 mt-4">
+                            {/* Action Buttons - Fixed at bottom */}
+                            <div className="flex items-center justify-between gap-3 flex-shrink-0 pt-2 mt-2 border-t border-white/10" style={{
+                              paddingBottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px))`
+                            }}>
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={(e) => handleBoostToggle(post.id, post.author_id, e)}
@@ -1988,7 +2158,7 @@ export default function DiscoveryFeedView({
                   onCommunityChange={setSelectedCommunityId}
                 />
               )}
-              {displayPosts.map((post) => {
+              {postsToRender.map((post) => {
                 const community = post.community || (post as any).communities
                 
                 return (
@@ -2310,6 +2480,25 @@ export default function DiscoveryFeedView({
                   </Card>
                 )
               })}
+              
+              {viewMode === "list" && visiblePostCount < displayPosts.length && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <div ref={renderMoreRef} className="h-4 w-full" aria-hidden />
+                  <p className="text-white/60 text-sm">Loading more posts...</p>
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      setVisiblePostCount(prev =>
+                        Math.min(prev + VISIBLE_POST_INCREMENT * 2, displayPosts.length)
+                      )
+                    }
+                    className="border-white/20 text-white/80 hover:bg-white/10 hover:text-white"
+                    variant="outline"
+                  >
+                    Show more posts
+                  </Button>
+                </div>
+              )}
               
               {/* Load More Trigger - Intersection Observer Target */}
               {hasMore && (
