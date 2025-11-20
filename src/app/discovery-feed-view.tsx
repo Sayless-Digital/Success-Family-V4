@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { CommandSearch } from "@/components/command-search"
 import { PostMediaSlider } from "@/components/post-media-slider"
 import { useAuth } from "@/components/auth-provider"
 import { supabase } from "@/lib/supabase"
@@ -40,7 +41,7 @@ import { TwemojiText } from "@/components/twemoji-text"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
-type TabValue = "trending" | "popular" | "recent" | "new-creators" | "near-payout"
+type TabValue = "for-you" | "trending" | "popular" | "recent" | "new-creators" | "near-payout"
 
 interface DiscoveryFeedViewProps {
   posts: (PostWithAuthor & {
@@ -77,7 +78,7 @@ export default function DiscoveryFeedView({
 }: DiscoveryFeedViewProps) {
   const router = useRouter()
   const { user, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
-  const [activeTab, setActiveTab] = useState<TabValue>("trending")
+  const [activeTab, setActiveTab] = useState<TabValue>(currentUserId ? "for-you" : "trending")
   const [posts, setPosts] = useState(initialPosts)
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
@@ -130,6 +131,10 @@ export default function DiscoveryFeedView({
     const postsCopy = [...posts]
     
     switch (activeTab) {
+      case "for-you":
+        return postsCopy
+          .filter(p => (p as any).for_you_score !== undefined && (p as any).for_you_score > 0)
+          .sort((a, b) => ((b as any).for_you_score || 0) - ((a as any).for_you_score || 0))
       case "trending":
         return postsCopy.sort((a, b) => (b.discovery_score || 0) - (a.discovery_score || 0))
       case "popular":
@@ -1210,34 +1215,15 @@ export default function DiscoveryFeedView({
             />
           )}
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="w-full">
-            <TabsList className="w-full">
-              <TabsTrigger value="trending">
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Trending
-              </TabsTrigger>
-              <TabsTrigger value="popular">
-                <Crown className="h-4 w-4 mr-2" />
-                Popular
-              </TabsTrigger>
-              <TabsTrigger value="recent">
-                <Clock className="h-4 w-4 mr-2" />
-                Recent
-              </TabsTrigger>
-              <TabsTrigger value="new-creators">
-                <Sparkles className="h-4 w-4 mr-2" />
-                New Creators
-              </TabsTrigger>
-              <TabsTrigger value="near-payout">
-                <Target className="h-4 w-4 mr-2" />
-                Near Payout
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <CommandSearch
+            onSelect={(type, value) => {
+              setActiveTab(type as TabValue)
+            }}
+          />
           
           <div className="text-center py-12">
             <p className="text-white/60 text-lg">No posts found in this view</p>
-            <p className="text-white/40 text-sm mt-2">Check back later or explore other tabs</p>
+            <p className="text-white/40 text-sm mt-2">Check back later or explore other feeds</p>
           </div>
         </div>
       </div>
@@ -1272,31 +1258,13 @@ export default function DiscoveryFeedView({
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="trending">
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Trending
-            </TabsTrigger>
-            <TabsTrigger value="popular">
-              <Crown className="h-4 w-4 mr-2" />
-              Popular
-            </TabsTrigger>
-            <TabsTrigger value="recent">
-              <Clock className="h-4 w-4 mr-2" />
-              Recent
-            </TabsTrigger>
-            <TabsTrigger value="new-creators">
-              <Sparkles className="h-4 w-4 mr-2" />
-              New Creators
-            </TabsTrigger>
-            <TabsTrigger value="near-payout">
-              <Target className="h-4 w-4 mr-2" />
-              Near Payout
-            </TabsTrigger>
-          </TabsList>
+        <CommandSearch
+          onSelect={(type, value) => {
+            setActiveTab(type as TabValue)
+          }}
+        />
 
-          <TabsContent value={activeTab} className="mt-4">
+        <div className="mt-4">
             <div className="space-y-4">
               {/* Post Composer with Community Selector - Only show if user is logged in and has communities */}
               {user && userCommunities.length > 0 && selectedCommunity && (
@@ -1630,8 +1598,7 @@ export default function DiscoveryFeedView({
                 </div>
               )}
             </div>
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
 
       {/* Contribution Dialog */}
@@ -1777,6 +1744,21 @@ export default function DiscoveryFeedView({
                         authorId={post.author_id}
                         currentUserId={user?.id}
                       />
+                    )}
+
+                    {(post as any).topics && Array.isArray((post as any).topics) && (post as any).topics.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {(post as any).topics
+                          .filter((pt: any) => pt.topic)
+                          .map((pt: any) => (
+                            <span
+                              key={pt.topic.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors"
+                            >
+                              #{(pt.topic as any).label}
+                            </span>
+                          ))}
+                      </div>
                     )}
 
                     <div className="flex items-center justify-between gap-2.5">

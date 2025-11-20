@@ -78,6 +78,14 @@ export default async function HomePage() {
             storage_path,
             file_name,
             display_order
+          ),
+          topics:post_topics(
+            topic:topics(
+              id,
+              slug,
+              label,
+              is_featured
+            )
           )
         `)
         .eq('depth', 0)
@@ -177,6 +185,27 @@ export default async function HomePage() {
     ])
   )
   
+  // Calculate for_you_score for authenticated users
+  let forYouScoreMap = new Map<string, number>()
+  if (user && postIds.length > 0) {
+    const forYouScores = await Promise.all(
+      postIds.map(async (postId) => {
+        const { data, error } = await supabase.rpc('calculate_for_you_score', {
+          p_user_id: user.id,
+          p_post_id: postId
+        })
+        if (error) {
+          console.error(`Error calculating for_you_score for post ${postId}:`, error)
+          return { postId, score: 0 }
+        }
+        return { postId, score: Number(data || 0) }
+      })
+    )
+    forYouScores.forEach(({ postId, score }) => {
+      forYouScoreMap.set(postId, score)
+    })
+  }
+
   // Enrich posts with ranking data
   type EnrichedPost = PostWithAuthor & {
     boost_count: number
@@ -190,6 +219,7 @@ export default async function HomePage() {
     created_timestamp: number
     user_has_boosted: boolean
     can_unboost: boolean
+    for_you_score?: number
     community?: {
       id: string
       name: string
@@ -220,6 +250,8 @@ export default async function HomePage() {
     // Get user boost status
     const boostStatus = boostStatusMap.get(post.id) ?? { user_has_boosted: false, can_unboost: false }
     
+    const forYouScore = user ? forYouScoreMap.get(post.id) : undefined
+    
     return {
       ...post,
       boost_count: boostCount,
@@ -233,6 +265,7 @@ export default async function HomePage() {
       created_timestamp: postDate.getTime(), // For Recent tab
       user_has_boosted: boostStatus.user_has_boosted,
       can_unboost: boostStatus.can_unboost,
+      for_you_score: forYouScore,
       community: communityData ? {
         id: communityData.id,
         name: communityData.name,

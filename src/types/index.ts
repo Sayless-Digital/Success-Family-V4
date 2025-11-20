@@ -269,6 +269,18 @@ export interface PlatformWithdrawal {
   processed_by_user?: User
 }
 
+// Topic types
+export interface Topic {
+  id: string
+  slug: string
+  label: string
+  description?: string
+  is_featured?: boolean
+  is_active?: boolean
+  created_by?: string | null
+  created_at?: string
+}
+
 // Post system types
 export type MediaType = 'image' | 'video' | 'document' | 'audio'
 

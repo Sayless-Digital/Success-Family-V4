@@ -108,7 +108,15 @@ export default async function ProfilePage(props: PageProps) {
     .select(`
       *,
       post_media (*),
-      communities!posts_community_id_fkey (slug, name)
+      communities!posts_community_id_fkey (slug, name),
+      topics:post_topics(
+        topic:topics(
+          id,
+          slug,
+          label,
+          is_featured
+        )
+      )
     `)
     .eq('author_id', user.id)
     .eq('depth', 0)
@@ -136,7 +144,15 @@ export default async function ProfilePage(props: PageProps) {
         *,
         post_media (*),
         author:users!posts_author_id_fkey (*),
-        communities!posts_community_id_fkey (slug, name)
+        communities!posts_community_id_fkey (slug, name),
+        topics:post_topics(
+          topic:topics(
+            id,
+            slug,
+            label,
+            is_featured
+          )
+        )
       )
     `)
     .eq('user_id', user.id)
@@ -185,7 +201,15 @@ export default async function ProfilePage(props: PageProps) {
       *,
       post_media (*),
       communities!posts_community_id_fkey (slug, name),
-      post_boosts!inner(post_id)
+      post_boosts!inner(post_id),
+      topics:post_topics(
+        topic:topics(
+          id,
+          slug,
+          label,
+          is_featured
+        )
+      )
     `)
     .eq('author_id', user.id)
     .eq('depth', 0)
@@ -223,7 +247,15 @@ export default async function ProfilePage(props: PageProps) {
         *,
         post_media (*),
         author:users!posts_author_id_fkey (*),
-        communities!posts_community_id_fkey (slug, name)
+        communities!posts_community_id_fkey (slug, name),
+        topics:post_topics(
+          topic:topics(
+            id,
+            slug,
+            label,
+            is_featured
+          )
+        )
       )
     `)
     .eq('user_id', user.id)

@@ -1,14 +1,17 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
-import { X, Plus, ChevronLeft, ChevronRight, Mic, Image as ImageIcon, Play, Pause, Trash2, Crown } from "lucide-react"
+import { X, Plus, ChevronLeft, ChevronRight, Mic, Image as ImageIcon, Play, Pause, Trash2, Crown, Hash, Star } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
-import type { MediaType, PostWithAuthor } from "@/types"
+import type { MediaType, PostWithAuthor, Topic } from "@/types"
 import { cn } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
@@ -114,6 +117,16 @@ export function InlinePostComposer({
   const [voiceNote, setVoiceNote] = React.useState<MediaFile | null>(null)
   const [imageFiles, setImageFiles] = React.useState<MediaFile[]>([])
   const [submitting, setSubmitting] = React.useState(false)
+  const [selectedTopics, setSelectedTopics] = React.useState<string[]>([])
+  const [selectedTopicsData, setSelectedTopicsData] = React.useState<Topic[]>([])
+  const [topicSearchQuery, setTopicSearchQuery] = React.useState("")
+  const [topicSearchResults, setTopicSearchResults] = React.useState<Topic[]>([])
+  const [showTopicSearch, setShowTopicSearch] = React.useState(false)
+  const topicSearchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  const topicInputRef = React.useRef<HTMLInputElement>(null)
+  const topicDropdownRef = React.useRef<HTMLDivElement>(null)
+  const [topicDropdownPosition, setTopicDropdownPosition] = React.useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
+  const [highlightedTopicIndex, setHighlightedTopicIndex] = React.useState<number>(-1)
   const [showBoostRewardsDialog, setShowBoostRewardsDialog] = React.useState(false)
   const [boostRewardMessage, setBoostRewardMessage] = React.useState<string>("")
   const [boostRewardAttachments, setBoostRewardAttachments] = React.useState<Array<{ file: File; preview: string; type: 'image' | 'document' }>>([])
@@ -155,6 +168,12 @@ export function InlinePostComposer({
     setShowVoiceRecorder(false)
     setPlayingAudio(null)
     setAudioProgress({})
+    setSelectedTopics([])
+    setSelectedTopicsData([])
+    setTopicSearchQuery("")
+    setTopicSearchResults([])
+    setShowTopicSearch(false)
+    setHighlightedTopicIndex(-1)
     // Cleanup audio elements
     Object.values(audioRefs.current).forEach(audio => {
       audio.pause()
@@ -162,6 +181,168 @@ export function InlinePostComposer({
     })
     audioRefs.current = {}
   }
+
+  // Topic search function
+  const searchTopics = React.useCallback(async (query: string) => {
+    if (!query.trim() || query.length < 1) {
+      setTopicSearchResults([])
+      return
+    }
+
+    const searchPattern = `%${query.toLowerCase()}%`
+    const [topicsByLabel, topicsBySlug] = await Promise.all([
+      supabase
+        .from("topics")
+        .select("id, slug, label, description, is_featured")
+        .eq("is_active", true)
+        .ilike("label", searchPattern)
+        .limit(20),
+      supabase
+        .from("topics")
+        .select("id, slug, label, description, is_featured")
+        .eq("is_active", true)
+        .ilike("slug", searchPattern)
+        .limit(20),
+    ])
+
+    const topicsMap = new Map()
+    if (topicsByLabel.data) topicsByLabel.data.forEach(t => topicsMap.set(t.id, t))
+    if (topicsBySlug.data) topicsBySlug.data.forEach(t => topicsMap.set(t.id, t))
+    const topicsData = Array.from(topicsMap.values()).slice(0, 20)
+    setTopicSearchResults(topicsData)
+  }, [])
+
+  // Add topic
+  const addTopic = React.useCallback((topic: Topic) => {
+    if (selectedTopics.includes(topic.id)) return
+    setSelectedTopics(prev => [...prev, topic.id])
+    setSelectedTopicsData(prev => [...prev, topic])
+    setTopicSearchQuery("")
+    setShowTopicSearch(false)
+    setHighlightedTopicIndex(-1)
+  }, [selectedTopics])
+
+  // Remove topic
+  const removeTopic = React.useCallback((topicId: string) => {
+    setSelectedTopics(prev => prev.filter(id => id !== topicId))
+    setSelectedTopicsData(prev => prev.filter(t => t.id !== topicId))
+  }, [])
+
+  // Handle topic input keydown
+  const handleTopicInputKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && topicSearchQuery === '' && selectedTopics.length > 0) {
+      e.preventDefault()
+      const lastTopicId = selectedTopics[selectedTopics.length - 1]
+      removeTopic(lastTopicId)
+      return
+    }
+    const availableTopics = topicSearchResults.filter(t => !selectedTopics.includes(t.id)).slice(0, 10)
+    if (availableTopics.length === 0) return
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        if (!showTopicSearch && availableTopics.length > 0) {
+          setShowTopicSearch(true)
+        }
+        setHighlightedTopicIndex(prev => prev < availableTopics.length - 1 ? prev + 1 : 0)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedTopicIndex(prev => prev > 0 ? prev - 1 : -1)
+        break
+      case 'Enter':
+        if (highlightedTopicIndex >= 0 && highlightedTopicIndex < availableTopics.length) {
+          e.preventDefault()
+          addTopic(availableTopics[highlightedTopicIndex])
+          setTopicSearchQuery('')
+          setShowTopicSearch(false)
+          setHighlightedTopicIndex(-1)
+        }
+        break
+      case 'Escape':
+        e.preventDefault()
+        setShowTopicSearch(false)
+        setHighlightedTopicIndex(-1)
+        topicInputRef.current?.blur()
+        break
+    }
+  }, [topicSearchQuery, topicSearchResults, selectedTopics, highlightedTopicIndex, showTopicSearch, addTopic, removeTopic])
+
+  // Search topics on query change
+  React.useEffect(() => {
+    if (topicSearchTimeoutRef.current) {
+      clearTimeout(topicSearchTimeoutRef.current)
+    }
+    if (topicSearchQuery.length > 0) {
+      topicSearchTimeoutRef.current = setTimeout(() => {
+        searchTopics(topicSearchQuery)
+        setShowTopicSearch(true)
+      }, 300)
+    } else {
+      setTopicSearchResults([])
+      setShowTopicSearch(false)
+    }
+    return () => {
+      if (topicSearchTimeoutRef.current) {
+        clearTimeout(topicSearchTimeoutRef.current)
+      }
+    }
+  }, [topicSearchQuery, searchTopics])
+
+  // Auto-highlight first result
+  React.useEffect(() => {
+    if (topicSearchResults.length > 0 && showTopicSearch) {
+      setHighlightedTopicIndex(0)
+    }
+  }, [topicSearchResults, showTopicSearch])
+
+  // Calculate dropdown position
+  React.useEffect(() => {
+    if (!showTopicSearch || !topicInputRef.current || topicSearchResults.length === 0) {
+      setTopicDropdownPosition(null)
+      return
+    }
+
+    const updatePosition = () => {
+      if (!topicInputRef.current) return
+      const rect = topicInputRef.current.getBoundingClientRect()
+      const viewportHeight = window.innerHeight
+      const spaceBelow = viewportHeight - rect.bottom
+      const spaceAbove = rect.top
+      const dropdownHeight = Math.min(300, topicSearchResults.length * 50 + 16)
+      
+      let top: number | undefined
+      let bottom: number | undefined
+      let maxHeight: number
+
+      if (spaceBelow >= dropdownHeight || spaceBelow > spaceAbove) {
+        // Show below
+        top = rect.bottom + 4
+        maxHeight = Math.min(dropdownHeight, spaceBelow - 8)
+      } else {
+        // Show above
+        bottom = viewportHeight - rect.top + 4
+        maxHeight = Math.min(dropdownHeight, spaceAbove - 8)
+      }
+
+      setTopicDropdownPosition({
+        top,
+        bottom,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.max(100, maxHeight)
+      })
+    }
+
+    updatePosition()
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [showTopicSearch, topicSearchResults.length])
 
   const handleAudioPlay = (previewUrl: string) => {
     // Stop any OTHER currently playing audio (not the one we're about to play)
@@ -715,6 +896,23 @@ export function InlinePostComposer({
         await uploadBoostRewardAttachments(insertedPost.id)
       }
 
+      // Insert topics if any (only for posts)
+      if (resolvedMode === "post" && selectedTopics.length > 0) {
+        const { error: topicsError } = await supabase
+          .from('post_topics')
+          .insert(
+            selectedTopics.map(topicId => ({
+              post_id: insertedPost.id,
+              topic_id: topicId
+            }))
+          )
+
+        if (topicsError) {
+          console.error('Topics insertion error:', topicsError)
+          // Don't throw - topics are optional
+        }
+      }
+
       let createdPost = insertedPost
 
       if ((resolvedAllowVoiceNote && voiceNote) || (resolvedAllowImages && imageFiles.length > 0)) {
@@ -929,6 +1127,99 @@ export function InlinePostComposer({
                 }}
               />
             </div>
+
+            {/* Topic Selection - Only for posts */}
+            {resolvedMode === "post" && (
+              <div className="space-y-2">
+                {selectedTopicsData.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedTopicsData.map((topic) => (
+                      <Badge
+                        key={topic.id}
+                        variant="secondary"
+                        className="bg-white/10 border border-white/20 text-white/80 hover:bg-white/15 px-2 py-1 text-xs"
+                      >
+                        <Hash className="h-3 w-3 mr-1 text-white/70" />
+                        {topic.label}
+                        {topic.is_featured && (
+                          <Star className="h-3 w-3 ml-1 text-white/60" />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeTopic(topic.id)}
+                          className="ml-1.5 hover:text-white"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <Input
+                    ref={topicInputRef}
+                    id="topic-search-input"
+                    type="text"
+                    placeholder="Add topics (e.g., tech, fitness, startup)..."
+                    value={topicSearchQuery}
+                    onChange={(e) => {
+                      setTopicSearchQuery(e.target.value)
+                      if (e.target.value.length > 0) {
+                        setShowTopicSearch(true)
+                      } else {
+                        setShowTopicSearch(false)
+                      }
+                    }}
+                    onKeyDown={handleTopicInputKeyDown}
+                    onFocus={() => { if (topicSearchQuery.length > 0) setShowTopicSearch(true) }}
+                    onBlur={() => { setTimeout(() => setShowTopicSearch(false), 200) }}
+                    className="bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-white/30"
+                  />
+                </div>
+                {typeof window !== 'undefined' && showTopicSearch && topicSearchResults.length > 0 && topicDropdownPosition && createPortal(
+                  <div
+                    ref={topicDropdownRef}
+                    className="fixed z-[2147483647] rounded-md border border-white/20 bg-white/5 backdrop-blur-md shadow-md overflow-y-auto overflow-x-hidden animate-in fade-in-0 zoom-in-95"
+                    style={{
+                      ...(topicDropdownPosition.top !== undefined && { top: `${topicDropdownPosition.top}px` }),
+                      ...(topicDropdownPosition.bottom !== undefined && { bottom: `${topicDropdownPosition.bottom}px` }),
+                      left: `${topicDropdownPosition.left}px`,
+                      width: `${topicDropdownPosition.width}px`,
+                      maxHeight: `${topicDropdownPosition.maxHeight}px`,
+                    }}
+                    onMouseDown={(e) => { e.preventDefault() }}
+                  >
+                    <div className="p-1">
+                      {topicSearchResults
+                        .filter(t => !selectedTopics.includes(t.id))
+                        .slice(0, 10)
+                        .map((topic, index) => (
+                          <button
+                            key={topic.id}
+                            type="button"
+                            data-topic-index={index}
+                            onMouseDown={(e) => { e.preventDefault(); addTopic(topic) }}
+                            onMouseEnter={() => setHighlightedTopicIndex(index)}
+                            className={cn(
+                              "relative flex w-full cursor-pointer select-none items-start rounded-sm px-2 py-1.5 text-left text-sm text-white outline-none transition-colors",
+                              highlightedTopicIndex === index ? "bg-white/15" : "hover:bg-white/10 focus:bg-white/15"
+                            )}
+                          >
+                            <div className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">#{topic.label}</span>
+                                {topic.is_featured && (<Star className="h-3.5 w-3.5 text-white/60 flex-shrink-0" />)}
+                              </div>
+                              {topic.description && (<p className="text-xs text-white/60 mt-1 leading-relaxed">{topic.description}</p>)}
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  </div>,
+                  document.body
+                )}
+              </div>
+            )}
 
             {/* Voice Note Recorder */}
             {resolvedAllowVoiceNote && showVoiceRecorder && (

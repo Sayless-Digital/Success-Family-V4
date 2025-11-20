@@ -57,6 +57,14 @@ export default async function FeedPage({ params }: FeedPageProps) {
           file_name,
           display_order,
           requires_boost
+        ),
+        topics:post_topics(
+          topic:topics(
+            id,
+            slug,
+            label,
+            is_featured
+          )
         )
       `)
       .eq('community_id', community.id)
