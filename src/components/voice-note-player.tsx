@@ -192,7 +192,7 @@ export function VoiceNotePlayer({
                 <Avatar 
                   className="h-10 w-10 border-2 border-white/20" 
                   userId={senderId}
-                  showHoverCard={!!senderId}
+                  showHoverCard={false}
                 >
                   <AvatarImage src={senderAvatar ?? undefined} alt={senderName} />
                   <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm uppercase">
