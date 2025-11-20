@@ -16,7 +16,7 @@ import type { CheckedState } from "@radix-ui/react-checkbox"
 import { Checkbox } from "@/components/ui/checkbox"
 import { signIn, signUp, signInWithGoogle } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X, Chrome } from "lucide-react"
+import { CheckCircle2, Mail, ArrowRight, Loader2, Eye, EyeOff, Search, User as UserIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 
@@ -542,7 +542,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                   </>
                 ) : (
                   <>
-                    <Chrome className="h-4 w-4" />
+                    <img src="/google-logo.svg" alt="Google" className="h-4 w-4" />
                     <span>Continue with Google</span>
                   </>
                 )}
@@ -660,7 +660,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
                   </>
                 ) : (
                   <>
-                    <Chrome className="h-4 w-4" />
+                    <img src="/google-logo.svg" alt="Google" className="h-4 w-4" />
                     <span>Continue with Google</span>
                   </>
                 )}

@@ -1,9 +1,9 @@
 "use client"
 
-import React, { useMemo, useState, useEffect } from "react"
+import React, { useMemo, useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2, Bookmark } from "lucide-react"
+import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2, Bookmark, LayoutList, Focus, RefreshCw } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -41,7 +41,7 @@ import { TwemojiText } from "@/components/twemoji-text"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
-type TabValue = "for-you" | "trending" | "popular" | "recent" | "new-creators" | "near-payout"
+type TabValue = "for-you" | "trending" | "popular" | "recent" | "new-creators" | "near-payout" | "topic"
 
 interface DiscoveryFeedViewProps {
   posts: (PostWithAuthor & {
@@ -79,6 +79,40 @@ export default function DiscoveryFeedView({
   const router = useRouter()
   const { user, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const [activeTab, setActiveTab] = useState<TabValue>(currentUserId ? "for-you" : "trending")
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<"list" | "single">("list")
+  const [currentPostIndex, setCurrentPostIndex] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshToken, setRefreshToken] = useState(0)
+  const [seenPostIds, setSeenPostIds] = useState<Set<string>>(new Set())
+  
+  // Swipe support for single post view - refs only, handlers defined after displayPosts
+  const singlePostContainerRef = React.useRef<HTMLDivElement>(null)
+  const touchStartY = React.useRef<number | null>(null)
+  const touchEndY = React.useRef<number | null>(null)
+  
+  // Check for topic query param on mount (client-side only to avoid hydration mismatch)
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const topicId = params.get('topic')
+    if (topicId) {
+      setActiveTab("topic")
+      setActiveTopicId(topicId)
+    }
+  }, [])
+  
+  // Update URL when topic changes
+  React.useEffect(() => {
+    if (activeTab === "topic" && activeTopicId) {
+      const url = new URL(window.location.href)
+      url.searchParams.set('topic', activeTopicId)
+      window.history.replaceState({}, '', url.toString())
+    } else if (activeTab !== "topic") {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('topic')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [activeTab, activeTopicId])
   const [posts, setPosts] = useState(initialPosts)
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
@@ -126,38 +160,291 @@ export default function DiscoveryFeedView({
     return () => clearInterval(interval)
   }, [posts])
 
+  // Helper function to shuffle within buckets for variety
+  const shuffleWithinBuckets = useCallback(<T,>(
+    sortedArray: T[],
+    getScore: (item: T) => number,
+    bucketSize: number = 10
+  ): T[] => {
+    if (sortedArray.length === 0) return sortedArray
+    
+    // Create a variety seed that changes with refresh token
+    // Use a more varied seed to ensure different shuffles each time
+    const varietySeed = refreshToken * 7919 + Date.now()
+    
+    // Better seeded random function
+    const seededRandom = (seed: number, index: number) => {
+      const x = Math.sin((seed + index) * 12.9898) * 43758.5453
+      return x - Math.floor(x)
+    }
+    
+    // Group into buckets by score
+    const buckets: T[][] = []
+    sortedArray.forEach(item => {
+      const score = getScore(item)
+      const bucketIndex = Math.floor(score / bucketSize)
+      if (!buckets[bucketIndex]) buckets[bucketIndex] = []
+      buckets[bucketIndex].push(item)
+    })
+    
+    // Shuffle within each bucket using Fisher-Yates with seeded random
+    const shuffled = buckets.map((bucket, bucketIdx) => {
+      if (bucket.length <= 1) return bucket
+      
+      const shuffled = [...bucket]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        // Use seeded random for more variety - combine seed with bucket index and position
+        const randomValue = seededRandom(varietySeed + bucketIdx * 100 + i, i)
+        const j = Math.floor(randomValue * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      return shuffled
+    }).flat()
+    
+    return shuffled
+  }, [refreshToken])
+
   // Sort posts based on active tab
   const sortedPosts = useMemo(() => {
     const postsCopy = [...posts]
     
     switch (activeTab) {
       case "for-you":
-        return postsCopy
+        const forYou = postsCopy
           .filter(p => (p as any).for_you_score !== undefined && (p as any).for_you_score > 0)
           .sort((a, b) => ((b as any).for_you_score || 0) - ((a as any).for_you_score || 0))
+        // Use smaller bucket size (5) for more variety
+        return shuffleWithinBuckets(forYou, (p) => (p as any).for_you_score || 0, 5)
+      
       case "trending":
-        return postsCopy.sort((a, b) => (b.discovery_score || 0) - (a.discovery_score || 0))
+        const trending = postsCopy.sort((a, b) => (b.discovery_score || 0) - (a.discovery_score || 0))
+        
+        // Separate high-score and low-score posts for variety
+        const highScorePosts = trending.filter(p => (p.discovery_score || 0) > 20)
+        const lowScorePosts = trending.filter(p => (p.discovery_score || 0) <= 20)
+        
+        // Mix: take 70% high-score, 30% low-score (interleaved)
+        const mixed: typeof trending = []
+        let highIdx = 0
+        let lowIdx = 0
+        const totalPosts = trending.length
+        const lowScoreTarget = Math.ceil(totalPosts * 0.3) // 30% low-score posts
+        
+        // First, add some high-score posts
+        while (highIdx < highScorePosts.length && mixed.length < totalPosts - lowScoreTarget) {
+          mixed.push(highScorePosts[highIdx++])
+        }
+        
+        // Then interleave low-score posts
+        while (lowIdx < lowScorePosts.length && mixed.length < totalPosts) {
+          // Add a low-score post
+          if (lowIdx < lowScorePosts.length) {
+            mixed.push(lowScorePosts[lowIdx++])
+          }
+          // Add a high-score post if available
+          if (highIdx < highScorePosts.length && mixed.length < totalPosts) {
+            mixed.push(highScorePosts[highIdx++])
+          }
+        }
+        
+        // Fill remaining with high-score posts
+        while (highIdx < highScorePosts.length && mixed.length < totalPosts) {
+          mixed.push(highScorePosts[highIdx++])
+        }
+        
+        return shuffleWithinBuckets(mixed, (p) => {
+          const baseScore = p.discovery_score || 0
+          const unseenBoost = seenPostIds.has(p.id) ? 0 : 3 // Boost unseen posts by 3 points
+          return baseScore + unseenBoost
+        }, 3)
+      
       case "popular":
-        return postsCopy.sort((a, b) => (b.popular_score || b.boost_count || 0) - (a.popular_score || a.boost_count || 0))
+        const popular = postsCopy.sort((a, b) => (b.popular_score || b.boost_count || 0) - (a.popular_score || a.boost_count || 0))
+        
+        // Mix high and low boost posts for variety
+        const highBoostPosts = popular.filter(p => (p.popular_score || p.boost_count || 0) > 5)
+        const lowBoostPosts = popular.filter(p => (p.popular_score || p.boost_count || 0) <= 5)
+        
+        const mixedPopular: typeof popular = []
+        let highBoostIdx = 0
+        let lowBoostIdx = 0
+        const totalPopular = popular.length
+        const lowBoostTarget = Math.ceil(totalPopular * 0.25) // 25% low-boost posts
+        
+        // First, add some high-boost posts
+        while (highBoostIdx < highBoostPosts.length && mixedPopular.length < totalPopular - lowBoostTarget) {
+          mixedPopular.push(highBoostPosts[highBoostIdx++])
+        }
+        
+        // Then interleave low-boost posts
+        while (lowBoostIdx < lowBoostPosts.length && mixedPopular.length < totalPopular) {
+          if (lowBoostIdx < lowBoostPosts.length) {
+            mixedPopular.push(lowBoostPosts[lowBoostIdx++])
+          }
+          if (highBoostIdx < highBoostPosts.length && mixedPopular.length < totalPopular) {
+            mixedPopular.push(highBoostPosts[highBoostIdx++])
+          }
+        }
+        
+        // Fill remaining
+        while (highBoostIdx < highBoostPosts.length && mixedPopular.length < totalPopular) {
+          mixedPopular.push(highBoostPosts[highBoostIdx++])
+        }
+        
+        return shuffleWithinBuckets(mixedPopular, (p) => p.popular_score || p.boost_count || 0, 3)
+      
       case "recent":
-        return postsCopy.sort((a, b) => (b.created_timestamp || new Date(b.published_at || b.created_at).getTime()) - (a.created_timestamp || new Date(a.published_at || a.created_at).getTime()))
+        // For recent, shuffle posts within same day buckets
+        const recent = postsCopy.sort((a, b) => (b.created_timestamp || new Date(b.published_at || b.created_at).getTime()) - (a.created_timestamp || new Date(a.published_at || a.created_at).getTime()))
+        return shuffleWithinBuckets(recent, (p) => p.created_timestamp || new Date(p.published_at || p.created_at).getTime(), 24 * 60 * 60 * 1000)
+      
       case "new-creators":
-        return postsCopy
-          .filter(p => p.is_low_visibility)
-          .sort((a, b) => (b.created_timestamp || new Date(b.published_at || b.created_at).getTime()) - (a.created_timestamp || new Date(a.published_at || a.created_at).getTime()))
+        // Soft threshold: prioritize posts from authors with < 20 total boosts
+        // Weight by recency and boost count to surface quality new creators
+        const newCreators = postsCopy
+          .filter(p => {
+            const totalBoosts = p.author_total_boosts || 0
+            // Soft threshold: gradually decrease priority as author gains more boosts
+            return totalBoosts < 20
+          })
+          .sort((a, b) => {
+            // Sort by: recency first, then boost count (to surface quality content)
+            const timeA = a.created_timestamp || new Date(a.published_at || a.created_at).getTime()
+            const timeB = b.created_timestamp || new Date(b.published_at || b.created_at).getTime()
+            const timeDiff = timeB - timeA
+            // If posts are within 7 days of each other, prioritize by boost count
+            if (Math.abs(timeDiff) < 7 * 24 * 60 * 60 * 1000) {
+              return (b.boost_count || 0) - (a.boost_count || 0)
+            }
+            return timeDiff
+          })
+        return shuffleWithinBuckets(newCreators, (p) => p.created_timestamp || new Date(p.published_at || p.created_at).getTime(), 24 * 60 * 60 * 1000)
+      
       case "near-payout":
-        return postsCopy
-          .filter(p => p.is_near_payout)
-          .sort((a, b) => (a.points_to_payout || Infinity) - (b.points_to_payout || Infinity))
+        // Soft threshold: prioritize posts from authors within 30 points of payout
+        // Gradually decrease priority as points_to_payout increases
+        const nearPayout = postsCopy
+          .filter(p => {
+            const pointsToPayout = p.points_to_payout || Infinity
+            return pointsToPayout > 0 && pointsToPayout <= 30
+          })
+          .sort((a, b) => {
+            // Sort by: points to payout (closest first), then by recency
+            const payoutDiff = (a.points_to_payout || Infinity) - (b.points_to_payout || Infinity)
+            if (Math.abs(payoutDiff) < 5) {
+              // If within 5 points, prioritize by recency
+              const timeA = a.created_timestamp || new Date(a.published_at || a.created_at).getTime()
+              const timeB = b.created_timestamp || new Date(b.published_at || b.created_at).getTime()
+              return timeB - timeA
+            }
+            return payoutDiff
+          })
+        return shuffleWithinBuckets(nearPayout, (p) => p.points_to_payout || Infinity, 5)
+      
+      case "topic":
+        // Filter posts by topic ID
+        const topic = postsCopy
+          .filter(p => {
+            if (!activeTopicId) return false
+            const postTopics = (p as any).topics || []
+            return postTopics.some((pt: any) => pt.topic && pt.topic.id === activeTopicId)
+          })
+          .sort((a, b) => (b.discovery_score || 0) - (a.discovery_score || 0))
+        return shuffleWithinBuckets(topic, (p) => p.discovery_score || 0, 5)
+      
       default:
         return postsCopy
     }
-  }, [posts, activeTab])
+  }, [posts, activeTab, activeTopicId, shuffleWithinBuckets])
 
   // Limit to top 50 posts per tab
   const displayPosts = useMemo(() => {
     return sortedPosts.slice(0, 50)
   }, [sortedPosts])
+  
+  // Track which posts have been seen (scrolled into view)
+  useEffect(() => {
+    if (displayPosts.length === 0) return
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const postId = entry.target.getAttribute('data-post-id')
+            if (postId) {
+              setSeenPostIds(prev => {
+                const next = new Set(prev)
+                next.add(postId)
+                return next
+              })
+            }
+          }
+        })
+      },
+      { threshold: 0.3 } // Trigger when 30% of post is visible
+    )
+    
+    // Observe all post elements
+    const postElements = document.querySelectorAll('[data-post-id]')
+    postElements.forEach(el => observer.observe(el))
+    
+    return () => {
+      observer.disconnect()
+    }
+  }, [displayPosts])
+  
+  // Reset post index when posts change or view mode changes
+  useEffect(() => {
+    if (viewMode === "single" && displayPosts.length > 0) {
+      setCurrentPostIndex(0)
+    }
+  }, [displayPosts.length, viewMode])
+  
+  // Keyboard navigation for single post view
+  useEffect(() => {
+    if (viewMode !== "single") return
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault()
+        setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault()
+        setCurrentPostIndex(prev => Math.max(0, prev - 1))
+      }
+    }
+    
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [viewMode, displayPosts.length])
+  
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+  }, [])
+  
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    touchEndY.current = e.touches[0].clientY
+  }, [])
+  
+  const handleTouchEnd = useCallback(() => {
+    if (!touchStartY.current || !touchEndY.current) return
+    
+    const diff = touchStartY.current - touchEndY.current
+    const minSwipeDistance = 50
+    
+    if (Math.abs(diff) > minSwipeDistance) {
+      if (diff > 0) {
+        // Swipe up - next post
+        setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))
+      } else {
+        // Swipe down - previous post
+        setCurrentPostIndex(prev => Math.max(0, prev - 1))
+      }
+    }
+    
+    touchStartY.current = null
+    touchEndY.current = null
+  }, [displayPosts.length])
 
   const fireGoldConfetti = (element: HTMLElement | null) => {
     if (!element) return
@@ -534,13 +821,16 @@ export default function DiscoveryFeedView({
         const postDate = new Date(post.published_at || post.created_at)
         const postAgeHours = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60)
         
-        const recencyFactor = 100 / (postAgeHours + 1)
-        const discoveryScore = (recentBoosts * 3) + boostCount + recencyFactor
+        // Improved discovery score with logarithmic decay
+        const recentBoostScore = Math.min(recentBoosts * 2, 40)
+        const boostScore = Math.min(Math.log10(Math.max(boostCount, 1)) * 10, 40)
+        const recencyScore = Math.min(20 / (1 + Math.log(Math.max(postAgeHours, 0.1) + 1)), 20)
+        const discoveryScore = recentBoostScore + boostScore + recencyScore
         
         const authorTotalBoosts = authorTotalsMap.get(post.author_id) || 0
         const authorEarnings = authorEarningsMap.get(post.author_id) || 0
         const pointsToPayout = Math.max(0, minimumPayoutPoints - Number(authorEarnings))
-        const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 20
+        const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 30
         
         const communityData = (post as any).community || (post as any).communities
         
@@ -552,10 +842,10 @@ export default function DiscoveryFeedView({
           discovery_score: discoveryScore,
           recent_boosts: recentBoosts,
           author_total_boosts: authorTotalBoosts,
-          is_low_visibility: authorTotalBoosts < 10,
+          is_low_visibility: authorTotalBoosts < 20,
           is_near_payout: isNearPayout,
           points_to_payout: pointsToPayout,
-          popular_score: boostCount,
+          popular_score: boostCount > 0 ? boostCount / (1 + (postAgeHours / 24) / 30) : 0,
           created_timestamp: postDate.getTime(),
           user_has_boosted: boostStatus.user_has_boosted,
           can_unboost: boostStatus.can_unboost,
@@ -1090,7 +1380,7 @@ export default function DiscoveryFeedView({
         const authorTotalBoosts = authorTotalsMap.get(post.author_id) || 0
         const authorEarnings = authorEarningsMap.get(post.author_id) || 0
         const pointsToPayout = Math.max(0, minimumPayoutPoints - Number(authorEarnings))
-        const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 20
+        const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 30
         
         // Extract community data
         const communityData = (post as any).community || (post as any).communities
@@ -1104,10 +1394,10 @@ export default function DiscoveryFeedView({
           discovery_score: discoveryScore,
           recent_boosts: recentBoosts,
           author_total_boosts: authorTotalBoosts,
-          is_low_visibility: authorTotalBoosts < 10,
+          is_low_visibility: authorTotalBoosts < 20,
           is_near_payout: isNearPayout,
           points_to_payout: pointsToPayout,
-          popular_score: boostCount,
+          popular_score: boostCount > 0 ? boostCount / (1 + (postAgeHours / 24) / 30) : 0,
           created_timestamp: postDate.getTime(),
           user_has_boosted: boostStatus.user_has_boosted,
           can_unboost: boostStatus.can_unboost,
@@ -1151,6 +1441,37 @@ export default function DiscoveryFeedView({
     // Refresh the page to get updated posts
     router.refresh()
   }
+
+  // Refresh feed function
+  const refreshFeed = useCallback(async () => {
+    if (isRefreshing) return
+    
+    setIsRefreshing(true)
+    try {
+      // Increment refresh token FIRST to trigger immediate shuffle
+      // This ensures variety even before server data refreshes
+      setRefreshToken(prev => prev + 1)
+      
+      // Small delay to allow shuffle to apply to current posts
+      await new Promise(resolve => setTimeout(resolve, 50))
+      
+      // Refresh server data (this will trigger a re-render with new data)
+      router.refresh()
+      
+      // After refresh completes, increment token again to shuffle the new data
+      setTimeout(() => {
+        setRefreshToken(prev => prev + 1)
+      }, 200)
+      
+      // Additional delay for visual feedback
+      await new Promise(resolve => setTimeout(resolve, 750))
+    } catch (error) {
+      console.error('Error refreshing feed:', error)
+      toast.error('Failed to refresh feed')
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [isRefreshing, router])
 
   // Get selected community
   const composerCommunityOptions = useMemo(
@@ -1216,8 +1537,16 @@ export default function DiscoveryFeedView({
           )}
 
           <CommandSearch
+            activeView={activeTab === "near-payout" ? undefined : activeTab}
+            activeTopicId={activeTopicId || undefined}
             onSelect={(type, value) => {
-              setActiveTab(type as TabValue)
+              if (type === "topic" && value) {
+                setActiveTab("topic")
+                setActiveTopicId(value)
+              } else {
+                setActiveTab(type as TabValue)
+                setActiveTopicId(null)
+              }
             }}
           />
           
@@ -1233,18 +1562,20 @@ export default function DiscoveryFeedView({
   return (
     <div className="relative w-full overflow-x-hidden overflow-y-visible">
       <div className="relative z-10 space-y-4">
-        {/* User Count Display */}
-        <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer-slow">
-          <div className="flex items-center justify-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
-              <Users className="h-4 w-4 text-white/70" />
+        {/* User Count Display - Hidden in single post view */}
+        {viewMode === "list" && (
+          <div className="bg-white/10 backdrop-blur-md border-0 rounded-lg p-2 animate-shimmer-slow">
+            <div className="flex items-center justify-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
+                <Users className="h-4 w-4 text-white/70" />
+              </div>
+              <span className="text-sm font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
+                {currentUserCount.toLocaleString()}
+              </span>
+              <span className="text-sm font-medium text-white">Users Signed up</span>
             </div>
-            <span className="text-sm font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
-              {currentUserCount.toLocaleString()}
-            </span>
-            <span className="text-sm font-medium text-white">Users Signed up</span>
           </div>
-        </div>
+        )}
 
         {/* New Posts Notification - Sticky at top when visible */}
         {newPostsCount > 0 && (
@@ -1258,13 +1589,385 @@ export default function DiscoveryFeedView({
           </div>
         )}
 
-        <CommandSearch
-          onSelect={(type, value) => {
-            setActiveTab(type as TabValue)
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <CommandSearch
+            activeView={activeTab === "near-payout" ? undefined : activeTab}
+            activeTopicId={activeTopicId || undefined}
+            onSelect={(type, value) => {
+              if (type === "topic" && value) {
+                setActiveTab("topic")
+                setActiveTopicId(value)
+              } else {
+                setActiveTab(type as TabValue)
+                setActiveTopicId(null)
+              }
+            }}
+          />
+          <button
+            onClick={refreshFeed}
+            disabled={isRefreshing}
+            className={cn(
+              "flex items-center justify-center h-12 w-12 rounded-full border transition-all cursor-pointer flex-shrink-0 aspect-square",
+              isRefreshing
+                ? "bg-white/15 border-white/30 text-white/90"
+                : "bg-white/10 border-white/20 text-white/70 hover:bg-white/15 hover:border-white/30 hover:text-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+            aria-label="Refresh feed"
+          >
+            <RefreshCw className={cn("h-5 w-5", isRefreshing && "animate-spin")} />
+          </button>
+          <button
+            onClick={() => {
+              setViewMode(viewMode === "list" ? "single" : "list")
+              setCurrentPostIndex(0)
+            }}
+            className={cn(
+              "flex items-center justify-center h-12 w-12 rounded-full border transition-all cursor-pointer flex-shrink-0 aspect-square",
+              viewMode === "single"
+                ? "bg-white/15 border-white/30 text-white/90"
+                : "bg-white/10 border-white/20 text-white/70 hover:bg-white/15 hover:border-white/30 hover:text-white/90"
+            )}
+            aria-label={viewMode === "list" ? "Switch to single post view" : "Switch to list view"}
+          >
+            {viewMode === "list" ? (
+              <Focus className="h-5 w-5" />
+            ) : (
+              <LayoutList className="h-5 w-5" />
+            )}
+          </button>
+        </div>
 
         <div className="mt-4">
+          {viewMode === "single" ? (
+            /* Single Post View */
+            <div 
+              ref={singlePostContainerRef}
+              className="relative overflow-hidden"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* Navigation Controls - Top */}
+              {displayPosts.length > 1 && (
+                <div className="flex items-center justify-center gap-4 mb-4">
+                  <button
+                    onClick={() => setCurrentPostIndex(prev => Math.max(0, prev - 1))}
+                    disabled={currentPostIndex === 0}
+                    className="flex items-center justify-center h-10 w-10 rounded-full bg-white/10 border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all text-white/80 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Previous post"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  
+                  <button
+                    onClick={() => setCurrentPostIndex(prev => Math.min(displayPosts.length - 1, prev + 1))}
+                    disabled={currentPostIndex === displayPosts.length - 1}
+                    className="flex items-center justify-center h-10 w-10 rounded-full bg-white/10 border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all text-white/80 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Next post"
+                  >
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
+              
+              {displayPosts.length > 0 ? (
+                <div className="space-y-4">
+                  {displayPosts.map((post, index) => {
+                    const community = post.community || (post as any).communities
+                    const isActive = index === currentPostIndex
+                    
+                    return (
+                      <div
+                        key={post.id}
+                        className={cn(
+                          "w-full flex items-center justify-center transition-opacity max-h-[calc(100vh-12rem)]",
+                          isActive ? "opacity-100" : "opacity-0 absolute pointer-events-none"
+                        )}
+                      >
+                        <Card 
+                          className="group bg-white/10 backdrop-blur-md border-0 w-full max-w-2xl mx-auto max-h-[calc(100vh-12rem)] flex flex-col overflow-hidden"
+                          data-post-id={post.id}
+                        >
+                          <CardContent className="p-6 overflow-y-auto flex-1 flex flex-col min-h-0">
+                            {/* Post Header */}
+                            <div className="flex gap-4 mb-4">
+                              <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+                                <Avatar 
+                                  className="h-12 w-12 border-4 border-white/20" 
+                                  userId={post.author.id}
+                                  showHoverCard={true}
+                                  username={post.author.username}
+                                  firstName={post.author.first_name}
+                                  lastName={post.author.last_name}
+                                  profilePicture={post.author.profile_picture}
+                                  bio={post.author.bio}
+                                >
+                                  <AvatarImage src={post.author.profile_picture} alt={`${post.author.first_name} ${post.author.last_name}`} />
+                                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm">
+                                    {post.author.first_name[0]}{post.author.last_name[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                              <div className="flex items-start gap-2 flex-1">
+                                <div className="flex flex-col flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-white/80 text-base font-medium">
+                                      {post.author.first_name} {post.author.last_name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="text-white/40 text-sm" suppressHydrationWarning>
+                                      {relativeTimes[post.id] ?? formatRelativeTime(post.published_at || post.created_at)}
+                                    </span>
+                                    {community && (
+                                      <>
+                                        <span className="text-white/40 text-sm">•</span>
+                                        <Link
+                                          href={`/${community.slug}/feed`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-white/60 text-sm hover:text-white/80 transition-colors"
+                                        >
+                                          {community.name} →
+                                        </Link>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                {user && post.author_id === user.id && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex items-center justify-center w-8 h-8 p-0 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
+                                      >
+                                        <MoreVertical className="h-4 w-4 text-white/70" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48">
+                                      {(() => {
+                                        const postDate = new Date(post.created_at)
+                                        const now = new Date()
+                                        const diffMs = now.getTime() - postDate.getTime()
+                                        const diffMins = diffMs / 60000
+                                        const canEdit = diffMins < 5
+                                        
+                                        return (
+                                          <>
+                                            {canEdit && (
+                                              <DropdownMenuItem
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleEditPost(post)
+                                                }}
+                                                className="cursor-pointer"
+                                              >
+                                                <Edit className="h-4 w-4 mr-2 text-white/70" />
+                                                Edit
+                                              </DropdownMenuItem>
+                                            )}
+                                            {canEdit && <DropdownMenuSeparator />}
+                                            <DropdownMenuItem
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleDeletePost(post.id)
+                                              }}
+                                              className="cursor-pointer text-destructive focus:text-destructive"
+                                            >
+                                              <Trash2 className="h-4 w-4 mr-2" />
+                                              Delete
+                                            </DropdownMenuItem>
+                                          </>
+                                        )
+                                      })()}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Tags */}
+                            <div className="flex items-center gap-2 mb-4 flex-wrap">
+                              {post.is_low_visibility && (
+                                <Badge variant="outline" className="bg-white/10 text-white/70 border-white/20 text-xs">
+                                  <Sparkles className="h-3 w-3 mr-1" />
+                                  <span>New Creator</span>
+                                </Badge>
+                              )}
+                              {(post.recent_boosts ?? 0) > 0 && (
+                                <Badge variant="outline" className="bg-orange-500/20 text-orange-200 border-orange-500/30 text-xs">
+                                  <Flame className="h-3 w-3 mr-1" />
+                                  Trending
+                                </Badge>
+                              )}
+                              {post.is_near_payout && (
+                                <Badge variant="outline" className="bg-emerald-500/20 text-emerald-200 border-emerald-500/30 text-xs">
+                                  <Target className="h-3 w-3 mr-1" />
+                                  Near Payout
+                                </Badge>
+                              )}
+                              {post.boost_reward_message && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="text-white border-yellow-400/50 relative overflow-hidden text-xs"
+                                  style={{
+                                    background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
+                                    boxShadow: '0 0 10px rgba(255, 215, 0, 0.5), 0 0 20px rgba(147, 51, 234, 0.3)',
+                                  }}
+                                >
+                                  <Crown className="h-3 w-3 mr-1 relative z-10 drop-shadow-lg" />
+                                  <span className="relative z-10 drop-shadow-lg font-semibold">Boost for Reward</span>
+                                </Badge>
+                              )}
+                            </div>
+
+                            {/* Content */}
+                            <div className="mb-4 flex flex-col min-h-0">
+                              {post.content && (
+                                <div className="mb-4 overflow-y-auto max-h-[200px]">
+                                  <p className="text-white/80 text-lg whitespace-pre-wrap break-words">
+                                    <TwemojiText text={post.content} size={20} />
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Post Media Slider */}
+                              {post.media && post.media.length > 0 && (
+                                <div className="mt-0 flex-shrink-0 max-h-[400px] overflow-hidden">
+                                  <PostMediaSlider 
+                                    media={post.media} 
+                                    author={post.author}
+                                    userHasBoosted={post.user_has_boosted || false}
+                                    authorId={post.author_id}
+                                    currentUserId={user?.id}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Topic Tags */}
+                              {(post as any).topics && Array.isArray((post as any).topics) && (post as any).topics.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-4">
+                                  {(post as any).topics
+                                    .filter((pt: any) => pt.topic)
+                                    .map((pt: any) => (
+                                      <button
+                                        key={pt.topic.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setActiveTab("topic")
+                                          setActiveTopicId(pt.topic.id)
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
+                                      >
+                                        #{(pt.topic as any).label}
+                                      </button>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Boost, Contribute, and Save Buttons */}
+                            <div className="flex items-center justify-between gap-4 mt-4">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => handleBoostToggle(post.id, post.author_id, e)}
+                                  disabled={!user || boostingPosts.has(post.id) || post.user_has_boosted}
+                                  className={cn(
+                                    "group relative flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                                    post.user_has_boosted
+                                      ? "bg-yellow-400/10 border-yellow-400/40"
+                                      : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30",
+                                    animatingBoosts.has(post.id) && "animate-boost-pulse"
+                                  )}
+                                >
+                                  <Crown
+                                    className={cn(
+                                      "h-5 w-5 transition-all",
+                                      post.user_has_boosted
+                                        ? "fill-yellow-400 text-yellow-400"
+                                        : "text-white/70 group-hover:text-yellow-400",
+                                      animatingBoosts.has(post.id) && "animate-boost-icon"
+                                    )}
+                                    style={{
+                                      filter: post.user_has_boosted
+                                        ? "drop-shadow(0 0 8px rgba(250, 204, 21, 0.6))"
+                                        : "none",
+                                    }}
+                                  />
+                                  <span
+                                    className={cn(
+                                      "text-sm font-medium transition-colors",
+                                      post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white"
+                                    )}
+                                  >
+                                    {post.user_has_boosted ? "Boosted" : "Boost"}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "text-sm font-semibold transition-colors",
+                                      post.user_has_boosted ? "text-yellow-400" : "text-white/70 group-hover:text-white",
+                                      animatingBoosts.has(post.id) && "animate-boost-count"
+                                    )}
+                                  >
+                                    {post.boost_count || 0}
+                                  </span>
+                                </button>
+
+                                {community && user && membershipByCommunityId[community.id] && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openContributionDialog(post.id, index)
+                                    }}
+                                    className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                                  >
+                                    <Feather className="h-5 w-5 text-white/70 group-hover:text-white/80 transition-all" />
+                                    <span className="text-sm font-medium text-white/70 group-hover:text-white">
+                                      Contribute
+                                    </span>
+                                    <span className="text-sm font-semibold text-white/60 group-hover:text-white/80">
+                                      {(commentsByPostId[post.id]?.length || 0) + (commentsByPostId[post.id]?.reduce((sum, c) => sum + (c.replies?.length || 0), 0) || 0)}
+                                    </span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {user && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleSaveToggle(post.id)
+                                  }}
+                                  disabled={savingPosts.has(post.id)}
+                                  className={`group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    post.user_has_saved
+                                      ? "bg-white/10 border-white/30"
+                                      : "bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
+                                  }`}
+                                >
+                                  <Bookmark
+                                    className={`h-5 w-5 transition-all ${
+                                      post.user_has_saved
+                                        ? "fill-white/80 text-white/80"
+                                        : "text-white/70 group-hover:text-white/80"
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-white/60 text-lg">No posts to display</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* List View - Default */
             <div className="space-y-4">
               {/* Post Composer with Community Selector - Only show if user is logged in and has communities */}
               {user && userCommunities.length > 0 && selectedCommunity && (
@@ -1291,6 +1994,7 @@ export default function DiscoveryFeedView({
                 return (
                   <Card
                     key={post.id}
+                    data-post-id={post.id}
                     className="group bg-white/10 backdrop-blur-md border-0 hover:bg-white/15 transition-colors"
                   >
                     <CardContent className="p-3">
@@ -1488,6 +2192,27 @@ export default function DiscoveryFeedView({
                                 />
                               </div>
                             )}
+
+                            {/* Topic Tags */}
+                            {(post as any).topics && Array.isArray((post as any).topics) && (post as any).topics.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {(post as any).topics
+                                  .filter((pt: any) => pt.topic)
+                                  .map((pt: any) => (
+                                    <button
+                                      key={pt.topic.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setActiveTab("topic")
+                                        setActiveTopicId(pt.topic.id)
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
+                                    >
+                                      #{(pt.topic as any).label}
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
                           </div>
 
                           {/* Boost, Contribute, and Save Buttons */}
@@ -1598,6 +2323,7 @@ export default function DiscoveryFeedView({
                 </div>
               )}
             </div>
+          )}
         </div>
       </div>
 

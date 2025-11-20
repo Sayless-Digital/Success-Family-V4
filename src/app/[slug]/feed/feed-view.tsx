@@ -2336,12 +2336,16 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                         {(post as any).topics
                           .filter((pt: any) => pt.topic)
                           .map((pt: any) => (
-                            <span
+                            <button
                               key={pt.topic.id}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/?topic=${pt.topic.id}`)
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
                             >
                               #{(pt.topic as any).label}
-                            </span>
+                            </button>
                           ))}
                       </div>
                     )}

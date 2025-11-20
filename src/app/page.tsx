@@ -185,25 +185,20 @@ export default async function HomePage() {
     ])
   )
   
-  // Calculate for_you_score for authenticated users
+  // Calculate for_you_score for authenticated users (batch call for performance)
   let forYouScoreMap = new Map<string, number>()
   if (user && postIds.length > 0) {
-    const forYouScores = await Promise.all(
-      postIds.map(async (postId) => {
-        const { data, error } = await supabase.rpc('calculate_for_you_score', {
-          p_user_id: user.id,
-          p_post_id: postId
-        })
-        if (error) {
-          console.error(`Error calculating for_you_score for post ${postId}:`, error)
-          return { postId, score: 0 }
-        }
-        return { postId, score: Number(data || 0) }
-      })
-    )
-    forYouScores.forEach(({ postId, score }) => {
-      forYouScoreMap.set(postId, score)
+    const { data: forYouScoresData, error } = await supabase.rpc('calculate_for_you_scores_batch', {
+      p_user_id: user.id,
+      p_post_ids: postIds
     })
+    if (error) {
+      console.error('Error calculating for_you_scores:', error)
+    } else if (forYouScoresData) {
+      forYouScoresData.forEach((item: { post_id: string; score: number }) => {
+        forYouScoreMap.set(item.post_id, Number(item.score || 0))
+      })
+    }
   }
 
   // Enrich posts with ranking data
@@ -233,16 +228,44 @@ export default async function HomePage() {
     const recentBoosts = recentBoostsMap.get(post.id) || 0
     const postDate = new Date(post.published_at || post.created_at)
     const postAgeHours = (now.getTime() - postDate.getTime()) / (1000 * 60 * 60)
+    const postAgeDays = postAgeHours / 24
     
-    // Calculate discovery score: (recent_boosts * 3) + total_boosts + recency_factor
-    const recencyFactor = 100 / (postAgeHours + 1)
-    const discoveryScore = (recentBoosts * 3) + boostCount + recencyFactor
+    // Calculate discovery score with improved recency decay
+    // Recent boosts (last 24h) get 2x multiplier, normalized to 0-40 range
+    const recentBoostScore = Math.min(recentBoosts * 2, 40)
+    
+    // Total boosts with logarithmic scaling, normalized to 0-40 range
+    // Log scale prevents old posts with many boosts from dominating
+    const boostScore = Math.min(Math.log10(Math.max(boostCount, 1)) * 10, 40)
+    
+    // Recency with logarithmic decay, normalized to 0-20 range
+    // Logarithmic decay: 20 / (1 + ln(hours + 1))
+    // This gives: 1 hour = ~14.4, 24 hours = ~6.2, 168 hours (1 week) = ~2.7
+    const recencyScore = Math.min(20 / (1 + Math.log(Math.max(postAgeHours, 0.1) + 1)), 20)
+    
+    // Add freshness boost for new posts (first 48 hours)
+    const freshnessBoost = postAgeHours < 48 
+      ? Math.max(0, 15 * (1 - postAgeHours / 48)) // 15 points for brand new, decays to 0 over 48h
+      : 0
+    
+    // Add minimum visibility for new posts (first 24h, 0 boosts)
+    const newPostBoost = postAgeHours < 24 && boostCount === 0
+      ? 10 // Give new posts with 0 boosts a minimum score
+      : 0
+    
+    // Add rediscovery boost for older quality posts (7-30 days old)
+    const rediscoveryBoost = postAgeDays >= 7 && postAgeDays <= 30 && boostCount >= 2 && boostCount <= 15
+      ? Math.min(Math.log10(Math.max(boostCount, 1)) * 5 + (30 - postAgeDays) * 0.5, 15)
+      : 0
+    
+    // Final discovery score: normalized to 0-100 range
+    const discoveryScore = recentBoostScore + boostScore + recencyScore + freshnessBoost + newPostBoost + rediscoveryBoost
     
     // Get author data
     const authorTotalBoosts = authorTotalsMap.get(post.author_id) || 0
     const authorEarnings = authorEarningsMap.get(post.author_id) || 0
     const pointsToPayout = Math.max(0, minimumPayoutPoints - Number(authorEarnings))
-    const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 20
+    const isNearPayout = pointsToPayout > 0 && pointsToPayout <= 30
     
     // Extract community data (could be nested as 'community' or 'communities')
     const communityData = (post as any).community || (post as any).communities
@@ -258,10 +281,13 @@ export default async function HomePage() {
       discovery_score: discoveryScore,
       recent_boosts: recentBoosts,
       author_total_boosts: authorTotalBoosts,
-      is_low_visibility: authorTotalBoosts < 10,
+      // Soft threshold: authors with < 20 total boosts are considered "new creators"
+      is_low_visibility: authorTotalBoosts < 20,
       is_near_payout: isNearPayout,
       points_to_payout: pointsToPayout,
-      popular_score: boostCount, // For Popular tab
+      // Popular score with time-based decay: boostCount / (1 + days_old / 30)
+      // This prevents old posts from dominating Popular tab
+      popular_score: boostCount > 0 ? boostCount / (1 + postAgeDays / 30) : 0,
       created_timestamp: postDate.getTime(), // For Recent tab
       user_has_boosted: boostStatus.user_has_boosted,
       can_unboost: boostStatus.can_unboost,

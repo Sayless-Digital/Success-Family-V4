@@ -26,7 +26,7 @@ Command.displayName = CommandPrimitive.displayName
 const CommandDialog = ({ children, ...props }: DialogProps) => {
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden p-0 shadow-2xl border-white/10 bg-gradient-to-br from-white/15 via-white/10 to-white/5 backdrop-blur-2xl sm:max-w-2xl [&>div]:p-0 [&>div]:overflow-visible" hideCloseButton>
+      <DialogContent className="overflow-hidden p-0 shadow-2xl border-white/10 bg-gradient-to-br from-white/15 via-white/10 to-white/5 backdrop-blur-2xl sm:max-w-2xl sm:h-[calc(100vh-4rem)] sm:min-h-[calc(100vh-4rem)] [&>div]:p-0 [&>div]:overflow-visible" hideCloseButton>
         <Command 
           shouldFilter={false}
           className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pt-4 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-white/80 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:mb-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-4 [&_[cmdk-group]]:px-3 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2.5 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4">
@@ -125,7 +125,7 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default gap-3 select-none items-center rounded-lg px-3 py-2.5 text-sm outline-none transition-all data-[disabled=true]:pointer-events-none data-[selected='true']:bg-white/10 data-[selected=true]:text-white data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+      "relative flex cursor-pointer gap-3 select-none items-center rounded-lg px-3 py-2.5 text-sm outline-none transition-all data-[disabled=true]:pointer-events-none data-[disabled=true]:cursor-not-allowed data-[selected='true']:bg-white/10 data-[selected=true]:text-white data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
       className
     )}
     {...props}

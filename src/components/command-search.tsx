@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Search, Hash, Users, Building2, FileText, Sparkles, TrendingUp, Clock, Crown, Loader2 } from "lucide-react"
+import { Search, Hash, Users, Building2, FileText, Sparkles, TrendingUp, Clock, Crown, Loader2, Check, X } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
@@ -18,18 +18,42 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import type { Topic, Community, User as UserType } from "@/types"
 
 interface CommandSearchProps {
-  onSelect?: (type: "for-you" | "trending" | "popular" | "recent" | "new-creators", value?: string) => void
+  onSelect?: (type: "for-you" | "trending" | "popular" | "recent" | "new-creators" | "topic", value?: string) => void
+  activeView?: "for-you" | "trending" | "popular" | "recent" | "new-creators" | "topic"
+  activeTopicId?: string
 }
 
-export function CommandSearch({ onSelect }: CommandSearchProps) {
+export function CommandSearch({ onSelect, activeView, activeTopicId }: CommandSearchProps) {
   const [open, setOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
   const [topics, setTopics] = React.useState<Topic[]>([])
   const [communities, setCommunities] = React.useState<Community[]>([])
   const [users, setUsers] = React.useState<UserType[]>([])
   const [isSearching, setIsSearching] = React.useState(false)
+  const [activeTopic, setActiveTopic] = React.useState<Topic | null>(null)
   const router = useRouter()
   const { user } = useAuth()
+
+  // Fetch active topic data when activeTopicId is set
+  React.useEffect(() => {
+    if (activeTopicId && activeView === "topic") {
+      const fetchActiveTopic = async () => {
+        const { data } = await supabase
+          .from("topics")
+          .select("id, slug, label, description, is_featured")
+          .eq("id", activeTopicId)
+          .eq("is_active", true)
+          .single()
+        
+        if (data) {
+          setActiveTopic(data)
+        }
+      }
+      fetchActiveTopic()
+    } else {
+      setActiveTopic(null)
+    }
+  }, [activeTopicId, activeView])
 
   // Search across all entities
   React.useEffect(() => {
@@ -191,9 +215,9 @@ export function CommandSearch({ onSelect }: CommandSearchProps) {
   const handleSelectTopic = (topic: Topic) => {
     setOpen(false)
     setSearchQuery("")
-    // Navigate to topic or filter posts by topic
+    // Filter posts by topic
     if (onSelect) {
-      onSelect("for-you", topic.id)
+      onSelect("topic", topic.id)
     }
   }
 
@@ -219,25 +243,81 @@ export function CommandSearch({ onSelect }: CommandSearchProps) {
 
   const hasResults = topics.length > 0 || communities.length > 0 || users.length > 0
 
+  // Get active view label and icon
+  const getActiveViewInfo = () => {
+    if (!activeView) return null
+    
+    if (activeView === "topic" && activeTopicId) {
+      // Use activeTopic state or find in topics list
+      const topic = activeTopic || topics.find(t => t.id === activeTopicId)
+      if (topic) {
+        return { label: `#${topic.label}`, icon: null as any }
+      }
+      return { label: "Topic", icon: null as any }
+    }
+    
+    if (activeView === "topic") return null
+    
+    const viewInfo = {
+      "for-you": { label: "For You", icon: Sparkles },
+      "trending": { label: "Trending", icon: TrendingUp },
+      "popular": { label: "Popular", icon: Crown },
+      "recent": { label: "Recent", icon: Clock },
+      "new-creators": { label: "New Creators", icon: Users },
+    } as const
+    
+    return viewInfo[activeView as keyof typeof viewInfo]
+  }
+
+  const activeViewInfo = getActiveViewInfo()
+  const ActiveViewIcon = activeViewInfo?.icon
+
   return (
     <>
       {/* Search Bar Trigger */}
-      <button
-        onClick={() => setOpen(true)}
-        className={cn(
-          "flex items-center gap-3 w-full px-4 py-3 rounded-xl",
-          "bg-white/10 backdrop-blur-sm border border-white/20 text-white/70",
-          "hover:bg-white/15 hover:border-white/30 hover:text-white/90",
-          "transition-all duration-200 cursor-pointer text-left",
-          "shadow-sm hover:shadow-md"
+      <div className="relative flex items-center gap-3 w-full">
+        <button
+          onClick={() => setOpen(true)}
+          className={cn(
+            "flex items-center gap-3 w-full px-4 py-3 rounded-xl",
+            "bg-white/10 backdrop-blur-sm border border-white/20 text-white/70",
+            "hover:bg-white/15 hover:border-white/30 hover:text-white/90",
+            "transition-all duration-200 cursor-pointer text-left",
+            "shadow-sm hover:shadow-md"
+          )}
+        >
+          <Search className="h-5 w-5 shrink-0 text-white/60" />
+          <span className="flex-1 text-sm font-medium">
+            {activeViewInfo ? (
+              <span className="flex items-center gap-2">
+                <span>Viewing:</span>
+                {ActiveViewIcon && <ActiveViewIcon className="h-4 w-4 text-white/80" />}
+                <span className="font-semibold text-white/90">{activeViewInfo.label}</span>
+              </span>
+            ) : (
+              "Search communities, profiles, topics..."
+            )}
+          </span>
+          <kbd className="hidden sm:inline-flex h-6 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 text-[10px] font-semibold text-white/70 shadow-sm">
+            <span className="text-xs">⌘</span>K
+          </kbd>
+        </button>
+        {activeViewInfo && activeView !== "for-you" && (
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              if (onSelect) {
+                onSelect("for-you")
+              }
+            }}
+            className="absolute right-12 sm:right-16 flex items-center justify-center h-6 w-6 rounded-md hover:bg-white/10 transition-colors text-white/60 hover:text-white/80 cursor-pointer z-10"
+            aria-label="Clear filter"
+          >
+            <X className="h-4 w-4" />
+          </button>
         )}
-      >
-        <Search className="h-5 w-5 shrink-0 text-white/60" />
-        <span className="flex-1 text-sm font-medium">Search communities, profiles, topics...</span>
-        <kbd className="hidden sm:inline-flex h-6 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 text-[10px] font-semibold text-white/70 shadow-sm">
-          <span className="text-xs">⌘</span>K
-        </kbd>
-      </button>
+      </div>
 
       <CommandDialog open={open} onOpenChange={(isOpen) => {
         setOpen(isOpen)
@@ -270,23 +350,38 @@ export function CommandSearch({ onSelect }: CommandSearchProps) {
                 <CommandItem onSelect={() => handleSelectFeed("for-you")} className="text-white">
                   <Sparkles className="h-4 w-4 text-white/60" />
                   <span className="font-medium">For You</span>
+                  {activeView === "for-you" && (
+                    <Check className="h-4 w-4 ml-auto text-white/80" />
+                  )}
                 </CommandItem>
               )}
               <CommandItem onSelect={() => handleSelectFeed("trending")} className="text-white">
                 <TrendingUp className="h-4 w-4 text-white/60" />
                 <span className="font-medium">Trending</span>
+                {activeView === "trending" && (
+                  <Check className="h-4 w-4 ml-auto text-white/80" />
+                )}
               </CommandItem>
               <CommandItem onSelect={() => handleSelectFeed("popular")} className="text-white">
                 <Crown className="h-4 w-4 text-white/60" />
                 <span className="font-medium">Popular</span>
+                {activeView === "popular" && (
+                  <Check className="h-4 w-4 ml-auto text-white/80" />
+                )}
               </CommandItem>
               <CommandItem onSelect={() => handleSelectFeed("recent")} className="text-white">
                 <Clock className="h-4 w-4 text-white/60" />
                 <span className="font-medium">Recent</span>
+                {activeView === "recent" && (
+                  <Check className="h-4 w-4 ml-auto text-white/80" />
+                )}
               </CommandItem>
               <CommandItem onSelect={() => handleSelectFeed("new-creators")} className="text-white">
                 <Users className="h-4 w-4 text-white/60" />
                 <span className="font-medium">New Creators</span>
+                {activeView === "new-creators" && (
+                  <Check className="h-4 w-4 ml-auto text-white/80" />
+                )}
               </CommandItem>
             </CommandGroup>
           )}

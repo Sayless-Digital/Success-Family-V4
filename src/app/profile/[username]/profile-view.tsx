@@ -1748,6 +1748,26 @@ export default function ProfileView({
                     />
                   )}
 
+                  {/* Topic Tags */}
+                  {(post as any).topics && Array.isArray((post as any).topics) && (post as any).topics.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {(post as any).topics
+                        .filter((pt: any) => pt.topic)
+                        .map((pt: any) => (
+                          <button
+                            key={pt.topic.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/?topic=${pt.topic.id}`)
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
+                          >
+                            #{(pt.topic as any).label}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
                   {/* Boost to unlock reward message */}
                   {post.media?.some(m => m.media_type === 'audio' && m.requires_boost && !post.user_has_boosted && post.author_id !== currentUser?.id) && (
                     <div className="mt-3 text-center">
