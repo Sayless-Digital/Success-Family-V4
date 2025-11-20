@@ -89,12 +89,14 @@ export function ChristmasLights({
           const x = startOffset + (i * adjustedSpacing)
           const y = height - bottomOffset
           const tiltVariation = ((i * 7) % 31) - 15
+          // Varied delay for each light to create organic blinking pattern
+          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
           
           positions.push({
             x,
             y,
             color: colors[i % colors.length],
-            delay: (i * 0.1) % 1,
+            delay,
             rotation: tiltVariation
           })
         }
@@ -103,12 +105,14 @@ export function ChristmasLights({
           const x = i * actualSpacing
           const y = topOffset
           const tiltVariation = ((i * 7) % 31) - 15
+          // Varied delay for each light to create organic blinking pattern
+          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
           
           positions.push({
             x,
             y,
             color: colors[i % colors.length],
-            delay: (i * 0.1) % 1,
+            delay,
             rotation: tiltVariation
           })
         }
@@ -117,12 +121,14 @@ export function ChristmasLights({
           const x = 0
           const y = i * actualSpacing
           const tiltVariation = ((i * 7) % 31) - 15
+          // Varied delay for each light to create organic blinking pattern
+          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
           
           positions.push({
             x,
             y,
             color: colors[i % colors.length],
-            delay: (i * 0.1) % 1,
+            delay,
             rotation: tiltVariation
           })
         }
@@ -131,12 +137,14 @@ export function ChristmasLights({
           const x = width
           const y = i * actualSpacing
           const tiltVariation = ((i * 7) % 31) - 15
+          // Varied delay for each light to create organic blinking pattern
+          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
           
           positions.push({
             x,
             y,
             color: colors[i % colors.length],
-            delay: (i * 0.1) % 1,
+            delay,
             rotation: tiltVariation
           })
         }
@@ -215,11 +223,14 @@ export function ChristmasLights({
         // Add exaggerated tilt variation based on index
         const tiltVariation = ((i * 7) % 31) - 15 // Range from -15 to +15 degrees
         
+        // Varied delay for each light to create organic blinking pattern
+        const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
+        
         positions.push({
           x,
           y,
           color: colors[i % colors.length],
-          delay: (i * 0.1) % 1, // Staggered delays for blinking
+          delay, // Varied delays for organic blinking
           rotation: tiltVariation // Slight varied tilt
         })
 
@@ -264,7 +275,7 @@ export function ChristmasLights({
           }}
         >
           {/* Bulb shape */}
-          <svg width="12" height="16" viewBox="0 0 12 16" style={{ filter: `drop-shadow(0 0 4px ${pos.color})` }}>
+          <svg width="10" height="13" viewBox="0 0 12 16" style={{ filter: `drop-shadow(0 0 3px ${pos.color})` }}>
             {/* Bulb stub/base - always visible */}
             <rect x="4" y="0" width="4" height="3" rx="1" fill="rgba(255, 255, 255, 0.4)" />
             {/* Bulb body - only this part blinks */}

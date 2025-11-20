@@ -34,14 +34,14 @@ export function CommandSearch({ onSelect, activeView, activeTopicId }: CommandSe
   const router = useRouter()
   const { user } = useAuth()
 
-  // Fetch active topic data when activeTopicId is set
+  // Fetch active topic data when activeTopicId (slug) is set
   React.useEffect(() => {
     if (activeTopicId && activeView === "topic") {
       const fetchActiveTopic = async () => {
         const { data } = await supabase
           .from("topics")
           .select("id, slug, label, description, is_featured")
-          .eq("id", activeTopicId)
+          .eq("slug", activeTopicId)
           .eq("is_active", true)
           .single()
         
@@ -215,9 +215,9 @@ export function CommandSearch({ onSelect, activeView, activeTopicId }: CommandSe
   const handleSelectTopic = (topic: Topic) => {
     setOpen(false)
     setSearchQuery("")
-    // Filter posts by topic
+    // Filter posts by topic slug
     if (onSelect) {
-      onSelect("topic", topic.id)
+      onSelect("topic", topic.slug)
     }
   }
 

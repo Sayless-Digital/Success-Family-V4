@@ -10,7 +10,7 @@ export function ProfilePageSkeleton() {
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Profile Header - Exact match */}
-        <div className="mb-6 mt-2">
+        <div className="mb-6 mt-6">
           <div className="flex flex-col items-center text-center mb-6">
             {/* Avatar - Exact size h-24 w-24 */}
             <div className="mb-4">

@@ -1,21 +1,23 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useIsChristmasMode } from "@/components/holiday-mode-context"
 
 /**
  * Snow buildup effect for the bottom of cards
  * Creates a decorative snow accumulation effect with a snowman
- * Each card gets a unique variation
+ * Cycles through many variations like an animation
  */
 export function SnowBuildup({ className, cardId }: { className?: string; cardId?: string }) {
   const isChristmasSeason = useIsChristmasMode()
+  const [animationFrame, setAnimationFrame] = useState(0)
+  const [isWaving, setIsWaving] = useState(false)
 
-  // Generate a consistent variation based on cardId or random seed
-  const variation = useMemo(() => {
+  // Generate a starting variation based on cardId or random seed
+  const baseVariation = useMemo(() => {
     if (cardId) {
-      // Use cardId to generate consistent variation
+      // Use cardId to generate consistent starting variation
       let hash = 0
       for (let i = 0; i < cardId.length; i++) {
         hash = ((hash << 5) - hash) + cardId.charCodeAt(i)
@@ -27,15 +29,82 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
     return Math.floor(Math.random() * 100)
   }, [cardId])
 
+  // Generate snowman position based on cardId - many variations on right half
+  // Position is stable per cardId, so each post has a consistent position
+  const snowmanPositionIndex = useMemo(() => {
+    if (!cardId) return Math.floor(Math.random() * 25)
+    
+    // Generate position hash from cardId - this ensures each cardId gets a unique, stable position
+    let hash = 0
+    for (let i = 0; i < cardId.length; i++) {
+      hash = ((hash << 5) - hash) + cardId.charCodeAt(i)
+      hash = hash & hash
+    }
+    return Math.abs(hash) % 25
+  }, [cardId])
+
+  // Generate ground type based on cardId - locked to each post
+  // Different ground types have different wave patterns, heights, and characteristics
+  const groundTypeIndex = useMemo(() => {
+    if (!cardId) return Math.floor(Math.random() * 20)
+    
+    // Generate ground type hash from cardId - different from snowman position
+    let hash = 0
+    for (let i = 0; i < cardId.length; i++) {
+      hash = ((hash << 7) - hash) + cardId.charCodeAt(i) * (i + 1)
+      hash = hash & hash
+    }
+    return Math.abs(hash) % 20
+  }, [cardId])
+
+  // Cycle through variations (30 different variations)
+  useEffect(() => {
+    if (!isChristmasSeason) return
+    
+    const interval = setInterval(() => {
+      setAnimationFrame((prev) => (prev + 1) % 30)
+    }, 8000) // Change variation every 8 seconds
+
+    return () => clearInterval(interval)
+  }, [isChristmasSeason])
+
+  // Make snowman wave every once in a while
+  useEffect(() => {
+    if (!isChristmasSeason) return
+
+    const waveInterval = setInterval(() => {
+      setIsWaving(true)
+      // Wave animation lasts 1.5 seconds
+      setTimeout(() => {
+        setIsWaving(false)
+      }, 1500)
+    }, 12000) // Wave every 12 seconds
+
+    return () => clearInterval(waveInterval)
+  }, [isChristmasSeason])
+
   if (!isChristmasSeason) return null
 
-  // Variation settings
-  const baseHeight = 18 + ((variation % 5) * 1.5) // 18, 19.5, 21, 22.5, or 24
-  const snowflakeCount = 5 + (variation % 4) // 5-8 snowflakes
-  const snowmanPosition = (variation % 2) + 1 // 1 = right-center, 2 = right-edge (right half only)
-  const snowmanSize = 0.85 + ((variation % 3) * 0.1) // 0.85, 0.95, or 1.05
+  // Combine base variation with animation frame for snowflake animations only
+  const variation = (baseVariation + animationFrame * 7) % 100
+
+  // Ground type parameters - locked to cardId, stable per post
+  // 20 different ground types with subtle, terrain-like characteristics
+  const groundTypeBaseHeight = 16 + ((groundTypeIndex % 8) * 1.2) // 16 to 25.6 in 8 steps
+  const groundTypeWaveIntensity = 0.5 + ((groundTypeIndex % 5) * 0.2) // 0.5 to 1.3 - moderate choppiness
+  const groundTypeWaveFrequency = 1.2 + ((groundTypeIndex % 6) * 0.4) // 1.2 to 3.2 - more variation
+  const groundTypeHeightVariation = ((groundTypeIndex % 4) * 0.25) + 0.15 // 0.15 to 0.9 - more texture
+  const groundTypeOffset = (groundTypeIndex * 0.5) % (Math.PI * 2) // Phase offset for waves
+
+  // Animation-only variations (for snowflakes)
+  const snowflakeCount = 4 + (variation % 6) // 4-9 snowflakes
+  
+  // 25 different positions on the right half (from 50% to 100% of width)
+  const snowmanPositionPercent = 50 + (snowmanPositionIndex * 2) // 50% to 98% in 2% increments
+  const snowmanSize = 0.9 // Fixed size
 
   // Generate natural snow buildup path with smooth curves
+  // Ground type is completely static and locked to cardId - no animation
   const generateSnowPath = (offset: number, containerHeight: number, layerOffset: number) => {
     const path: string[] = []
     // Start at bottom-left corner of container
@@ -49,18 +118,22 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
       const x = (i / numPoints) * 400
       const progress = i / numPoints
       
-      // Smoother wave patterns with reduced amplitude
-      const wave1 = Math.sin(progress * Math.PI * 2.5 + offset) * (1.5 + layerOffset * 0.5)
-      const wave2 = Math.cos(progress * Math.PI * 4 + offset * 1.2) * (0.8 + layerOffset * 0.3)
-      const wave3 = Math.sin(progress * Math.PI * 6 + offset * 0.6) * (0.5 + layerOffset * 0.2)
+      // Ground type locked wave patterns - terrain-like with moderate choppiness
+      const wave1 = Math.sin(progress * Math.PI * groundTypeWaveFrequency + groundTypeOffset + offset) * (groundTypeWaveIntensity + layerOffset * 0.3)
+      const wave2 = Math.cos(progress * Math.PI * (groundTypeWaveFrequency * 1.4) + groundTypeOffset * 1.2 + offset * 1.2) * (groundTypeWaveIntensity * 0.5 + layerOffset * 0.2)
+      const wave3 = Math.sin(progress * Math.PI * (groundTypeWaveFrequency * 2.0) + groundTypeOffset * 0.6 + offset * 0.6) * (groundTypeWaveIntensity * 0.3 + layerOffset * 0.15)
       
-      // Smoother variation based on card ID
-      const cardVariation = ((variation + i * 1.5) % 9) - 4
-      const heightVariation = cardVariation * 0.3
+      // Ground type locked height variation (stable per post)
+      const cardVariation = ((groundTypeIndex * 3 + i * 1.5) % 11) - 5
+      const heightVariation = cardVariation * groundTypeHeightVariation
       
       // Calculate y position from bottom (containerHeight is the bottom)
-      const snowHeight = 3 + layerOffset * 1.5
-      const y = containerHeight - snowHeight + wave1 + wave2 + wave3 + heightVariation
+      // Increased base height to prevent lows from being too low
+      const snowHeight = 4 + layerOffset * 1.5
+      const combinedWave = wave1 + wave2 + wave3
+      // Clamp the combined wave to prevent it from going too low
+      const clampedWave = Math.max(combinedWave, -1.5)
+      const y = containerHeight - snowHeight + clampedWave + heightVariation
       
       points.push({ x, y })
     }
@@ -93,7 +166,7 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
     return path.join(' ')
   }
 
-  const containerHeight = baseHeight + 4
+  const containerHeight = groundTypeBaseHeight + 4
 
   return (
     <div
@@ -134,15 +207,13 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
         />
       </svg>
       
-      {/* Snowman decoration - varied position and size, positioned on top of snow (right half only) */}
+      {/* Snowman decoration - varied position per post, positioned on top of snow (right half only) */}
       <div 
-        className={cn(
-          "absolute",
-          snowmanPosition === 1 ? 'right-1/2' : 'right-8' // right-center or right-edge
-        )} 
+        className="absolute"
         style={{ 
+          right: `${100 - snowmanPositionPercent}%`,
           bottom: '-4px', // Position slightly below to sit on snow surface
-          transform: `${snowmanPosition === 1 ? 'translateX(50%)' : ''} scale(${snowmanSize})`,
+          transform: `scale(${snowmanSize})`,
         }}
       >
         <svg width="32" height="40" viewBox="0 0 32 40" className="drop-shadow-sm">
@@ -160,26 +231,39 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
           {/* Buttons */}
           <circle cx="16" cy="22" r="0.6" fill="#000000" />
           <circle cx="16" cy="24" r="0.6" fill="#000000" />
+          {/* Left arm (static) */}
+          <line x1="10" y1="24" x2="6" y2="22" stroke="#8B4513" strokeWidth="1.2" strokeLinecap="round" />
+          <circle cx="6" cy="22" r="1" fill="#8B4513" />
+          {/* Right arm (waving) */}
+          <g className={isWaving ? "animate-wave" : ""}>
+            <line x1="22" y1="24" x2="26" y2="20" stroke="#8B4513" strokeWidth="1.2" strokeLinecap="round" />
+            <circle cx="26" cy="20" r="1" fill="#8B4513" />
+          </g>
           {/* Santa hat */}
           <path d="M 12 12 Q 12 10, 14 10 Q 16 10, 18 10 Q 20 10, 20 12 L 20 13 Q 20 14, 18 14 L 14 14 Q 12 14, 12 13 Z" fill="#dc2626" />
           <circle cx="20" cy="13" r="1.5" fill="#ffffff" />
         </svg>
       </div>
       
-      {/* Small decorative snowflakes scattered on top - varied count */}
+      {/* Small decorative snowflakes scattered on top - varied count and positions */}
       <div className="absolute bottom-10 left-0 right-0 h-3">
         {Array.from({ length: snowflakeCount }).map((_, i) => {
-          const offset = (variation + i) % 10
+          // More varied positioning that changes with animation frame
+          const baseOffset = (variation + i * 3) % 15
+          const frameOffset = (animationFrame * 2 + i) % 12
+          const offset = (baseOffset + frameOffset) % 15
+          const sizeVariation = 1.2 + ((variation + i + animationFrame) % 4) * 0.4
           return (
             <div
               key={i}
-              className="absolute rounded-full bg-white/70"
+              className="absolute rounded-full bg-white/70 transition-all ease-in-out"
               style={{
-                left: `${((i * (100 / snowflakeCount)) + offset) % 100}%`,
-                bottom: `${(i % 3) * 1}px`,
-                width: `${1.5 + (i % 2)}px`,
-                height: `${1.5 + (i % 2)}px`,
-                boxShadow: `0 0 ${2 + (i % 2)}px rgba(255, 255, 255, 0.8)`,
+                left: `${((i * (100 / Math.max(snowflakeCount, 1))) + offset * 2.5) % 100}%`,
+                bottom: `${((i % 4) + (animationFrame % 3)) * 1.2}px`,
+                width: `${sizeVariation}px`,
+                height: `${sizeVariation}px`,
+                boxShadow: `0 0 ${2 + (i % 3)}px rgba(255, 255, 255, 0.8)`,
+                transitionDuration: '8000ms',
               }}
             />
           )

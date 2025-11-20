@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { Zap, Pin, Crown, Building2, Bookmark, LayoutGrid, TrendingUp, Loader2, MessageCircle, UserPlus, UserCheck, Share2, Copy, Check, Twitter, Facebook } from "lucide-react"
+import { Zap, Pin, Crown, Building2, Bookmark, LayoutGrid, TrendingUp, Loader2, MessageCircle, UserPlus, UserCheck, Share2, Copy, Check, Twitter, Facebook, MoreVertical, Edit, Trash2 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
 import confetti from "canvas-confetti"
@@ -23,6 +23,21 @@ import { useRouter } from "next/navigation"
 import { CommunityLogo } from "@/components/community-logo"
 import { TwemojiText } from "@/components/twemoji-text"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 
 interface User {
   id: string
@@ -101,6 +116,13 @@ export default function ProfileView({
   const [savingPosts, setSavingPosts] = useState<Set<string>>(new Set())
   const [boostingPosts, setBoostingPosts] = useState<Set<string>>(new Set())
   const [animatingBoosts, setAnimatingBoosts] = useState<Set<string>>(new Set())
+  
+  // Edit/Delete post state
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState<Record<string, string>>({})
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   
   const [activeTab, setActiveTab] = useState("posts")
   const [followStatus, setFollowStatus] = React.useState<{ isFollowing: boolean; isFollowedBy: boolean; isMutual: boolean } | null>(null)
@@ -694,6 +716,113 @@ export default function ProfileView({
         next.delete(postId)
         return next
       })
+    }
+  }
+
+  // Edit post handler
+  const handleEditPost = (post: Post & { media?: PostMedia[] }) => {
+    setEditingPostId(post.id)
+    setEditingContent(prev => ({ ...prev, [post.id]: post.content || '' }))
+  }
+
+  // Cancel edit handler
+  const handleCancelEdit = (postId: string) => {
+    setEditingPostId(null)
+    setEditingContent(prev => {
+      const updated = { ...prev }
+      delete updated[postId]
+      return updated
+    })
+  }
+
+  // Save edit handler
+  const handleSaveEdit = async (postId: string) => {
+    const content = editingContent[postId]?.trim() || ''
+
+    if (!content) {
+      toast.error("Post content cannot be empty")
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({ content })
+        .eq('id', postId)
+
+      if (error) throw error
+
+      // Update local state in all lists
+      const updatePost = (p: Post & { media?: PostMedia[] }) => p.id === postId ? { ...p, content } : p
+      setPosts(prevPosts => prevPosts.map(updatePost))
+      setBoostedPosts(prevPosts => prevPosts.map(updatePost))
+      setGotBoostedPosts(prevPosts => prevPosts.map(updatePost))
+      setSavedPosts(prevPosts => prevPosts.map(updatePost))
+
+      setEditingPostId(null)
+      setEditingContent(prev => {
+        const updated = { ...prev }
+        delete updated[postId]
+        return updated
+      })
+
+      toast.success("Post updated successfully")
+    } catch (error: any) {
+      console.error('Error updating post:', error)
+      toast.error('Failed to update post. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Delete post handler
+  const handleDeletePost = (postId: string) => {
+    setDeletingPostId(postId)
+  }
+
+  // Confirm delete handler
+  const confirmDeletePost = async () => {
+    if (!deletingPostId) return
+
+    setIsDeleting(true)
+
+    try {
+      // Delete post media from storage first
+      const { data: mediaData } = await supabase
+        .from('post_media')
+        .select('storage_path')
+        .eq('post_id', deletingPostId)
+
+      if (mediaData) {
+        const paths = mediaData.map(m => m.storage_path).filter(Boolean)
+        if (paths.length > 0) {
+          await supabase.storage.from('post-media').remove(paths)
+        }
+      }
+
+      // Delete the post (this will cascade delete media records)
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', deletingPostId)
+
+      if (error) throw error
+
+      // Remove from local state in all lists
+      setPosts(prevPosts => prevPosts.filter(p => p.id !== deletingPostId))
+      setBoostedPosts(prevPosts => prevPosts.filter(p => p.id !== deletingPostId))
+      setGotBoostedPosts(prevPosts => prevPosts.filter(p => p.id !== deletingPostId))
+      setSavedPosts(prevPosts => prevPosts.filter(p => p.id !== deletingPostId))
+
+      toast.success("Post deleted successfully")
+      setDeletingPostId(null)
+    } catch (error: any) {
+      console.error('Error deleting post:', error)
+      toast.error('Failed to delete post. Please try again.')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -1707,6 +1836,55 @@ export default function ProfileView({
                         </>
                       )}
                     </div>
+                    {isOwnProfile && post.author_id === currentUser?.id && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center justify-center w-8 h-8 p-0 rounded-full border transition-all cursor-pointer bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
+                          >
+                            <MoreVertical className="h-4 w-4 text-white/70" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {(() => {
+                            const postDate = new Date(post.created_at)
+                            const now = new Date()
+                            const diffMs = now.getTime() - postDate.getTime()
+                            const diffMins = diffMs / 60000
+                            const canEdit = diffMins < 5
+
+                            return (
+                              <>
+                                {canEdit && (
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEditPost(post)
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    <Edit className="h-4 w-4 mr-2 text-white/70" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                )}
+                                {canEdit && <DropdownMenuSeparator />}
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeletePost(post.id)
+                                  }}
+                                  className="cursor-pointer text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )
+                          })()}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                   
                   {/* Tags - Below Header, Above Content */}
@@ -1733,9 +1911,50 @@ export default function ProfileView({
                   </div>
 
                   {/* Content */}
-                  <p className="text-white/80 text-base mb-3 whitespace-pre-wrap break-words">
-                    <TwemojiText text={post.content} size={20} />
-                  </p>
+                  {editingPostId === post.id ? (
+                    <div className="mb-3 space-y-2">
+                      <Textarea
+                        value={editingContent[post.id] || ''}
+                        onChange={(e) => setEditingContent(prev => ({ ...prev, [post.id]: e.target.value }))}
+                        className="w-full bg-white/10 border-white/20 text-white placeholder:text-white/40 resize-none focus:ring-white/20 min-h-[100px]"
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement
+                          target.style.height = 'auto'
+                          target.style.height = Math.max(100, target.scrollHeight) + 'px'
+                        }}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleSaveEdit(post.id)
+                          }}
+                          disabled={isSaving}
+                          size="sm"
+                          className="bg-primary text-primary-foreground hover:bg-primary/90"
+                        >
+                          {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                          Save
+                        </Button>
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleCancelEdit(post.id)
+                          }}
+                          disabled={isSaving}
+                          variant="outline"
+                          size="sm"
+                          className="border-white/20 text-white/80 hover:bg-white/10 hover:text-white"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-white/80 text-base mb-3 whitespace-pre-wrap break-words">
+                      <TwemojiText text={post.content} size={20} />
+                    </p>
+                  )}
 
                   {/* Post Media Slider */}
                   {post.media && post.media.length > 0 && (
@@ -1758,7 +1977,7 @@ export default function ProfileView({
                             key={pt.topic.id}
                             onClick={(e) => {
                               e.stopPropagation()
-                              router.push(`/?topic=${pt.topic.id}`)
+                              router.push(`/?topic=${pt.topic.slug}`)
                             }}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
                           >
@@ -1862,7 +2081,7 @@ export default function ProfileView({
     <div className="relative w-full overflow-x-hidden">
       <div className="relative z-10 space-y-6">
         {/* Profile Header - TikTok Style */}
-        <div className="mb-6 mt-2">
+        <div className="mb-6 mt-6">
           <div className="flex flex-col items-center text-center mb-6">
             <div className="mb-2">
               <Avatar className="h-24 w-24 border-4 border-white/20" userId={user.id}>
@@ -2188,6 +2407,42 @@ export default function ProfileView({
             </div>
           </DialogPrimitive.Content>
         </DialogPrimitive.Portal>
+      </Dialog>
+
+      {/* Delete Post Confirmation Dialog */}
+      <Dialog open={deletingPostId !== null} onOpenChange={(open) => !open && setDeletingPostId(null)}>
+        <DialogContent className="bg-background/95 backdrop-blur-md border border-white/20">
+          <DialogHeader>
+            <DialogTitle>Delete Post</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this post? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeletingPostId(null)}
+              disabled={isDeleting}
+              className="border-white/20 text-white/80 hover:bg-white/10 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDeletePost}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   )

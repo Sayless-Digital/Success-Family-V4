@@ -41,6 +41,7 @@ interface InlinePostComposerProps {
   onExpandedChange?: (isExpanded: boolean) => void
   className?: string
   contentClassName?: string
+  disabled?: boolean
   communityOptions?: {
     id: string
     name: string
@@ -74,6 +75,7 @@ export function InlinePostComposer({
   onExpandedChange,
   className,
   contentClassName,
+  disabled = false,
   communityOptions,
   selectedCommunityId,
   onCommunityChange,
@@ -148,7 +150,7 @@ export function InlinePostComposer({
     trimmedContent.length > 0 ||
     (resolvedAllowVoiceNote && hasVoiceNote) ||
     (resolvedAllowImages && hasImages)
-  const isSubmitDisabled = submitting || showVoiceRecorder || !canSubmitContent
+  const isSubmitDisabled = disabled || submitting || showVoiceRecorder || !canSubmitContent
   const submitLabel =
     resolvedMode === "post" ? "Post" : resolvedMode === "comment" ? "Contribute" : "Reply"
   const showCommunitySelector =
@@ -1113,14 +1115,24 @@ export function InlinePostComposer({
             </div>
 
             {/* Text Input */}
-            <div className="bg-white/10 border border-white/20 rounded-lg p-4">
+            <div className={`rounded-lg p-4 border ${
+              disabled 
+                ? "bg-white/5 border-white/10 opacity-50" 
+                : "bg-white/10 border-white/20"
+            }`}>
               <textarea
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder={placeholderText}
-                className="w-full bg-transparent border-0 text-white placeholder:text-white/40 text-base resize-none focus:outline-none focus:ring-0 min-h-[100px]"
+                disabled={disabled}
+                className={`w-full bg-transparent border-0 text-base resize-none focus:outline-none focus:ring-0 min-h-[100px] ${
+                  disabled
+                    ? "text-white/30 placeholder:text-white/20 cursor-not-allowed"
+                    : "text-white placeholder:text-white/40"
+                }`}
                 onInput={(e) => {
+                  if (disabled) return
                   const target = e.target as HTMLTextAreaElement
                   target.style.height = 'auto'
                   target.style.height = Math.max(100, target.scrollHeight) + 'px'
@@ -1144,13 +1156,15 @@ export function InlinePostComposer({
                         {topic.is_featured && (
                           <Star className="h-3 w-3 ml-1 text-white/60" />
                         )}
-                        <button
-                          type="button"
-                          onClick={() => removeTopic(topic.id)}
-                          className="ml-1.5 hover:text-white"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        {!disabled && (
+                          <button
+                            type="button"
+                            onClick={() => removeTopic(topic.id)}
+                            className="ml-1.5 hover:text-white"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
                       </Badge>
                     ))}
                   </div>
@@ -1163,6 +1177,7 @@ export function InlinePostComposer({
                     placeholder="Add topics (e.g., tech, fitness, startup)..."
                     value={topicSearchQuery}
                     onChange={(e) => {
+                      if (disabled) return
                       setTopicSearchQuery(e.target.value)
                       if (e.target.value.length > 0) {
                         setShowTopicSearch(true)
@@ -1171,9 +1186,12 @@ export function InlinePostComposer({
                       }
                     }}
                     onKeyDown={handleTopicInputKeyDown}
-                    onFocus={() => { if (topicSearchQuery.length > 0) setShowTopicSearch(true) }}
+                    onFocus={() => { if (!disabled && topicSearchQuery.length > 0) setShowTopicSearch(true) }}
                     onBlur={() => { setTimeout(() => setShowTopicSearch(false), 200) }}
-                    className="bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-white/30"
+                    disabled={disabled}
+                    className={`bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-white/30 ${
+                      disabled ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                   />
                 </div>
                 {typeof window !== 'undefined' && showTopicSearch && topicSearchResults.length > 0 && topicDropdownPosition && createPortal(
@@ -1400,14 +1418,14 @@ export function InlinePostComposer({
             <div className="flex items-center gap-2 pt-2">
               <EmojiPicker
                 onEmojiSelect={handleEmojiSelect}
-                disabled={submitting || showVoiceRecorder}
+                disabled={disabled || submitting || showVoiceRecorder}
               />
 
               {resolvedAllowImages && (
                 <button
                   type="button"
                 onClick={() => fileInputRef.current?.click()}
-                  disabled={submitting || imageFiles.length >= 8 || showVoiceRecorder}
+                  disabled={disabled || submitting || imageFiles.length >= 8 || showVoiceRecorder}
                   className="group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                 >
                   <ImageIcon className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
@@ -1429,7 +1447,7 @@ export function InlinePostComposer({
                     }
                     setShowVoiceRecorder(true)
                   }}
-                  disabled={submitting || showVoiceRecorder || !!voiceNote}
+                  disabled={disabled || submitting || showVoiceRecorder || !!voiceNote}
                   className="group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                 >
                   <Mic className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
@@ -1441,7 +1459,7 @@ export function InlinePostComposer({
                 <button
                   type="button"
                   onClick={() => setShowBoostRewardsDialog(true)}
-                  disabled={submitting || showVoiceRecorder}
+                  disabled={disabled || submitting || showVoiceRecorder}
                   className="group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                   title="Set boost rewards"
                 >

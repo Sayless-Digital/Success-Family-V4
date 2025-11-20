@@ -440,7 +440,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
       )}
       
       {/* Snow Effect - Christmas theme (December & January) */}
-      {!isStreamPage && <SnowEffect />}
+      {/* {!isStreamPage && <SnowEffect />} */}
       
       {!isStreamPage && (
         <>

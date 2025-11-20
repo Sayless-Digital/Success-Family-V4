@@ -84,7 +84,7 @@ export default function DiscoveryFeedView({
   const router = useRouter()
   const { user, walletBalance, walletEarningsBalance, refreshWalletBalance } = useAuth()
   const [activeTab, setActiveTab] = useState<TabValue>(currentUserId ? "for-you" : "trending")
-  const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
+  const [activeTopicSlug, setActiveTopicSlug] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "single">("list")
   const [currentPostIndex, setCurrentPostIndex] = useState(0)
   const [isAnimating, setIsAnimating] = useState(false)
@@ -105,10 +105,10 @@ export default function DiscoveryFeedView({
     const params = new URLSearchParams(window.location.search)
 
     // Restore topic
-    const topicId = params.get('topic')
-    if (topicId) {
+    const topicSlug = params.get('topic')
+    if (topicSlug) {
       setActiveTab("topic")
-      setActiveTopicId(topicId)
+      setActiveTopicSlug(topicSlug)
     }
 
     // Restore view mode
@@ -127,14 +127,14 @@ export default function DiscoveryFeedView({
     const url = new URL(window.location.href)
 
     // Handle topic
-    if (activeTab === "topic" && activeTopicId) {
-      url.searchParams.set('topic', activeTopicId)
+    if (activeTab === "topic" && activeTopicSlug) {
+      url.searchParams.set('topic', activeTopicSlug)
     } else {
       url.searchParams.delete('topic')
     }
 
     window.history.replaceState({}, '', url.toString())
-  }, [activeTab, activeTopicId, isInitialized])
+  }, [activeTab, activeTopicSlug, isInitialized])
 
   const [posts, setPosts] = useState(initialPosts)
   const [relativeTimes, setRelativeTimes] = useState(initialRelativeTimes)
@@ -367,12 +367,12 @@ export default function DiscoveryFeedView({
         return shuffleWithinBuckets(nearPayout, (p) => p.points_to_payout || Infinity, 5)
 
       case "topic":
-        // Filter posts by topic ID
+        // Filter posts by topic slug
         const topic = postsCopy
           .filter(p => {
-            if (!activeTopicId) return false
+            if (!activeTopicSlug) return false
             const postTopics = (p as any).topics || []
-            return postTopics.some((pt: any) => pt.topic && pt.topic.id === activeTopicId)
+            return postTopics.some((pt: any) => pt.topic && pt.topic.slug === activeTopicSlug)
           })
           .sort((a, b) => (b.discovery_score || 0) - (a.discovery_score || 0))
         return shuffleWithinBuckets(topic, (p) => p.discovery_score || 0, 5)
@@ -380,7 +380,7 @@ export default function DiscoveryFeedView({
       default:
         return postsCopy
     }
-  }, [posts, activeTab, activeTopicId, shuffleWithinBuckets])
+  }, [posts, activeTab, activeTopicSlug, shuffleWithinBuckets])
 
   // Limit to top 50 posts per tab
   const displayPosts = useMemo(() => {
@@ -1694,14 +1694,14 @@ export default function DiscoveryFeedView({
 
           <CommandSearch
             activeView={activeTab === "near-payout" ? undefined : activeTab}
-            activeTopicId={activeTopicId || undefined}
+            activeTopicId={activeTopicSlug || undefined}
             onSelect={(type, value) => {
               if (type === "topic" && value) {
                 setActiveTab("topic")
-                setActiveTopicId(value)
+                setActiveTopicSlug(value)
               } else {
                 setActiveTab(type as TabValue)
-                setActiveTopicId(null)
+                setActiveTopicSlug(null)
               }
             }}
           />
@@ -1748,14 +1748,14 @@ export default function DiscoveryFeedView({
         <div className="flex items-center gap-2">
           <CommandSearch
             activeView={activeTab === "near-payout" ? undefined : activeTab}
-            activeTopicId={activeTopicId || undefined}
+            activeTopicId={activeTopicSlug || undefined}
             onSelect={(type, value) => {
               if (type === "topic" && value) {
                 setActiveTab("topic")
-                setActiveTopicId(value)
+                setActiveTopicSlug(value)
               } else {
                 setActiveTab(type as TabValue)
-                setActiveTopicId(null)
+                setActiveTopicSlug(null)
               }
             }}
           />
@@ -2026,7 +2026,7 @@ export default function DiscoveryFeedView({
                                             onClick={(e) => {
                                               e.stopPropagation()
                                               setActiveTab("topic")
-                                              setActiveTopicId(pt.topic.id)
+                                              setActiveTopicSlug(pt.topic.slug)
                                             }}
                                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
                                           >
@@ -2088,7 +2088,7 @@ export default function DiscoveryFeedView({
                                     </span>
                                   </button>
 
-                                  {community && user && membershipByCommunityId[community.id] && (
+                                  {community && user && (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation()
@@ -2379,7 +2379,7 @@ export default function DiscoveryFeedView({
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         setActiveTab("topic")
-                                        setActiveTopicId(pt.topic.id)
+                                        setActiveTopicSlug(pt.topic.slug)
                                       }}
                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
                                     >
@@ -2437,7 +2437,7 @@ export default function DiscoveryFeedView({
                                 </span>
                               </button>
 
-                              {community && user && membershipByCommunityId[community.id] && (
+                              {community && user && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
@@ -2742,19 +2742,27 @@ export default function DiscoveryFeedView({
                   </div>
 
                   <div className="mt-0">
-                    {community && isMember ? (
-                      <InlinePostComposer
-                        communityId={community.id}
-                        communitySlug={community.slug}
-                        parentPostId={post.id}
-                        mode="comment"
-                        disableRouterRefresh
-                        collapsedLabel="Share something valuable..."
-                        onPostCreated={(newComment) => {
-                          handleCommentCreated(post.id, newComment)
-                          toast.success("Contribution posted!")
-                        }}
-                      />
+                    {community ? (
+                      <>
+                        <InlinePostComposer
+                          communityId={community.id}
+                          communitySlug={community.slug}
+                          parentPostId={post.id}
+                          mode="comment"
+                          disableRouterRefresh
+                          collapsedLabel="Share something valuable..."
+                          disabled={!isMember}
+                          onPostCreated={(newComment) => {
+                            handleCommentCreated(post.id, newComment)
+                            toast.success("Contribution posted!")
+                          }}
+                        />
+                        {!isMember && (
+                          <p className="text-white/60 text-xs mt-2 px-2">
+                            Join the community to contribute
+                          </p>
+                        )}
+                      </>
                     ) : (
                       <p className="text-white/70 text-sm">
                         You need to be a community member to contribute.

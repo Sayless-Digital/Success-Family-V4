@@ -291,16 +291,43 @@
 
   /* Christmas lights blink animation */
   @keyframes blink {
-    0%, 50% {
+    0%, 45% {
       opacity: 1;
     }
-    51%, 100% {
-      opacity: 0.2;
+    46%, 100% {
+      opacity: 0.15;
     }
   }
   
   .animate-blink {
-    animation: blink 1s ease-in-out infinite;
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  /* Snowman wave animation */
+  @keyframes wave {
+    0% {
+      transform: rotate(0deg);
+    }
+    20% {
+      transform: rotate(-35deg);
+    }
+    40% {
+      transform: rotate(15deg);
+    }
+    60% {
+      transform: rotate(-25deg);
+    }
+    80% {
+      transform: rotate(5deg);
+    }
+    100% {
+      transform: rotate(0deg);
+    }
+  }
+  
+  .animate-wave {
+    animation: wave 1.5s ease-in-out;
+    transform-origin: 22px 24px;
   }
   
   @keyframes shimmer-opacity {
