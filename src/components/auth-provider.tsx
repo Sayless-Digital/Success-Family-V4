@@ -191,46 +191,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initializeAuth = async () => {
       try {
-        // Get session with timeout
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
-          setTimeout(() => resolve({ data: { session: null }, error: null }), 5000)
-        })
-        
-        const { data: { session }, error: sessionError } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as { data: { session: { user: SupabaseUser } | null }, error: unknown } | { data: { session: null }, error: null }
-        
-        if (!isMounted || authInitialized) {
-          clearTimeout(globalTimeout)
-          return
-        }
-        
-        if (sessionError || !session?.user) {
-          // No session found - clear state and show as signed out
-          // Note: If middleware refreshes session after this, TOKEN_REFRESHED event will be ignored
-          // during initialization but will be processed after initialization completes
-          clearAuthState()
-          userRef.current = null
-          userProfileRef.current = null
-          authInitialized = true
-          initializationCompleteRef.current = true
-          initializationCompleteTimeRef.current = Date.now()
-          clearTimeout(globalTimeout)
-          setIsLoading(false)
-          return
-        }
-
-        // Validate session
+        // Use getUser() directly - it's more reliable than getSession() + getUser()
+        // getUser() validates the session and refreshes tokens if needed
         const userPromise = supabase.auth.getUser()
-        const userTimeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
-          setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), 5000)
+        const timeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
+          setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), 6000)
         })
         
         const { data: { user }, error: userError } = await Promise.race([
           userPromise,
-          userTimeoutPromise
+          timeoutPromise
         ]) as { data: { user: SupabaseUser | null }, error: unknown } | { data: { user: null }, error: { message: string } }
         
         if (!isMounted || authInitialized) {
@@ -239,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         if (userError || !user) {
-          // Invalid session - clear state but don't show as signed out until initialization completes
+          // No valid session - clear state and show as signed out
           clearAuthState()
           userRef.current = null
           userProfileRef.current = null
@@ -251,12 +221,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Session is valid - set user
+        // Session is valid - set user immediately
         setUser(user)
         userRef.current = user
         
         // Fetch profile with retry logic
-        const profile = await fetchProfileWithRetry(user.id, 2, 8000)
+        const profile = await fetchProfileWithRetry(user.id, 3, 8000)
         
         if (!isMounted || authInitialized) {
           clearTimeout(globalTimeout)
@@ -302,11 +272,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         if (!isMounted) return
 
-        // CRITICAL: Ignore all auth state change events during initialization
-        // This prevents TOKEN_REFRESHED events from middleware from causing flashes
-        // Only allow explicit SIGNED_OUT events during initialization to handle sign-outs
+        // During initialization, only process explicit sign-outs
+        // TOKEN_REFRESHED events are handled after initialization to avoid race conditions
         if (!initializationCompleteRef.current) {
-          // During initialization, only process explicit sign-outs
           if (event === 'SIGNED_OUT') {
             clearAuthState()
             userRef.current = null
@@ -316,7 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authStateChangeResolversRef.current.forEach(resolve => resolve(false))
             authStateChangeResolversRef.current.clear()
           }
-          // Ignore all other events (TOKEN_REFRESHED, SIGNED_IN, etc.) until initialization completes
+          // Ignore other events during initialization - they'll be processed after init completes
           return
         }
 

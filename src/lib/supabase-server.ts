@@ -16,13 +16,28 @@ export const createServerSupabaseClient = async () => {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              // Ensure proper cookie options for security and persistence
+              const cookieOptions = {
+                ...options,
+                // Set secure flag in production (HTTPS only)
+                secure: process.env.NODE_ENV === 'production',
+                // Use lax sameSite for better compatibility while maintaining security
+                sameSite: (options?.sameSite as 'lax' | 'strict' | 'none') || 'lax',
+                // Ensure httpOnly is set for auth cookies (Supabase handles this)
+                httpOnly: options?.httpOnly ?? true,
+                // Set path to root for all auth cookies
+                path: options?.path || '/',
+              }
+              cookieStore.set(name, value, cookieOptions)
+            })
+          } catch (error) {
             // The `setAll` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // user sessions, but log it for debugging
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('Server Component cookie set failed (expected in some cases):', error)
+            }
           }
         },
       },

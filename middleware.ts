@@ -25,7 +25,19 @@ export async function middleware(request: NextRequest) {
             // Update response cookies (to persist session)
             // CRITICAL: Update existing response, don't create a new one
             cookiesToSet.forEach(({ name, value, options }) => {
-              supabaseResponse.cookies.set(name, value, options)
+              // Ensure proper cookie options for security and persistence
+              const cookieOptions = {
+                ...options,
+                // Set secure flag in production (HTTPS only)
+                secure: process.env.NODE_ENV === 'production',
+                // Use lax sameSite for better compatibility while maintaining security
+                sameSite: (options?.sameSite as 'lax' | 'strict' | 'none') || 'lax',
+                // Ensure httpOnly is set for auth cookies (Supabase handles this)
+                httpOnly: options?.httpOnly ?? true,
+                // Set path to root for all auth cookies
+                path: options?.path || '/',
+              }
+              supabaseResponse.cookies.set(name, value, cookieOptions)
             })
           },
         },
@@ -43,20 +55,32 @@ export async function middleware(request: NextRequest) {
     try {
       // Await getUser() with a timeout to prevent middleware from hanging
       // Use Promise.race to ensure we don't block navigation forever
+      // Reduced timeout to 5 seconds for faster page loads
       const getUserPromise = supabase.auth.getUser()
       const timeoutPromise = new Promise<{ data: { user: null }, error: { message: string } }>((resolve) => {
         setTimeout(() => resolve({ 
           data: { user: null }, 
           error: { message: 'Timeout' } 
-        }), 8000) // 8 second timeout - enough for session refresh
+        }), 5000) // 5 second timeout - balance between reliability and speed
       })
       
-      await Promise.race([getUserPromise, timeoutPromise])
+      const result = await Promise.race([getUserPromise, timeoutPromise])
+      
+      // If we got a timeout, try to refresh the session one more time
+      // This helps with edge cases where the first call was slow
+      if (result && 'error' in result && result.error?.message === 'Timeout') {
+        // Don't await - let it run in background, but don't block
+        supabase.auth.getUser().catch(() => {
+          // Silently fail - we already timed out once
+        })
+      }
     } catch (error) {
       // Log error but don't block navigation
       // Cookies may have been set via setAll callback before timeout/error
       // Navigation should continue even if session refresh didn't complete
-      console.warn('Middleware: getUser() error (non-blocking):', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Middleware: getUser() error (non-blocking):', error)
+      }
     }
 
     // Add cache-busting headers for HTML pages

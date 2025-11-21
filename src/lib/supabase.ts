@@ -15,6 +15,8 @@ export const supabase = createBrowserClient(
       detectSessionInUrl: true,
       // Use PKCE flow for better security and mobile compatibility
       flowType: 'pkce',
+      // Note: @supabase/ssr automatically handles cookie storage for SSR
+      // No need to configure storage manually - cookies are used automatically
     },
     global: {
       headers: {

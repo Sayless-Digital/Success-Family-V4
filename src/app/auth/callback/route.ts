@@ -22,7 +22,19 @@ export async function GET(request: NextRequest) {
             },
             setAll(cookiesToSet) {
               cookiesToSet.forEach(({ name, value, options }) => {
-                response.cookies.set(name, value, options)
+                // Ensure proper cookie options for security and persistence
+                const cookieOptions = {
+                  ...options,
+                  // Set secure flag in production (HTTPS only)
+                  secure: process.env.NODE_ENV === 'production',
+                  // Use lax sameSite for better compatibility while maintaining security
+                  sameSite: (options?.sameSite as 'lax' | 'strict' | 'none') || 'lax',
+                  // Ensure httpOnly is set for auth cookies
+                  httpOnly: options?.httpOnly ?? true,
+                  // Set path to root for all auth cookies
+                  path: options?.path || '/',
+                }
+                response.cookies.set(name, value, cookieOptions)
               })
             },
           },
