@@ -360,6 +360,7 @@ export default function MessagesView({
           onPrefetchMessages={prefetchMessages}
           isMobile={isMobile}
           isClient={isClient}
+          mobileView={mobileView}
           viewerId={viewer.id}
           unreadCounts={unreadCounts}
           typingIndicators={typingIndicators}

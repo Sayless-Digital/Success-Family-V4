@@ -1521,8 +1521,9 @@ export default function MessagesView({
   const conversationsToRender = displayedConversations
 
   const handleBackToList = useCallback(() => {
-    setMobileView("list")
-  }, [])
+    setMobileViewFromHook("list")
+    setSelectedThreadId(null)
+  }, [setMobileViewFromHook, setSelectedThreadId])
 
   const handleImageClick = useCallback((images: Array<{ id: string; url: string }>, index: number) => {
                                           setLightboxImages(images)
@@ -1555,7 +1556,7 @@ export default function MessagesView({
   }, [downloadingAttachmentId])
                                       
                                       return (
-    <div className="flex flex-col h-[calc(100dvh-5rem-3rem)] lg:h-[calc(100dvh-5rem)] w-full">
+    <div className="flex flex-col h-[calc(100dvh-5rem-2.5rem)] lg:h-[calc(100dvh-5rem)] w-full">
       <div className="flex flex-col lg:flex-row gap-4 h-full overflow-hidden">
         <ConversationList
           conversations={conversationsToRender}
@@ -1567,6 +1568,7 @@ export default function MessagesView({
           onPrefetchMessages={prefetchMessages}
           isMobile={isMobile}
           isClient={isClient}
+          mobileView={mobileView}
           viewerId={viewer.id}
           unreadCounts={unreadCounts}
           typingIndicators={typingIndicators}

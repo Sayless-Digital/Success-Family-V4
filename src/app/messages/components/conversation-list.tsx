@@ -20,6 +20,7 @@ interface ConversationListProps {
   onPrefetchMessages: (threadId: string) => void
   isMobile: boolean
   isClient: boolean
+  mobileView: "list" | "conversation"
   viewerId: string
   unreadCounts: Record<string, number>
   typingIndicators: Record<string, { userId: string; expiresAt: number }>
@@ -38,6 +39,7 @@ export function ConversationList({
   onPrefetchMessages,
   isMobile,
   isClient,
+  mobileView,
   viewerId,
   unreadCounts,
   typingIndicators,
@@ -49,7 +51,8 @@ export function ConversationList({
     <div className={cn(
       "w-full lg:w-[360px] xl:w-[400px] lg:flex-none flex flex-col h-full",
       !isClient && "lg:flex hidden",
-      isClient && isMobile && "hidden"
+      isClient && isMobile && mobileView === "conversation" && "hidden",
+      isClient && isMobile && mobileView === "list" && "flex lg:flex"
     )}>
       <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
         <div className="p-4 border-b border-white/15">
