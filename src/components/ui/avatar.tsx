@@ -584,12 +584,12 @@ const AvatarImage = React.memo(React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
 >(({ className, src, ...props }, ref) => {
-  if (!src) return null
-
+  // Always render AvatarPrimitive.Image to allow Radix UI to trigger fallback
+  // Pass undefined src when not provided - Radix will handle fallback automatically
   return (
     <AvatarPrimitive.Image
       ref={ref}
-      src={src}
+      src={src || undefined}
       className={cn(
         "absolute inset-0 h-full w-full object-cover object-center rounded-full",
         className

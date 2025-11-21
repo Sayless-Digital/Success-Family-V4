@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2, Bookmark, LayoutList, Focus, RefreshCw } from "lucide-react"
+import { Crown, TrendingUp, Clock, Users, Target, Flame, Sparkles, Feather, ArrowLeft, ArrowRight, MoreVertical, Edit, Trash2, Bookmark, LayoutList, Focus, RefreshCw, Hand } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -94,6 +94,8 @@ export default function DiscoveryFeedView({
   const [refreshToken, setRefreshToken] = useState(0)
   const [seenPostIds, setSeenPostIds] = useState<Set<string>>(new Set())
   const [visiblePostCount, setVisiblePostCount] = useState(INITIAL_VISIBLE_POSTS)
+  const [showScrollIndicator, setShowScrollIndicator] = useState(false)
+  const [isFadingOut, setIsFadingOut] = useState(false)
 
   // Swipe support for single post view - horizontal swipes (left/right)
   const singlePostContainerRef = React.useRef<HTMLDivElement>(null)
@@ -435,6 +437,15 @@ export default function DiscoveryFeedView({
   React.useEffect(() => {
     if (viewMode !== "single") return
 
+    // Hide scroll indicator when navigating to a different post
+    if (currentPostIndex !== 0) {
+      setIsFadingOut(true)
+      setTimeout(() => {
+        setShowScrollIndicator(false)
+        setIsFadingOut(false)
+      }, 500) // Fade out duration
+    }
+
     setIsAnimating(true)
     const timer = setTimeout(() => {
       setIsAnimating(false)
@@ -541,7 +552,26 @@ export default function DiscoveryFeedView({
     if (viewMode === "single") {
       html.style.overflow = "hidden"
       body.style.overflow = "hidden"
+      // Show scroll indicator when entering focus mode
+      setShowScrollIndicator(true)
+      setIsFadingOut(false)
+      // Start fade out after 3.5 seconds, then hide after fade completes
+      const fadeOutTimer = setTimeout(() => {
+        setIsFadingOut(true)
+      }, 3500)
+      const hideTimer = setTimeout(() => {
+        setShowScrollIndicator(false)
+        setIsFadingOut(false)
+      }, 4500) // 3.5s + 1s fade out
+      return () => {
+        clearTimeout(fadeOutTimer)
+        clearTimeout(hideTimer)
+        html.style.overflow = previousHtmlOverflow || ""
+        body.style.overflow = previousBodyOverflow || ""
+      }
     } else {
+      setShowScrollIndicator(false)
+      setIsFadingOut(false)
       html.style.overflow = previousHtmlOverflow || ""
       body.style.overflow = previousBodyOverflow || ""
     }
@@ -1992,7 +2022,19 @@ export default function DiscoveryFeedView({
                               </div>
 
                               {/* TikTok-style Scrollable Content - Fills remaining space */}
-                              <div className="flex-1 min-h-0 overflow-y-auto -mx-3.5 px-3.5 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+                              <div
+                                onScroll={(e) => {
+                                  // Hide scroll indicator when user scrolls
+                                  if (showScrollIndicator && isActive && !isFadingOut) {
+                                    setIsFadingOut(true)
+                                    setTimeout(() => {
+                                      setShowScrollIndicator(false)
+                                      setIsFadingOut(false)
+                                    }, 500) // Fade out duration
+                                  }
+                                }}
+                                className="flex-1 min-h-0 overflow-y-auto -mx-3.5 px-3.5 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent relative"
+                              >
                                 <div className="space-y-2">
                                   {post.content && (
                                     <div>
@@ -2036,6 +2078,36 @@ export default function DiscoveryFeedView({
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Scroll Indicator - Shows when entering focus mode */}
+                                {showScrollIndicator && isActive && index === 0 && (
+                                  <div 
+                                    className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none"
+                                    style={{
+                                      animation: isFadingOut 
+                                        ? 'fade-out 0.5s ease-out forwards'
+                                        : 'fade-in 0.5s ease-out forwards'
+                                    }}
+                                  >
+                                    <div className="flex flex-col items-center gap-2 bg-gradient-to-br from-white/15 to-white/5 backdrop-blur-2xl rounded-full px-4 py-3 border border-white/20 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)]" style={{ backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
+                                      <div className="flex items-center gap-2">
+                                        <div className="relative flex items-center">
+                                          <Hand 
+                                            className="h-5 w-5 text-white/80"
+                                            style={{
+                                              animation: isFadingOut 
+                                                ? 'none'
+                                                : 'swipe-left 1.5s ease-in-out infinite'
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-medium text-white/70 whitespace-nowrap">
+                                          Swipe left to navigate
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Action Buttons - Fixed at bottom */}

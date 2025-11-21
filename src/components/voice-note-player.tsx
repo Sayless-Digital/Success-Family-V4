@@ -171,17 +171,17 @@ export function VoiceNotePlayer({
 
   return (
     <div className={cn("w-full", className)}>
-      <div className="p-3 sm:p-4 space-y-2 pb-8 sm:pb-9">
-        <div className="flex items-center justify-between w-full">
+      <div className="p-3 sm:p-4">
+        <div className="flex items-start gap-3 w-full">
           <button
             type="button"
             onClick={handlePlayPause}
-            className="flex-shrink-0 relative h-10 w-10 cursor-pointer"
+            className="flex-shrink-0 relative h-8 w-8 cursor-pointer"
           >
-            <div className="relative h-10 w-10">
+            <div className="relative h-8 w-8">
               <div
                 className={cn(
-                  "transition-transform h-10 w-10",
+                  "transition-transform h-8 w-8",
                   playing && "animate-spin"
                 )}
                 style={{
@@ -190,53 +190,55 @@ export function VoiceNotePlayer({
                 }}
               >
                 <Avatar 
-                  className="h-10 w-10 border-2 border-white/20" 
+                  className="h-8 w-8 border-2 border-white/20" 
                   userId={senderId}
                   showHoverCard={false}
                 >
                   <AvatarImage src={senderAvatar ?? undefined} alt={senderName} />
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-sm uppercase">
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs uppercase">
                     {senderInitials}
                   </AvatarFallback>
                 </Avatar>
               </div>
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                 {playing ? (
-                  <Pause className="h-5 w-5 text-white/90 drop-shadow-lg fill-white/90" />
+                  <Pause className="h-4 w-4 text-white/90 drop-shadow-lg fill-white/90" />
                 ) : (
-                  <Play className="h-5 w-5 text-white/90 drop-shadow-lg fill-white/90" />
+                  <Play className="h-4 w-4 text-white/90 drop-shadow-lg fill-white/90" />
                 )}
               </div>
             </div>
           </button>
-          <div className="font-mono text-sm text-white/80 whitespace-nowrap flex-shrink-0 ml-6 sm:ml-8">
-            {audioProgress.duration
-              ? `${formatAudioTime(audioProgress.current || 0)} / ${formatAudioTime(audioProgress.duration)}`
-              : `0:00 / —`
-            }
-          </div>
-        </div>
-        <div
-          className="w-full h-2 bg-white/10 rounded-full mt-2 cursor-pointer relative group backdrop-blur-sm overflow-visible"
-          onClick={handleSeek}
-        >
-          <div
-            className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
-            style={{
-              width: audioProgress.duration
-                ? `${(audioProgress.current / audioProgress.duration) * 100}%`
-                : '0%'
-            }}
-          >
+          <div className="flex-1 flex flex-col gap-1.5">
             <div
-              className={cn(
-                "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none transition-opacity",
-                playing ? "animate-edge-glow opacity-100" : "opacity-0"
-              )}
-              style={{
-                transform: 'translate(50%, -50%)'
-              }}
-            />
+              className="w-full h-2 bg-white/10 rounded-full cursor-pointer relative group backdrop-blur-sm overflow-visible"
+              onClick={handleSeek}
+            >
+              <div
+                className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
+                style={{
+                  width: audioProgress.duration
+                    ? `${(audioProgress.current / audioProgress.duration) * 100}%`
+                    : '0%'
+                }}
+              >
+                <div
+                  className={cn(
+                    "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none transition-opacity",
+                    playing ? "animate-edge-glow opacity-100" : "opacity-0"
+                  )}
+                  style={{
+                    transform: 'translate(50%, -50%)'
+                  }}
+                />
+              </div>
+            </div>
+            <div className="font-mono text-[10px] sm:text-xs text-white/60 whitespace-nowrap">
+              {audioProgress.duration
+                ? `${formatAudioTime(audioProgress.current || 0)} / ${formatAudioTime(audioProgress.duration)}`
+                : `0:00 / —`
+              }
+            </div>
           </div>
         </div>
       </div>

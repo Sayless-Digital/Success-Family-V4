@@ -297,7 +297,7 @@ export function CommandSearch({ onSelect, activeView, activeTopicId }: CommandSe
               "Search communities, profiles, topics..."
             )}
           </span>
-          <kbd className="hidden sm:inline-flex h-6 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 text-[10px] font-semibold text-white/70 shadow-sm">
+          <kbd className="hidden md:inline-flex h-6 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 text-[10px] font-semibold text-white/70 shadow-sm">
             <span className="text-xs">⌘</span>K
           </kbd>
         </button>

@@ -563,6 +563,18 @@
     }
   }
 
+  @keyframes swipe-left {
+    0% {
+      transform: translateX(0);
+    }
+    50% {
+      transform: translateX(-12px);
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+
   @keyframes ripple-grow {
     0%, 100% {
       transform: translate(-50%, -50%) scale(0.9);

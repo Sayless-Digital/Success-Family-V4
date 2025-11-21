@@ -1,30 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
-import Image from "next/image"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { RealtimeChannel } from "@supabase/supabase-js"
-import {
-  ArrowLeft,
-  Check,
-  CheckCheck,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  FileText,
-  Image as ImageIcon,
-  Loader2,
-  MessageCircle,
-  Mic,
-  Paperclip,
-  Play,
-  Reply,
-  Search,
-  Send,
-  Trash2,
-  Video,
-  X,
-} from "lucide-react"
+import { Loader2, MessageCircle } from "lucide-react"
 import { toast } from "sonner"
 
 import { supabase } from "@/lib/supabase"
@@ -35,44 +14,23 @@ import {
   type ConversationListItem,
   type MessageResult,
 } from "@/lib/chat-shared"
-import type { DirectMessageParticipant, DirectMessageThread } from "@/types"
-import { cn, formatRelativeTime, linkifyText } from "@/lib/utils"
-import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
-import { VoiceNotePlayer } from "@/components/voice-note-player"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { cn, formatRelativeTime } from "@/lib/utils"
 import { useUnreadMessagesPerThread } from "@/hooks/use-unread-messages-per-thread"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MessageImageLightbox } from "@/components/message-image-lightbox"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { EmojiPicker } from "@/components/emoji-picker"
-
-type ViewerProfile = {
-  id: string
-  username: string | null
-  first_name: string | null
-  last_name: string | null
-  profile_picture: string | null
-}
-
-type AttachmentState = {
-  id: string
-  fileName: string
-  mediaType: "image" | "audio" | "file" | "video"
-  status: "uploading" | "ready" | "error"
-  previewUrl?: string
-  storagePath?: string
-  objectPath?: string
-  mimeType?: string
-  fileSize?: number
-  durationSeconds?: number
-  error?: string
-}
-
-type ThreadPaginationState = Record<string, { hasMore: boolean; nextCursor: string | null }>
+import type { ViewerProfile, AttachmentState, ThreadPaginationState } from "./types"
+import { getDisplayName, getInitials, storagePathToObjectPath } from "./utils"
+import { useSwipeToReply } from "./hooks/use-swipe-to-reply"
+import { useLongPress } from "./hooks/use-long-press"
+import { useAttachmentUrls } from "./hooks/use-attachment-urls"
+import { useConversationSearch } from "./hooks/use-conversation-search"
+import { useTypingIndicators } from "./hooks/use-typing-indicators"
+import { useConversations } from "./hooks/use-conversations"
+import { useMessageSending } from "./hooks/use-message-sending"
+import { useRealtimeSubscriptions } from "./hooks/use-realtime-subscriptions"
+import { ConversationList } from "./components/conversation-list"
+import { ConversationHeader } from "./components/conversation-header"
+import { MessageList } from "./components/message-list"
+import { MessageComposer } from "./components/message-composer"
 
 interface MessagesViewProps {
   viewer: ViewerProfile
@@ -89,41 +47,6 @@ const MAX_ATTACHMENTS = 6
 const TYPING_EXPIRATION_MS = 4000
 const TYPING_DEBOUNCE_MS = 1200
 
-function getDisplayName(profile: ViewerProfile | ConversationListItem["other_user_profile"]) {
-  if (!profile) return "Unknown User"
-  const fullName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim()
-  if (fullName.length > 0) return fullName
-  if (profile.username) return `@${profile.username}`
-  return "Unknown User"
-}
-
-function getInitials(
-  profile: ViewerProfile | ConversationListItem["other_user_profile"],
-) {
-  if (!profile) return "?"
-  const first = profile.first_name?.[0]
-  const last = profile.last_name?.[0]
-  if (first || last) {
-    return `${first ?? ""}${last ?? ""}`.toUpperCase()
-  }
-  return profile.username?.slice(0, 2)?.toUpperCase() ?? "?"
-}
-
-function storagePathToObjectPath(storagePath: string | null | undefined) {
-  if (!storagePath) return null
-  const prefix = "dm-media/"
-  if (storagePath.startsWith(prefix)) {
-    return storagePath.slice(prefix.length)
-  }
-  return storagePath
-}
-
-function formatTimestamp(iso?: string | null) {
-  if (!iso) return ""
-  const date = new Date(iso)
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-}
-
 export default function MessagesView({
   viewer,
   initialConversations,
@@ -131,44 +54,18 @@ export default function MessagesView({
   initialMessagesByThread,
   initialPaginationByThread,
 }: MessagesViewProps) {
-  const [conversations, setConversations] = useState<ConversationListItem[]>(initialConversations)
-  const [displayedConversations, setDisplayedConversations] = useState<ConversationListItem[]>(initialConversations)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialThreadId)
-  const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageResult[]>>(initialMessagesByThread)
-  const [threadPagination, setThreadPagination] = useState<ThreadPaginationState>(initialPaginationByThread)
-  const [loadingThreadId, setLoadingThreadId] = useState<string | null>(null)
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+  const [mobileView, setMobileView] = useState<"list" | "conversation">("list")
+  
+  // UI state
   const [composerValue, setComposerValue] = useState("")
-  const [isSending, setIsSending] = useState(false)
   const [attachments, setAttachments] = useState<AttachmentState[]>([])
   const [replyingToMessage, setReplyingToMessage] = useState<MessageResult | null>(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
-  
-  // Debug: Log attachments state changes
-  useEffect(() => {
-    console.log('[Attachments State] State changed:', {
-      count: attachments.length,
-      attachments: attachments.map(a => ({
-        id: a.id,
-        fileName: a.fileName,
-        mediaType: a.mediaType,
-        status: a.status,
-        hasPreviewUrl: !!a.previewUrl
-      }))
-    })
-  }, [attachments])
-  
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false)
-  const [typingIndicators, setTypingIndicators] = useState<Record<string, { userId: string; expiresAt: number }>>({})
-  const [displayTypingIndicators, setDisplayTypingIndicators] = useState<Record<string, boolean>>({})
-  const [presenceMap, setPresenceMap] = useState<Record<string, boolean>>({})
-  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, { url: string; expiresAt: number }>>({})
-  const [conversationImagePreviews, setConversationImagePreviews] = useState<Record<string, { url: string; expiresAt: number }>>({})
-  const [isMobile, setIsMobile] = useState(false)
-  const [mobileView, setMobileView] = useState<"list" | "conversation">("list")
-  const [isClient, setIsClient] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
@@ -179,12 +76,155 @@ export default function MessagesView({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxImages, setLightboxImages] = useState<Array<{ id: string; url: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [conversationImagePreviews, setConversationImagePreviews] = useState<Record<string, { url: string; expiresAt: number }>>({})
+  
+  // Refs
   const videoRefs = useRef<Record<string, HTMLVideoElement>>({})
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
-  const touchStart = useRef<{ x: number; y: number } | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const messageContainerRef = useRef<HTMLDivElement | null>(null)
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const highlightedMessageIdRef = useRef<string | null>(null)
+  const attachmentsRef = useRef<AttachmentState[]>(attachments)
+  const lastThreadFromQueryRef = useRef<string | null>(null)
+
+  // Mobile detection
+  useEffect(() => {
+    setIsClient(true)
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024)
+    }
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  // Cleanup attachments on unmount
+  useEffect(() => {
+    return () => {
+      attachmentsRef.current.forEach((attachment) => {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl)
+        }
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    attachmentsRef.current = attachments
+  }, [attachments])
+
+  // Initialize refs
+  const conversationsRef = useRef<ConversationListItem[]>(initialConversations)
+  const messagesRef = useRef<Record<string, MessageResult[]>>(initialMessagesByThread)
+  const selectedThreadIdRef = useRef<string | null>(initialThreadId)
+  const mobileViewRef = useRef<"list" | "conversation">(mobileView)
+  const isMobileRef = useRef(isMobile)
+
+  // Attachment URLs hook (needs to be initialized early)
+  const { attachmentUrls, ensureAttachmentUrls } = useAttachmentUrls()
+
+  // Conversation management hook
+  const {
+    conversations,
+    setConversations,
+    selectedThreadId,
+    setSelectedThreadId,
+    messagesByThread,
+    setMessagesByThread,
+    threadPagination,
+    setThreadPagination,
+    loadingThreadId,
+    mobileView: mobileViewFromHook,
+    setMobileView: setMobileViewFromHook,
+    refreshConversations,
+    prefetchMessages,
+    handleSelectConversation,
+  } = useConversations({
+    initialConversations,
+    initialThreadId,
+    initialMessagesByThread,
+    initialPaginationByThread,
+    isMobile,
+    isClient,
+    ensureAttachmentUrls,
+    messagesRef,
+    conversationsRef,
+    selectedThreadIdRef,
+    mobileViewRef,
+    isMobileRef,
+  })
+
+  // Update mobileView from hook
+  useEffect(() => {
+    setMobileView(mobileViewFromHook)
+  }, [mobileViewFromHook])
+
+  // Update attachment URLs hook with current data
+  useEffect(() => {
+    const selectedMessages = selectedThreadId ? messagesByThread[selectedThreadId] ?? [] : []
+    if (selectedMessages.length > 0) {
+      ensureAttachmentUrls(selectedMessages.flatMap((message) => message.attachments ?? []))
+    }
+  }, [selectedThreadId, messagesByThread, ensureAttachmentUrls])
+
+  useEffect(() => {
+    if (replyingToMessage?.attachments?.length) {
+      ensureAttachmentUrls(replyingToMessage.attachments)
+    }
+  }, [replyingToMessage?.attachments, ensureAttachmentUrls])
+
+  useEffect(() => {
+    if (!selectedThreadId) return
+    const threadMessages = messagesByThread[selectedThreadId] ?? []
+    const repliedAttachments: MessageResult["attachments"] = []
+    threadMessages.forEach(message => {
+      if (message.replied_to_message?.attachments) {
+        repliedAttachments.push(...message.replied_to_message.attachments)
+      }
+    })
+    
+    if (repliedAttachments.length > 0) {
+      ensureAttachmentUrls(repliedAttachments)
+    }
+  }, [selectedThreadId, messagesByThread, ensureAttachmentUrls])
+
+  // Conversation search hook
+  const { searchTerm, setSearchTerm, searchLoading, displayedConversations } = useConversationSearch(conversations)
+
+  // Typing indicators hook
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const typingDisplayTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const {
+    typingIndicators,
+    setTypingIndicators,
+    displayTypingIndicators,
+    setDisplayTypingIndicators,
+    notifyTyping,
+    scheduleTypingBroadcast,
+  } = useTypingIndicators(channelRef as React.MutableRefObject<RealtimeChannel | null>, viewer.id, selectedThreadId)
+
+  // Presence map state
+  const [presenceMap, setPresenceMap] = useState<Record<string, boolean>>({})
+
+  // Message sending hook
+  const { isSending, handleSendMessage } = useMessageSending({
+    viewerId: viewer.id,
+    selectedThreadId,
+    displayedConversations,
+    messagesByThread,
+    setMessagesByThread,
+    setConversations,
+    ensureAttachmentUrls,
+    handleSelectConversation,
+    refreshConversations,
+    notifyTyping,
+    typingDisplayTimeoutRef,
+    messageContainerRef,
+    conversationsRef,
+    initialThreadId,
+  })
 
   // Get unread message counts per thread
   const threadIds = conversations.map((c) => c.thread_id)
@@ -194,65 +234,32 @@ export default function MessagesView({
   const router = useRouter()
   const pathname = usePathname()
 
-  const messageContainerRef = useRef<HTMLDivElement | null>(null)
-  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-  const highlightedMessageIdRef = useRef<string | null>(null)
-  const channelRef = useRef<RealtimeChannel | null>(null)
-  const messagesChannelRef = useRef<RealtimeChannel | null>(null)
-  const threadsChannelRef = useRef<RealtimeChannel | null>(null)
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const typingBroadcastCooldownRef = useRef<NodeJS.Timeout | null>(null)
-  const typingDisplayTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
-  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null)
-  const attachmentsRef = useRef<AttachmentState[]>(attachments)
-  const messagesRef = useRef(messagesByThread)
-  const conversationsRef = useRef(conversations)
-  const lastThreadFromQueryRef = useRef<string | null>(null)
-  const selectedThreadIdRef = useRef<string | null>(null)
-  const mobileViewRef = useRef<"list" | "conversation">(mobileView)
-  const isMobileRef = useRef(isMobile)
+  // Swipe to reply hook
+  const {
+    swipeOffset,
+    swipingMessageId,
+    handleSwipeStart: handleSwipeStartBase,
+    handleSwipeMove: handleSwipeMoveBase,
+    handleSwipeEnd: handleSwipeEndBase,
+  } = useSwipeToReply(isMobile, longPressMenuOpen)
 
-  useEffect(() => {
-    attachmentsRef.current = attachments
-  }, [attachments])
-
-  useEffect(() => {
-    return () => {
-      attachmentsRef.current.forEach((attachment) => {
-        if (attachment.previewUrl) {
-          URL.revokeObjectURL(attachment.previewUrl)
-        }
-      })
-      // Voice note audio elements are cleaned up by VoiceNotePlayer component
-    }
-  }, [])
-
-  useEffect(() => {
-    messagesRef.current = messagesByThread
-  }, [messagesByThread])
-
-  useEffect(() => {
-    conversationsRef.current = conversations
-  }, [conversations])
-
-  useEffect(() => {
-    selectedThreadIdRef.current = selectedThreadId
-  }, [selectedThreadId])
-
-  useEffect(() => {
-    mobileViewRef.current = mobileView
-  }, [mobileView])
-
-  useEffect(() => {
-    isMobileRef.current = isMobile
-  }, [isMobile])
+  // Long press hook
+  const { handleLongPressStart, handleLongPressMove, handleLongPressEnd } = useLongPress(
+    isMobile,
+    useCallback((messageId: string) => {
+      setLongPressMenuOpen(messageId)
+    }, [])
+  )
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.thread_id === selectedThreadId) ?? null,
     [conversations, selectedThreadId],
   )
 
-  const selectedMessages = selectedThreadId ? messagesByThread[selectedThreadId] ?? [] : []
+  const selectedMessages = useMemo(
+    () => selectedThreadId ? messagesByThread[selectedThreadId] ?? [] : [],
+    [selectedThreadId, messagesByThread]
+  )
 
   // Compute live previews from actual messages in threads
   const liveMessagePreviews = useMemo(() => {
@@ -356,55 +363,28 @@ export default function MessagesView({
     fetchImagePreviews()
   }, [conversations, liveMessagePreviews, conversationImagePreviews])
 
+  // Set mobile view to conversation when initialThreadId is provided
   useEffect(() => {
-    setIsClient(true)
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 1024)
+    if (initialThreadId && isMobile && isClient) {
+      setMobileView("conversation")
     }
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+  }, [initialThreadId, isMobile, isClient])
 
+  // Auto-select first conversation if none selected
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setDisplayedConversations(conversations)
-      return
-    }
-    // Debounced remote search
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-    searchDebounceRef.current = setTimeout(async () => {
-      try {
-        setSearchLoading(true)
-        const params = new URLSearchParams()
-        params.set("search", searchTerm.trim())
-        params.set("limit", "30")
-        const response = await fetch(`/api/dm/threads?${params.toString()}`, { cache: "no-store" })
-        if (!response.ok) {
-          throw new Error("Failed to search conversations")
-        }
-        const data = await response.json()
-        setDisplayedConversations(data.conversations ?? [])
-      } catch (error) {
-        console.error(error)
-        toast.error("Unable to search conversations right now.")
-      } finally {
-        setSearchLoading(false)
-      }
-    }, 350)
+    if (selectedThreadId) return
 
-    return () => {
-      if (searchDebounceRef.current) {
-        clearTimeout(searchDebounceRef.current)
-        searchDebounceRef.current = null
-      }
-    }
-  }, [searchTerm])
+    const fallback =
+      selectedConversation?.thread_id ??
+      conversationsRef.current[0]?.thread_id ??
+      displayedConversations[0]?.thread_id ??
+      initialThreadId ??
+      null
 
-  useEffect(() => {
-    if (searchTerm.trim()) return
-    setDisplayedConversations(conversations)
-  }, [conversations, searchTerm])
+    if (fallback) {
+      setSelectedThreadId(fallback)
+    }
+  }, [selectedThreadId, selectedConversation, displayedConversations, initialThreadId])
 
   // Scroll to bottom when thread changes
   useEffect(() => {
@@ -431,112 +411,6 @@ export default function MessagesView({
     }
   }, [selectedMessages.length, selectedThreadId])
 
-  const ensureAttachmentUrls = useCallback(
-    async (attachmentsToEnsure: MessageResult["attachments"], forceRefresh = false) => {
-      if (!attachmentsToEnsure || attachmentsToEnsure.length === 0) return
-
-      const now = Date.now()
-
-      await Promise.all(
-        attachmentsToEnsure.map(async (attachment: any) => {
-          const existing = attachmentUrls[attachment.id]
-          
-          // Skip if URL exists and hasn't expired (unless force refresh)
-          if (!forceRefresh && existing && existing.expiresAt > now + SIGNED_URL_REFRESH_THRESHOLD * 1000) {
-            return
-          }
-
-          // If attachment has source_storage_path, it needs to be copied first
-          if (attachment.source_storage_path && attachment.source_bucket) {
-            // Find the message ID to copy the file
-            const messageId = attachment.message_id
-            if (messageId) {
-              try {
-                await fetch("/api/dm/copy-boost-attachments", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ messageId }),
-                })
-                // Wait a bit for the copy to complete
-                await new Promise(resolve => setTimeout(resolve, 500))
-                // Re-fetch the attachment to get updated storage_path
-                const { data: updatedAttachment } = await supabase
-                  .from("dm_message_media")
-                  .select("storage_path")
-                  .eq("id", attachment.id)
-                  .single()
-                if (updatedAttachment) {
-                  attachment.storage_path = updatedAttachment.storage_path
-                }
-              } catch (error) {
-                console.error("Error copying boost reward attachment:", error)
-                return
-              }
-            }
-          }
-
-          const objectPath = storagePathToObjectPath(attachment.storage_path)
-          if (!objectPath) {
-            // Silently skip if no valid object path
-            return
-          }
-
-          try {
-            const { data, error } = await supabase.storage
-              .from("dm-media")
-              .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS)
-
-            // Silently skip if any error occurs (file not found, permissions, etc.)
-            if (error || !data?.signedUrl) {
-              return
-            }
-
-            setAttachmentUrls((prev) => ({
-              ...prev,
-              [attachment.id]: {
-                url: data.signedUrl,
-                expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
-              },
-            }))
-          } catch (error) {
-            // Silently catch and ignore all exceptions to prevent console spam
-            return
-          }
-        }),
-      )
-    },
-    [attachmentUrls],
-  )
-
-  useEffect(() => {
-    if (!selectedMessages.length) return
-    ensureAttachmentUrls(selectedMessages.flatMap((message) => message.attachments ?? []))
-  }, [selectedMessages, ensureAttachmentUrls])
-
-  // Ensure attachment URLs for replying to message
-  useEffect(() => {
-    if (!replyingToMessage?.attachments?.length) return
-    ensureAttachmentUrls(replyingToMessage.attachments)
-  }, [replyingToMessage?.attachments, ensureAttachmentUrls])
-
-  // Ensure attachment URLs for replied messages in current thread
-  useEffect(() => {
-    if (!selectedThreadId) return
-    const threadMessages = messagesByThread[selectedThreadId] ?? []
-    const repliedMessageIds = new Set<string>()
-    
-    // Collect attachments from replied_to_message data
-    const repliedAttachments: MessageResult["attachments"] = []
-    threadMessages.forEach(message => {
-      if (message.replied_to_message?.attachments) {
-        repliedAttachments.push(...message.replied_to_message.attachments)
-      }
-    })
-    
-    if (repliedAttachments.length > 0) {
-      ensureAttachmentUrls(repliedAttachments)
-    }
-  }, [selectedThreadId, messagesByThread, ensureAttachmentUrls])
 
   // Voice note audio elements are now managed by VoiceNotePlayer component
 
@@ -562,226 +436,6 @@ export default function MessagesView({
     }
   }, [initialThreadId, isMobile, isClient])
 
-  const refreshConversations = useCallback(async () => {
-    const response = await fetch("/api/dm/threads?limit=30", { cache: "no-store" })
-    if (!response.ok) {
-      throw new Error("Failed to refresh conversations")
-    }
-
-    const data = await response.json()
-    const list: ConversationListItem[] = data.conversations ?? []
-    setConversations(list)
-    if (!searchTerm.trim()) {
-      setDisplayedConversations(list)
-    }
-    return list
-  }, [searchTerm])
-
-  // Prefetch messages for conversations on hover (desktop only) for instant switching
-  // Use a ref to track prefetch timeouts to debounce rapid hovers
-  const prefetchTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
-  
-  const prefetchMessages = useCallback(
-    async (threadId: string) => {
-      // Only prefetch if messages aren't already loaded
-      if (messagesRef.current[threadId]) {
-        return
-      }
-
-      // Clear any existing timeout for this thread
-      if (prefetchTimeoutRef.current[threadId]) {
-        clearTimeout(prefetchTimeoutRef.current[threadId])
-      }
-
-      // Debounce prefetch - wait 150ms after hover to avoid prefetching on quick mouse moves
-      prefetchTimeoutRef.current[threadId] = setTimeout(() => {
-        // Double-check messages aren't loaded (might have been loaded by click)
-        if (messagesRef.current[threadId]) {
-          delete prefetchTimeoutRef.current[threadId]
-          return
-        }
-
-        // Prefetch in background - don't await
-        fetch(`/api/dm/threads/${threadId}/messages?limit=${DEFAULT_PAGE_SIZE}`, {
-          cache: "no-store",
-        })
-          .then(async (response) => {
-            if (!response.ok) {
-              delete prefetchTimeoutRef.current[threadId]
-              return
-            }
-            const data = await response.json()
-            const fetchedMessages: MessageResult[] = data.messages ?? []
-            
-            // Double-check we still need to cache (might have been loaded by click)
-            if (messagesRef.current[threadId]) {
-              delete prefetchTimeoutRef.current[threadId]
-              return
-            }
-            
-            // Cache messages silently
-            setMessagesByThread((prev) => ({
-              ...prev,
-              [threadId]: fetchedMessages,
-            }))
-            setThreadPagination((prev) => ({
-              ...prev,
-              [threadId]: {
-                hasMore: Boolean(data.pageInfo?.hasMore),
-                nextCursor: data.pageInfo?.nextCursor ?? null,
-              },
-            }))
-            
-            // Prefetch attachment URLs in background (non-blocking)
-            ensureAttachmentUrls(fetchedMessages.flatMap((m) => m.attachments ?? [])).catch(() => {
-              // Silent fail - non-critical
-            }).finally(() => {
-              delete prefetchTimeoutRef.current[threadId]
-            })
-          })
-          .catch(() => {
-            // Silent fail - prefetch is optional
-            delete prefetchTimeoutRef.current[threadId]
-          })
-      }, 150) // 150ms debounce
-    },
-    [ensureAttachmentUrls],
-  )
-
-  // Prefetch messages for top conversations on load (desktop only) for faster switching
-  useEffect(() => {
-    if (isMobile || !isClient) return
-    
-    // Prefetch top 3 conversations (most likely to be opened)
-    const topConversations = conversations.slice(0, 3)
-    topConversations.forEach((conversation, index) => {
-      // Stagger prefetch slightly to avoid overwhelming the server
-      setTimeout(() => {
-        if (!messagesRef.current[conversation.thread_id]) {
-          prefetchMessages(conversation.thread_id)
-        }
-      }, index * 200) // 200ms delay between each prefetch
-    })
-  }, [conversations, isMobile, isClient, prefetchMessages])
-
-  const handleSelectConversation = useCallback(
-    async (threadId: string) => {
-      const normalizedThreadId = threadId.trim()
-      
-      // Cancel any pending prefetch for this thread
-      if (prefetchTimeoutRef.current[normalizedThreadId]) {
-        clearTimeout(prefetchTimeoutRef.current[normalizedThreadId])
-        delete prefetchTimeoutRef.current[normalizedThreadId]
-      }
-
-      // Cancel any in-flight fetch requests for previous conversation
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-      
-      // Create new AbortController for this request
-      const abortController = new AbortController()
-      abortControllerRef.current = abortController
-      
-      // Immediately update UI state for instant feedback (SPA-like)
-      // Use startTransition to make state updates non-blocking
-      startTransition(() => {
-        setSelectedThreadId(normalizedThreadId)
-        if (isMobile) {
-          setMobileView("conversation")
-        }
-      })
-
-      // If messages are already cached, update URL and we're done - instant switch!
-      if (messagesRef.current[normalizedThreadId]) {
-        // Update URL asynchronously (non-blocking)
-        startTransition(() => {
-          const currentThreadParam = searchParams?.get("thread")
-          const hasPeerParam = !!searchParams?.get("peerId")
-          if (currentThreadParam !== normalizedThreadId || hasPeerParam) {
-            const nextParams = new URLSearchParams(searchParams?.toString() ?? "")
-            nextParams.set("thread", normalizedThreadId)
-            nextParams.delete("peerId")
-            const queryString = nextParams.toString()
-            router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
-          }
-        })
-        setLoadingThreadId(null)
-        return
-      }
-
-      // Set loading state immediately so UI can show loading indicator
-      setLoadingThreadId(normalizedThreadId)
-
-      // Update URL asynchronously (non-blocking) - use startTransition
-      startTransition(() => {
-        const currentThreadParam = searchParams?.get("thread")
-        const hasPeerParam = !!searchParams?.get("peerId")
-        if (currentThreadParam !== normalizedThreadId || hasPeerParam) {
-          const nextParams = new URLSearchParams(searchParams?.toString() ?? "")
-          nextParams.set("thread", normalizedThreadId)
-          nextParams.delete("peerId")
-          const queryString = nextParams.toString()
-          router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
-        }
-      })
-
-      // Fetch messages in background - don't block UI
-      try {
-        const response = await fetch(`/api/dm/threads/${normalizedThreadId}/messages?limit=${DEFAULT_PAGE_SIZE}`, {
-          cache: "no-store",
-          signal: abortController.signal, // Allow cancellation if user switches quickly
-        })
-        
-        // Check if request was aborted
-        if (abortController.signal.aborted) {
-          return
-        }
-        
-        if (!response.ok) throw new Error("Failed to load messages")
-        const data = await response.json()
-        const fetchedMessages: MessageResult[] = data.messages ?? []
-        
-        // Check again if request was aborted before updating state
-        if (abortController.signal.aborted) {
-          return
-        }
-        
-        // Update messages state using startTransition for non-blocking update
-        startTransition(() => {
-          setMessagesByThread((prev) => ({
-            ...prev,
-            [normalizedThreadId]: fetchedMessages,
-          }))
-          setThreadPagination((prev) => ({
-            ...prev,
-            [normalizedThreadId]: {
-              hasMore: Boolean(data.pageInfo?.hasMore),
-              nextCursor: data.pageInfo?.nextCursor ?? null,
-            },
-          }))
-          setLoadingThreadId(null)
-        })
-        
-        // Ensure attachment URLs in background - don't block
-        ensureAttachmentUrls(fetchedMessages.flatMap((m) => m.attachments ?? [])).catch((error) => {
-          console.error("Error ensuring attachment URLs:", error)
-          // Non-critical error - don't show toast
-        })
-      } catch (error: any) {
-        // Ignore abort errors
-        if (error.name === 'AbortError') {
-          return
-        }
-        console.error(error)
-        if (!abortController.signal.aborted) {
-          setLoadingThreadId(null)
-          toast.error("We couldn't load that conversation right now.")
-        }
-      }
-    },
-    [ensureAttachmentUrls, isMobile, pathname, router, searchParams],
-  )
 
   const handleMarkThreadRead = useCallback(
     async (threadId: string) => {
@@ -1012,631 +666,35 @@ export default function MessagesView({
     }
   }, [selectedConversation, selectedThreadId, handleMarkThreadRead, messagesByThread, viewer.id, markMessagesAsRead, isMobile, mobileView])
 
-  const cleanupChannel = useCallback(() => {
-    if (channelRef.current) {
-      try {
-        supabase.removeChannel(channelRef.current)
-      } catch (error) {
-        console.error("[cleanupChannel] Error removing channel:", error)
-      } finally {
-        channelRef.current = null
-      }
-    }
-  }, [])
+  // Realtime subscriptions hook
+  const { channelRef: realtimeChannelRef, messagesChannelRef, threadsChannelRef } = useRealtimeSubscriptions({
+    selectedThreadId,
+    selectedConversation,
+    viewerId: viewer.id,
+    messagesByThread,
+    setMessagesByThread,
+    setConversations,
+    setTypingIndicators,
+    setDisplayTypingIndicators,
+    setPresenceMap,
+    ensureAttachmentUrls,
+    markMessagesAsRead,
+    refreshConversations,
+    selectedThreadIdRef,
+    mobileViewRef,
+    isMobileRef,
+    messagesRef,
+    conversationsRef,
+    typingDisplayTimeoutRef,
+  })
 
-  const cleanupThreadsChannel = useCallback(() => {
-    if (threadsChannelRef.current) {
-      try {
-        supabase.removeChannel(threadsChannelRef.current)
-      } catch (error) {
-        console.error("[cleanupThreadsChannel] Error removing channel:", error)
-      } finally {
-        threadsChannelRef.current = null
-      }
-    }
-  }, [])
-
+  // Update channelRef for typing indicators
   useEffect(() => {
-    cleanupChannel()
-    if (!selectedThreadId || !selectedConversation) return
-
-    // Create a dedicated channel for postgres_changes (separate from presence/broadcast)
-    const messagesChannel = supabase
-      .channel(`dm-messages-${selectedThreadId}`, {
-        config: {
-          broadcast: { self: false },
-        },
-      })
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "dm_messages",
-          filter: `thread_id=eq.${selectedThreadId}`,
-        },
-        async (payload) => {
-          try {
-            console.log("[realtime] Received message INSERT event:", payload)
-            
-            if (!payload || !payload.new) {
-              console.error("[realtime] Invalid payload structure:", payload)
-              return
-            }
-            
-            // Filter by thread_id in the handler instead of in the subscription
-            const messageThreadId = (payload.new as { thread_id?: string })?.thread_id
-            if (!messageThreadId) {
-              console.error("[realtime] Message missing thread_id:", payload.new)
-              return
-            }
-            
-            if (messageThreadId !== selectedThreadId) {
-              console.log("[realtime] Message is for different thread, ignoring:", messageThreadId, "expected:", selectedThreadId)
-              return
-            }
-            
-            console.log("[realtime] Processing message for current thread:", messageThreadId)
-          
-          const newMessage = payload.new as {
-            id: string
-            thread_id: string
-            sender_id: string
-            message_type: string
-            content?: string | null
-            metadata?: Record<string, unknown> | null
-            has_attachments: boolean
-            reply_to_message_id?: string | null
-            created_at: string
-            updated_at: string
-            is_deleted: boolean
-          }
-          
-          if (!newMessage || !newMessage.id) {
-            console.error("[realtime] Invalid message payload:", payload)
-            return
-          }
-
-          // Skip if this is our own message - it's already added optimistically
-          if (newMessage.sender_id === viewer.id) {
-            console.log("[realtime] Skipping own message:", newMessage.id)
-            return
-          }
-
-          console.log("[realtime] Processing new message from other user:", newMessage.id, "in thread:", selectedThreadId)
-
-          // Immediately stop typing indicator when a message is received
-          setTypingIndicators((prev) => {
-            const next = { ...prev }
-            delete next[selectedThreadId]
-            return next
-          })
-          // Clear any pending typing display timeout
-          if (typingDisplayTimeoutRef.current[selectedThreadId]) {
-            clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
-            delete typingDisplayTimeoutRef.current[selectedThreadId]
-          }
-          // Immediately hide typing indicator
-          setDisplayTypingIndicators((prev) => {
-            const next = { ...prev }
-            delete next[selectedThreadId]
-            return next
-          })
-
-          // Fetch attachments, read receipts, and replied-to message in parallel
-          const [attachmentsResult, readReceiptsResult, repliedToResult] = await Promise.all([
-            supabase
-              .from("dm_message_media")
-              .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at, source_storage_path, source_bucket")
-              .eq("message_id", newMessage.id),
-            supabase
-              .from("dm_message_reads")
-              .select("id, message_id, user_id, read_at")
-              .eq("message_id", newMessage.id),
-            newMessage.reply_to_message_id
-              ? Promise.all([
-                  supabase
-                    .from("dm_messages")
-                    .select("id, sender_id, content, has_attachments, created_at, thread_id, is_deleted")
-                    .eq("id", newMessage.reply_to_message_id)
-                    .eq("thread_id", selectedThreadId) // Ensure same thread
-                    .eq("is_deleted", false) // Ensure not deleted
-                    .maybeSingle(),
-                  supabase
-                    .from("dm_message_media")
-                    .select("id, message_id, media_type, storage_path, mime_type, file_size, duration_seconds, file_name, created_at, source_storage_path, source_bucket")
-                    .eq("message_id", newMessage.reply_to_message_id),
-                ]).then(([messageResult, attachmentsResult]) => ({
-                  data: messageResult.data
-                    ? {
-                        ...messageResult.data,
-                        attachments: attachmentsResult.data ?? [],
-                      }
-                    : null,
-                  error: messageResult.error || attachmentsResult.error || null,
-                }))
-              : Promise.resolve({ data: null, error: null }),
-          ])
-
-          // If this is a boost reward message with attachments that need copying, copy them
-          if (newMessage.metadata?.boost_reward && attachmentsResult.data) {
-            const needsCopying = attachmentsResult.data.some((a: any) => a.source_storage_path && a.source_bucket)
-            if (needsCopying) {
-              // Copy files from post-media to dm-media bucket
-              fetch("/api/dm/copy-boost-attachments", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messageId: newMessage.id }),
-              }).catch((error) => {
-                console.error("Error copying boost reward attachments:", error)
-              })
-            }
-          }
-
-          const enrichedMessage: MessageResult = {
-            id: newMessage.id,
-            thread_id: newMessage.thread_id,
-            sender_id: newMessage.sender_id,
-            message_type: newMessage.message_type as "text" | "system",
-            content: newMessage.content ?? null,
-            metadata: newMessage.metadata ?? null,
-            has_attachments: newMessage.has_attachments ?? false,
-            reply_to_message_id: newMessage.reply_to_message_id ?? null,
-            created_at: newMessage.created_at,
-            updated_at: newMessage.updated_at,
-            is_deleted: newMessage.is_deleted ?? false,
-            attachments: attachmentsResult.data ?? [],
-            read_receipts: readReceiptsResult.data ?? [],
-            replied_to_message: repliedToResult.data &&
-              repliedToResult.data.thread_id === selectedThreadId &&
-              !repliedToResult.data.is_deleted
-              ? {
-                  id: repliedToResult.data.id,
-                  sender_id: repliedToResult.data.sender_id,
-                  content: repliedToResult.data.content ?? null,
-                  has_attachments: repliedToResult.data.has_attachments ?? false,
-                  created_at: repliedToResult.data.created_at,
-                  attachments: (repliedToResult.data as any).attachments ?? [],
-                }
-              : null,
-          }
-
-          // Add message to state (append since messages are in ascending order)
-          setMessagesByThread((prev) => {
-            const existingMessages = prev[selectedThreadId] ?? []
-            // Check if message already exists (race condition protection)
-            if (existingMessages.some((message) => message.id === enrichedMessage.id)) {
-              console.log("[realtime] Message already exists, skipping:", enrichedMessage.id)
-              return prev
-            }
-            console.log("[realtime] Adding new message to state:", enrichedMessage.id, "Total messages:", existingMessages.length + 1)
-            // Append new message to the end (messages are in ascending chronological order)
-            return {
-              ...prev,
-              [selectedThreadId]: [...existingMessages, enrichedMessage],
-            }
-          })
-
-          const hasImage = enrichedMessage.attachments?.some(a => a.media_type === "image") ?? false
-          setConversations((prev) =>
-            prev
-              .map((item) =>
-                item.thread_id === selectedThreadId
-                  ? {
-                      ...item,
-                      last_message_at: enrichedMessage.created_at,
-                      last_message_preview: enrichedMessage.content ?? (hasImage ? "[image]" : (enrichedMessage.attachments?.length ? "[attachment]" : "")),
-                      last_message_sender_id: enrichedMessage.sender_id,
-                      updated_at: new Date().toISOString(),
-                    }
-                  : item,
-              )
-              .sort((a, b) => {
-                const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
-                const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
-                return bTime - aTime
-              }),
-          )
-
-          ensureAttachmentUrls(enrichedMessage.attachments ?? [])
-
-          // Mark message as read if viewing this thread and conversation is actively open
-          // On mobile, only mark if in conversation view (not list view)
-          // Use refs to avoid stale closure values
-          const currentThreadId = selectedThreadIdRef.current
-          const currentMobileView = mobileViewRef.current
-          const currentIsMobile = isMobileRef.current
-          const isConversationActive = !currentIsMobile || currentMobileView === "conversation"
-          if (currentThreadId === newMessage.thread_id && isConversationActive) {
-            markMessagesAsRead(currentThreadId, [enrichedMessage.id]).catch((error) => {
-              console.error("[realtime] Failed to mark message as read:", error)
-            })
-          }
-          } catch (error) {
-            console.error("[realtime] Error processing message INSERT event:", error, payload)
-          }
-        },
-      )
-      .subscribe(async (status, err) => {
-        console.log("[messagesChannel.subscribe] Channel status:", status, "for thread:", selectedThreadId)
-        if (err) {
-          console.error("[messagesChannel.subscribe] Subscription error:", err)
-        }
-        if (status === "SUBSCRIBED") {
-          console.log("[messagesChannel.subscribe] Successfully subscribed to messages for thread:", selectedThreadId)
-        }
-      })
-
-    // Create a separate channel for presence and typing (broadcast events)
-    const channel = supabase
-      .channel(getThreadChannelName(selectedThreadId), {
-        config: {
-          presence: {
-            key: viewer.id,
-          },
-        },
-      })
-      .on(
-        "presence",
-        { event: "sync" },
-        () => {
-          const state = channel.presenceState<{ userId: string }>()
-          const otherUserId = selectedConversation.other_user_id
-          const otherIsPresent = Object.values(state).some((entries) =>
-            entries.some((item) => item.userId === otherUserId),
-          )
-          setPresenceMap((prev) => ({
-            ...prev,
-            [selectedThreadId]: otherIsPresent,
-          }))
-        },
-      )
-      .on("broadcast", { event: DM_TYPING_EVENT }, ({ payload }) => {
-        if (!payload) return
-        const { userId, typing } = payload as { userId: string; typing: boolean }
-        if (!userId || userId === viewer.id) return
-        setTypingIndicators((prev) => {
-          const expiresAt = Date.now() + TYPING_EXPIRATION_MS
-          const next = { ...prev }
-          if (typing) {
-            next[selectedThreadId] = { userId, expiresAt }
-          } else {
-            delete next[selectedThreadId]
-          }
-          return next
-        })
-      })
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "dm_message_reads",
-        },
-        async (payload) => {
-          try {
-            console.log("[realtime] Received read receipt INSERT event:", payload)
-            
-            const readReceipt = payload.new as {
-              id: string
-              message_id: string
-              user_id: string
-              read_at: string
-            }
-            if (!readReceipt || !readReceipt.message_id) {
-              console.error("[realtime] Invalid read receipt payload:", payload)
-              return
-            }
-
-            // Get current thread ID from ref to avoid stale closure
-            const currentThreadId = selectedThreadIdRef.current
-            if (!currentThreadId) {
-              console.log("[realtime] No thread selected, ignoring read receipt")
-              return
-            }
-
-            // Fetch the message to get its thread_id
-            const { data: messageData, error: messageError } = await supabase
-              .from("dm_messages")
-              .select("thread_id, sender_id")
-              .eq("id", readReceipt.message_id)
-              .single()
-
-            if (messageError || !messageData) {
-              console.error("[realtime] Error fetching message for read receipt:", messageError)
-              return
-            }
-
-            const messageThreadId = messageData.thread_id
-            if (messageThreadId !== currentThreadId) {
-              console.log("[realtime] Read receipt is for different thread, ignoring:", messageThreadId, "expected:", currentThreadId)
-              return
-            }
-
-            // Only update if this read receipt is for a message we sent
-            if (messageData.sender_id !== viewer.id) {
-              console.log("[realtime] Read receipt is not for our message, ignoring")
-              return
-            }
-
-            console.log("[realtime] Processing read receipt for message:", readReceipt.message_id, "in thread:", currentThreadId)
-
-            // Update the message with the new read receipt using functional update
-            setMessagesByThread((prev) => {
-              const threadMessages = prev[currentThreadId] ?? []
-              const messageExists = threadMessages.some((msg) => msg.id === readReceipt.message_id)
-              
-              if (!messageExists) {
-                console.log("[realtime] Message not found in current thread, skipping read receipt update")
-                return prev
-              }
-
-              let updated = false
-              const updatedMessages = threadMessages.map((msg) => {
-                if (msg.id === readReceipt.message_id) {
-                  const existingReceipt = msg.read_receipts?.find(
-                    (r) => r.id === readReceipt.id || (r.message_id === readReceipt.message_id && r.user_id === readReceipt.user_id)
-                  )
-                  if (!existingReceipt) {
-                    console.log("[realtime] Adding read receipt to message:", readReceipt.message_id)
-                    updated = true
-                    return {
-                      ...msg,
-                      read_receipts: [...(msg.read_receipts ?? []), readReceipt],
-                    }
-                  } else {
-                    console.log("[realtime] Read receipt already exists, skipping")
-                  }
-                }
-                return msg
-              })
-
-              if (!updated) {
-                return prev
-              }
-
-              return {
-                ...prev,
-                [currentThreadId]: updatedMessages,
-              }
-            })
-          } catch (error) {
-            console.error("[realtime] Error processing read receipt INSERT event:", error, payload)
-          }
-        },
-      )
-      .subscribe(async (status, err) => {
-        console.log("[channel.subscribe] Presence/typing channel status:", status, "for thread:", selectedThreadId)
-        if (err) {
-          console.error("[channel.subscribe] Subscription error:", err)
-        }
-        if (status === "SUBSCRIBED") {
-          console.log("[channel.subscribe] Successfully subscribed to presence/typing for thread:", selectedThreadId)
-          try {
-            await channel.track({ userId: viewer.id, at: Date.now() })
-            console.log("[channel.subscribe] Presence tracked for user:", viewer.id)
-          } catch (error) {
-            console.error("[channel.subscribe] Failed to track presence:", error)
-          }
-        } else if (status === "CHANNEL_ERROR") {
-          console.error("[channel.subscribe] Channel error detected, will attempt reconnect")
-        } else if (status === "TIMED_OUT") {
-          console.error("[channel.subscribe] Channel timed out")
-        } else if (status === "CLOSED") {
-          console.warn("[channel.subscribe] Channel closed")
-        }
-      })
-
-    // Store both channels
-    channelRef.current = channel
-    messagesChannelRef.current = messagesChannel
-
-    return () => {
-      cleanupChannel()
-      // Also cleanup messages channel
-      if (messagesChannelRef.current) {
-        try {
-          supabase.removeChannel(messagesChannelRef.current)
-        } catch (error) {
-          console.error("[cleanupMessagesChannel] Error removing messages channel:", error)
-        } finally {
-          messagesChannelRef.current = null
-        }
-      }
+    if (realtimeChannelRef.current) {
+      channelRef.current = realtimeChannelRef.current
     }
-  }, [cleanupChannel, ensureAttachmentUrls, markMessagesAsRead, selectedConversation, selectedThreadId, viewer.id])
+  }, [realtimeChannelRef])
 
-  // Subscribe to dm_threads updates to refresh conversation previews when messages change
-  useEffect(() => {
-    cleanupThreadsChannel()
-
-    const threadsChannel = supabase
-      .channel("dm-threads-updates", {
-        config: {
-          broadcast: { self: false },
-        },
-      })
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "dm_threads",
-        },
-        async (payload) => {
-          const updatedThread = payload.new as {
-            id: string
-            last_message_at: string | null
-            last_message_preview: string | null
-            last_message_sender_id: string | null
-            updated_at: string
-          }
-
-          if (!updatedThread) return
-
-          // Check if this thread is in our conversations list
-          const existingConversation = conversationsRef.current.find(
-            (c) => c.thread_id === updatedThread.id
-          )
-
-          if (!existingConversation) {
-            // Thread not in our list, might be a new conversation - refresh the list
-            refreshConversations().catch((error) => {
-              console.error("[threadsChannel] Error refreshing conversations:", error)
-            })
-            return
-          }
-
-          // Update the conversation in our list with the new preview
-          setConversations((prev) =>
-            prev
-              .map((item) =>
-                item.thread_id === updatedThread.id
-                  ? {
-                      ...item,
-                      last_message_at: updatedThread.last_message_at,
-                      last_message_preview: updatedThread.last_message_preview,
-                      last_message_sender_id: updatedThread.last_message_sender_id,
-                      updated_at: updatedThread.updated_at,
-                    }
-                  : item,
-              )
-              .sort((a, b) => {
-                const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
-                const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
-                return bTime - aTime
-              }),
-          )
-
-          // If this thread has messages loaded, also update liveMessagePreviews
-          if (messagesRef.current[updatedThread.id]) {
-            // Fetch the actual last message to ensure preview is accurate
-            const { data: lastMessageData } = await supabase
-              .from("dm_messages")
-              .select("id, content, created_at, sender_id")
-              .eq("thread_id", updatedThread.id)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle()
-
-            if (lastMessageData) {
-              const { data: attachmentsData } = await supabase
-                .from("dm_message_media")
-                .select("id")
-                .eq("message_id", lastMessageData.id)
-                .limit(1)
-
-              const hasAttachments = (attachmentsData?.length ?? 0) > 0
-              const previewContent =
-                lastMessageData.content ?? (hasAttachments ? "[attachment]" : "")
-
-              // Update messagesByThread if the last message changed
-              setMessagesByThread((prev) => {
-                const existingMessages = prev[updatedThread.id] ?? []
-                if (existingMessages.length === 0) return prev
-
-                const currentLast = existingMessages[existingMessages.length - 1]
-                if (currentLast.id === lastMessageData.id) {
-                  // Same message, just update the preview in conversations
-                  return prev
-                }
-
-                // Last message changed (might have been deleted), refresh messages for this thread
-                // This will be handled by the user opening the thread or by prefetch
-                return prev
-              })
-            }
-          }
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          // Channel subscribed successfully
-        } else if (status === "CHANNEL_ERROR") {
-          console.error("[threadsChannel] Channel error detected")
-        } else if (status === "TIMED_OUT") {
-          console.error("[threadsChannel] Channel timed out")
-        }
-      })
-
-    threadsChannelRef.current = threadsChannel
-
-    return () => {
-      cleanupThreadsChannel()
-    }
-  }, [cleanupThreadsChannel, refreshConversations])
-
-  useEffect(() => {
-    if (!selectedThreadId) return
-    if (!typingIndicators[selectedThreadId]) return
-
-    const timeout = setTimeout(() => {
-      setTypingIndicators((prev) => {
-        const current = prev[selectedThreadId]
-        if (!current) return prev
-        if (Date.now() < current.expiresAt) return prev
-        const next = { ...prev }
-        delete next[selectedThreadId]
-        return next
-      })
-    }, TYPING_EXPIRATION_MS)
-
-    return () => clearTimeout(timeout)
-  }, [selectedThreadId, typingIndicators])
-
-  // Add grace period for typing indicator display (prevents flicker on brief pauses)
-  // Note: Grace period only applies if typing stops without a message being sent
-  // If a message is sent, the typing indicator is cleared immediately in the message handler
-  useEffect(() => {
-    if (!selectedThreadId) return
-
-    const isTyping = !!typingIndicators[selectedThreadId]
-
-    if (isTyping) {
-      // Show immediately when typing starts
-      setDisplayTypingIndicators((prev) => ({
-        ...prev,
-        [selectedThreadId]: true,
-      }))
-      
-      // Clear any pending hide timeout
-      if (typingDisplayTimeoutRef.current[selectedThreadId]) {
-        clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
-        delete typingDisplayTimeoutRef.current[selectedThreadId]
-      }
-    } else {
-      // Only apply grace period if typing stopped (not if message was sent)
-      // Use a ref to check current state without causing re-renders
-      setDisplayTypingIndicators((prev) => {
-        const isCurrentlyDisplayed = prev[selectedThreadId]
-        if (isCurrentlyDisplayed) {
-          // Keep showing for 2 more seconds after typing stops (grace period)
-          // Clear any existing timeout first
-          if (typingDisplayTimeoutRef.current[selectedThreadId]) {
-            clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
-          }
-          const timeout = setTimeout(() => {
-            setDisplayTypingIndicators((current) => {
-              const next = { ...current }
-              delete next[selectedThreadId]
-              return next
-            })
-            delete typingDisplayTimeoutRef.current[selectedThreadId]
-          }, 2000)
-          
-          typingDisplayTimeoutRef.current[selectedThreadId] = timeout
-        }
-        return prev
-      })
-    }
-
-    return () => {
-      if (typingDisplayTimeoutRef.current[selectedThreadId]) {
-        clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
-        delete typingDisplayTimeoutRef.current[selectedThreadId]
-      }
-    }
-  }, [selectedThreadId, typingIndicators])
 
   // Function to scroll to a message and highlight it
   const scrollToMessage = useCallback(async (messageId: string) => {
@@ -1767,29 +825,6 @@ export default function MessagesView({
     }, 150)
   }, [selectedThreadId, messagesByThread, threadPagination, loadingOlderMessages, ensureAttachmentUrls])
 
-  const notifyTyping = useCallback(
-    (typing: boolean) => {
-      if (!channelRef.current) return
-      channelRef.current.send({
-        type: "broadcast",
-        event: DM_TYPING_EVENT,
-        payload: {
-          userId: viewer.id,
-          typing,
-        },
-      })
-    },
-    [viewer.id],
-  )
-
-  const scheduleTypingBroadcast = useCallback(() => {
-    if (typingBroadcastCooldownRef.current) return
-    notifyTyping(true)
-    typingBroadcastCooldownRef.current = setTimeout(() => {
-      typingBroadcastCooldownRef.current = null
-      notifyTyping(false)
-    }, TYPING_EXPIRATION_MS)
-  }, [notifyTyping])
 
   // Handle emoji selection
   const handleEmojiSelect = useCallback((emoji: string) => {
@@ -2261,34 +1296,8 @@ export default function MessagesView({
     })
   }, [])
 
-  const handleSendMessage = useCallback(async () => {
-    let normalizedThreadId = selectedThreadId?.trim() ?? ""
-    if (!normalizedThreadId) {
-      const fallbackThreadId =
-        conversationsRef.current[0]?.thread_id?.trim() ??
-        displayedConversations[0]?.thread_id?.trim() ??
-        initialThreadId?.trim() ??
-        ""
-
-      if (!fallbackThreadId) {
-        try {
-          const refreshed = await refreshConversations()
-          normalizedThreadId = refreshed[0]?.thread_id?.trim() ?? ""
-        } catch (error) {
-          console.error(error)
-        }
-      } else {
-        normalizedThreadId = fallbackThreadId
-      }
-
-      if (normalizedThreadId) {
-        await handleSelectConversation(normalizedThreadId)
-      } else {
-        toast.error("Select a conversation before sending a message.")
-        return
-      }
-    }
-    if (isSending) return
+  // Wrapper for handleSendMessage that handles composer state
+  const handleSendMessageWrapper = useCallback(async () => {
     const trimmed = composerValue.trim()
     const readyAttachments = attachments.filter((attachment) => attachment.status === "ready")
 
@@ -2297,278 +1306,38 @@ export default function MessagesView({
       return
     }
 
-    // Create optimistic message ID
-    const optimisticMessageId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-    const now = new Date().toISOString()
-    
-    // Create optimistic message
-    const optimisticMessage: MessageResult = {
-      id: optimisticMessageId,
-      thread_id: normalizedThreadId,
-      sender_id: viewer.id,
-      message_type: "text",
-      content: trimmed.length > 0 ? trimmed : null,
-      metadata: null,
-      has_attachments: readyAttachments.length > 0,
-      reply_to_message_id: replyingToMessage?.id ?? null,
-      created_at: now,
-      updated_at: now,
-      is_deleted: false,
-      attachments: readyAttachments.map((attachment) => ({
-        id: `temp-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        message_id: optimisticMessageId,
-        media_type: attachment.mediaType,
-        storage_path: attachment.storagePath ?? "",
-        mime_type: attachment.mimeType ?? null,
-        file_size: attachment.fileSize ?? null,
-        duration_seconds: attachment.durationSeconds ?? null,
-        file_name: attachment.fileName ?? null,
-        created_at: now,
-      })),
-      read_receipts: [],
-      replied_to_message: replyingToMessage
-        ? {
-            id: replyingToMessage.id,
-            sender_id: replyingToMessage.sender_id,
-            content: replyingToMessage.content ?? null,
-            has_attachments: replyingToMessage.has_attachments ?? false,
-            created_at: replyingToMessage.created_at,
-          }
-        : null,
+    const resetComposer = () => {
+      setComposerValue("")
+      setAttachments([])
     }
 
-    // Add optimistic message immediately
-    setMessagesByThread((prev) => ({
-      ...prev,
-      [normalizedThreadId]: [...(prev[normalizedThreadId] ?? []), optimisticMessage],
-    }))
-    
-    const hasImage = optimisticMessage.attachments?.some(a => a.media_type === "image") ?? false
-    setConversations((prev) =>
-      prev
-        .map((item) =>
-          item.thread_id === normalizedThreadId
-            ? {
-                ...item,
-                last_message_at: now,
-                last_message_preview: optimisticMessage.content ?? (hasImage ? "[image]" : (optimisticMessage.attachments?.length ? "[attachment]" : "")),
-                last_message_sender_id: viewer.id,
-                updated_at: now,
-              }
-            : item,
-        )
-        .sort((a, b) => {
-          const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
-          const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
-          return bTime - aTime
-        }),
-    )
+    await handleSendMessage(trimmed, readyAttachments, replyingToMessage, resetComposer)
+  }, [composerValue, attachments, replyingToMessage, handleSendMessage])
 
-    // Ensure attachment URLs for optimistic message
-    ensureAttachmentUrls(optimisticMessage.attachments ?? [])
-    resetComposer()
-    
-    // Scroll to bottom immediately
-    requestAnimationFrame(() => {
-      const container = messageContainerRef.current
-      if (container) {
-        container.scrollTop = container.scrollHeight
+  // Wrapper for swipe end that handles reply
+  const handleSwipeEnd = useCallback((messageId: string) => {
+    handleSwipeEndBase(messageId, (msgId) => {
+      const message = selectedMessages.find(m => m.id === msgId)
+      if (message) {
+        setReplyingToMessage(message)
+        setTimeout(() => {
+          const composer = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
+          composer?.focus()
+        }, 100)
       }
     })
+  }, [handleSwipeEndBase, selectedMessages])
 
-    // Send message in background (don't block UI)
-    setIsSending(true)
-    try {
-      const response = await fetch(`/api/dm/threads/${normalizedThreadId}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          content: trimmed.length > 0 ? trimmed : null,
-          attachments: readyAttachments.map((attachment) => ({
-            storagePath: attachment.storagePath,
-            mediaType: attachment.mediaType,
-            mimeType: attachment.mimeType,
-            fileSize: attachment.fileSize,
-            durationSeconds: attachment.durationSeconds,
-            fileName: attachment.fileName,
-          })),
-          replyToMessageId: replyingToMessage?.id ?? null,
-        }),
-      })
-
-      const payload = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        const message = typeof payload?.error === "string" ? payload.error : "Failed to send message"
-        throw new Error(message)
-      }
-
-      const data = payload
-      const sentMessage: MessageResult | undefined = data?.message
-      if (sentMessage) {
-        const withAttachments: MessageResult = {
-          ...sentMessage,
-          attachments: sentMessage.attachments ?? [],
-          read_receipts: [],
-          replied_to_message: sentMessage.replied_to_message ?? null,
-        }
-
-        // Replace optimistic message with real message
-        setMessagesByThread((prev) => {
-          const existingMessages = prev[normalizedThreadId] ?? []
-          const optimisticIndex = existingMessages.findIndex((msg) => msg.id === optimisticMessageId)
-          
-          if (optimisticIndex >= 0) {
-            // Replace optimistic message with real one
-            const updated = [...existingMessages]
-            updated[optimisticIndex] = withAttachments
-            return {
-              ...prev,
-              [normalizedThreadId]: updated,
-            }
-          } else {
-            // Optimistic message not found, just add the real one
-            return {
-              ...prev,
-              [normalizedThreadId]: [...existingMessages, withAttachments],
-            }
-          }
-        })
-        
-        // Update conversation with real message data
-        const hasImageReal = withAttachments.attachments?.some(a => a.media_type === "image") ?? false
-        setConversations((prev) =>
-          prev
-            .map((item) =>
-              item.thread_id === normalizedThreadId
-                ? {
-                    ...item,
-                    last_message_at: withAttachments.created_at,
-                    last_message_preview: withAttachments.content ?? (hasImageReal ? "[image]" : (withAttachments.attachments?.length ? "[attachment]" : "")),
-                    last_message_sender_id: viewer.id,
-                    updated_at: new Date().toISOString(),
-                  }
-                : item,
-            )
-            .sort((a, b) => {
-              const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
-              const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
-              return bTime - aTime
-            }),
-        )
-
-        ensureAttachmentUrls(withAttachments.attachments ?? [])
-      }
-    } catch (error) {
-      console.error(error)
-      
-      // Remove optimistic message on error and revert conversation preview
-      setMessagesByThread((prev) => {
-        const existingMessages = prev[normalizedThreadId] ?? []
-        const realMessages = existingMessages.filter((msg) => msg.id !== optimisticMessageId)
-        const lastRealMessage = realMessages[realMessages.length - 1]
-        
-        // Update conversation preview with previous message (if exists)
-        if (lastRealMessage) {
-          const hasImage = lastRealMessage.attachments?.some(a => a.media_type === "image") ?? false
-          setConversations((convPrev) =>
-            convPrev
-              .map((item) =>
-                item.thread_id === normalizedThreadId
-                  ? {
-                      ...item,
-                      last_message_at: lastRealMessage.created_at,
-                      last_message_preview: lastRealMessage.content ?? (hasImage ? "[image]" : (lastRealMessage.attachments?.length ? "[attachment]" : "")),
-                      last_message_sender_id: lastRealMessage.sender_id,
-                      updated_at: lastRealMessage.updated_at,
-                    }
-                  : item,
-              )
-              .sort((a, b) => {
-                const aTime = new Date(a.last_message_at ?? a.updated_at).getTime()
-                const bTime = new Date(b.last_message_at ?? b.updated_at).getTime()
-                return bTime - aTime
-              }),
-          )
-        }
-        
-        // Remove optimistic message
-        return {
-          ...prev,
-          [normalizedThreadId]: realMessages,
-        }
-      })
-      
-      // Restore composer content
-      setComposerValue(trimmed)
-      setAttachments(readyAttachments)
-      
-      const fallback = "Could not send your message. Please try again."
-      const message = error instanceof Error ? error.message || fallback : fallback
-      toast.error(message)
-    } finally {
-      setIsSending(false)
-      notifyTyping(false)
-      // Clear the typing display timeout immediately when message is sent
-      if (selectedThreadId && typingDisplayTimeoutRef.current[selectedThreadId]) {
-        clearTimeout(typingDisplayTimeoutRef.current[selectedThreadId])
-        delete typingDisplayTimeoutRef.current[selectedThreadId]
-      }
-    }
-  }, [
-    attachments,
-    displayedConversations,
-    composerValue,
-    ensureAttachmentUrls,
-    isSending,
-    refreshConversations,
-    handleSelectConversation,
-    notifyTyping,
-    resetComposer,
-    selectedThreadId,
-    initialThreadId,
-    viewer.id,
-  ])
-
-  const handleLongPressStart = useCallback((messageId: string, e: React.TouchEvent) => {
-    if (!isMobile) return
-    
-    touchStart.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY
-    }
-    
-    longPressTimer.current = setTimeout(() => {
-      setLongPressMenuOpen(messageId)
-      // Haptic feedback if available
-      if (navigator.vibrate) {
-        navigator.vibrate(50)
-      }
-    }, 500) // 500ms for long press
-  }, [isMobile])
-
-  const handleLongPressMove = useCallback((e: React.TouchEvent) => {
-    if (!touchStart.current || !longPressTimer.current) return
-    
-    const deltaX = Math.abs(e.touches[0].clientX - touchStart.current.x)
-    const deltaY = Math.abs(e.touches[0].clientY - touchStart.current.y)
-    
-    // Cancel if moved more than 10px (user is scrolling)
-    if (deltaX > 10 || deltaY > 10) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-      touchStart.current = null
-    }
+  const handleReply = useCallback((message: MessageResult) => {
+    setReplyingToMessage(message)
+    setTimeout(() => {
+      const composer = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
+      composer?.focus()
+    }, 100)
   }, [])
 
-  const handleLongPressEnd = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
-    touchStart.current = null
+  const handleDelete = useCallback(async (messageId: string) => {
+    await handleDeleteMessage(messageId)
   }, [])
 
   const handleDeleteMessage = useCallback(async (messageId: string) => {
@@ -2755,672 +1524,26 @@ export default function MessagesView({
     setMobileView("list")
   }, [])
 
-  return (
-    <div className="flex flex-col h-[calc(100dvh-5rem-3rem)] lg:h-[calc(100dvh-5rem)] w-full">
-      <div className="flex flex-col lg:flex-row gap-4 h-full overflow-hidden">
-        <div className={cn(
-          "w-full lg:w-[360px] xl:w-[400px] lg:flex-none flex flex-col h-full",
-          !isClient && "lg:flex hidden",
-          isClient && isMobile && mobileView === "conversation" && "hidden"
-        )}>
-          <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
-            <div className="p-4 border-b border-white/15">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search conversations"
-                  className="bg-white/10 border-white/15 text-white pl-9 placeholder:text-white/40"
-                />
-                {searchLoading && (
-                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-white/60" />
-                )}
-              </div>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="p-2 space-y-2 min-w-0">
-                {conversationsToRender.length === 0 && (
-                  <div className="px-3 py-8 text-center text-white/50 text-sm">
-                    No conversations found yet. Follow someone and start a chat!
-                  </div>
-                )}
-                {conversationsToRender.map((conversation) => {
-                  const otherProfile = conversation.other_user_profile
-                  const displayName = getDisplayName(otherProfile)
-                  const initials = getInitials(otherProfile)
-                  const avatarImage = otherProfile?.profile_picture ?? undefined
-                  // Only show selected state on desktop - on mobile, the list is hidden when viewing a conversation
-                  const selected = !isMobile && conversation.thread_id === selectedThreadId
-                  const lastMessagePreview = liveMessagePreviews[conversation.thread_id]?.content || conversation.last_message_preview || (conversation.last_message_sender_id ? "[attachment]" : "No messages yet")
-                  const unread =
-                    conversation.last_message_sender_id &&
-                    conversation.last_message_sender_id !== viewer.id &&
-                    conversation.last_message_at &&
-                    (!conversation.last_read_at ||
-                      new Date(conversation.last_message_at).getTime() > new Date(conversation.last_read_at).getTime())
-
-                  const typingForConversation =
-                    typingIndicators[conversation.thread_id] && typingIndicators[conversation.thread_id]?.userId === conversation.other_user_id
-
-                  return (
-                    <button
-                      key={conversation.thread_id}
-                      type="button"
-                      onClick={() => handleSelectConversation(conversation.thread_id)}
-                      onMouseEnter={() => {
-                        // Prefetch messages on hover for instant switching (desktop only)
-                        if (!isMobile) {
-                          prefetchMessages(conversation.thread_id)
-                        }
-                      }}
-                      className={cn(
-                        "w-full max-w-full box-border rounded-xl border transition-all text-left backdrop-blur-md cursor-pointer overflow-hidden",
-                        "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20",
-                        selected && "bg-white/10 border-white/20 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.6)]",
-                      )}
-                    >
-                      <div className="px-3 py-3 flex items-start gap-3 w-full overflow-hidden">
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <Avatar 
-                            className="h-11 w-11 border-4 border-white/20 flex-shrink-0" 
-                            userId={otherProfile?.id} 
-                            isOnline={presenceMap[conversation.thread_id] || false}
-                            showHoverCard={true}
-                            username={otherProfile?.username || undefined}
-                            firstName={otherProfile?.first_name || undefined}
-                            lastName={otherProfile?.last_name || undefined}
-                            profilePicture={otherProfile?.profile_picture || undefined}
-                            bio={otherProfile?.bio || undefined}
-                          >
-                            <AvatarImage src={avatarImage} alt={displayName} />
-                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
-                              {initials}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <div className="flex-1 min-w-0 w-0 overflow-hidden">
-                          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                            <p className="text-white/80 font-medium truncate flex-shrink">{displayName}</p>
-                            {typingForConversation && (
-                              <Badge className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-100 flex-shrink-0">Typing</Badge>
-                            )}
-                          </div>
-                          {typingForConversation ? (
-                            <p className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}>
-                              Typing…
-                            </p>
-                          ) : conversationImagePreviews[conversation.thread_id]?.url ? (
-                            <div className="flex items-center gap-2">
-                              <div className="h-4 w-4 rounded border border-white/20 overflow-hidden flex-shrink-0 bg-white/5">
-                                <Image
-                                  src={conversationImagePreviews[conversation.thread_id].url}
-                                  alt="Image preview"
-                                  width={16}
-                                  height={16}
-                                  className="h-full w-full object-cover"
-                                />
-                              </div>
-                              {lastMessagePreview && lastMessagePreview !== "[image]" && lastMessagePreview !== "[attachment]" && (
-                                <p className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}>
-                                  {lastMessagePreview}
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <p
-                              className={cn("text-xs truncate", unread ? "text-white" : "text-white/50")}
-                            >
-                              {lastMessagePreview}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                          <span className="text-[11px] text-white/50 whitespace-nowrap" suppressHydrationWarning>
-                            {conversation.last_message_at
-                              ? formatRelativeTime(conversation.last_message_at)
-                              : formatRelativeTime(conversation.updated_at)}
-                          </span>
-                          {(() => {
-                            const unreadCount = unreadCounts[conversation.thread_id] || 0
-                            if (unreadCount > 0) {
-                              return (
-                                <Badge className="h-5 min-w-5 px-1.5 flex items-center justify-center bg-white/90 text-black border-0 text-[10px] font-semibold shadow-md">
-                                  {unreadCount > 99 ? "99+" : unreadCount}
-                                </Badge>
-                              )
-                            }
-                            return null
-                          })()}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </ScrollArea>
-          </div>
-        </div>
-
-        <div className={cn(
-          "flex flex-col h-full overflow-hidden lg:flex-1",
-          !isClient && "hidden lg:flex",
-          isClient && isMobile && mobileView === "list" && "hidden lg:flex",
-          isClient && isMobile && mobileView === "conversation" && "flex"
-        )}>
-          <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
-            {selectedConversation ? (
-              <>
-                <div className="p-4 border-b border-white/15 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {isMobile && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleBackToList}
-                        className="rounded-full text-white/70 hover:text-white/90 hover:bg-white/10 shrink-0"
-                      >
-                        <ArrowLeft className="h-5 w-5" />
-                      </Button>
-                    )}
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <Avatar 
-                        className="h-11 w-11 border-4 border-white/20" 
-                        userId={peerProfile?.id} 
-                        isOnline={isPeerOnline}
-                        showHoverCard={true}
-                        username={peerProfile?.username || undefined}
-                        firstName={peerProfile?.first_name || undefined}
-                        lastName={peerProfile?.last_name || undefined}
-                        profilePicture={peerProfile?.profile_picture || undefined}
-                        bio={peerProfile?.bio || undefined}
-                      >
-                        <AvatarImage src={peerAvatar ?? undefined} alt={peerName} />
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-primary-foreground uppercase">
-                          {peerInitials}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-white/90 font-semibold text-sm sm:text-base truncate">{peerName}</h2>
-                      </div>
-                      <p className="text-xs text-white/50" suppressHydrationWarning>
-                        {isPeerOnline ? "Online now" : `Last active ${formatRelativeTime(selectedConversation.other_last_seen_at ?? selectedConversation.updated_at)}`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-1 flex flex-col overflow-hidden relative">
-                  <div ref={messageContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-                    {loadingThreadId === selectedThreadId && selectedMessages.length === 0 ? (
-                      // Show loading state while fetching messages for the first time
-                      <div className="flex-1 flex items-center justify-center min-h-[200px]">
-                        <div className="flex flex-col items-center gap-3">
-                          <Loader2 className="h-6 w-6 animate-spin text-white/60" />
-                          <p className="text-white/50 text-sm">Loading messages...</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="px-2 sm:px-4 py-3 sm:py-4 space-y-2">
-                        {threadPagination[selectedConversation.thread_id]?.hasMore && (
-                          <div className="flex justify-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-white/70 hover:text-white/90 hover:bg-white/10 border border-white/20"
-                              onClick={handleLoadOlderMessages}
-                              disabled={loadingOlderMessages}
-                            >
-                              {loadingOlderMessages ? (
-                                <>
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  Loading…
-                                </>
-                              ) : (
-                                "Load previous messages"
-                              )}
-                            </Button>
-                          </div>
-                        )}
-
-                        {selectedMessages.map((message) => {
-                        const isOwn = message.sender_id === viewer.id
-                        const attachmentsForMessage = message.attachments ?? []
-                        const hasImages = attachmentsForMessage.some(a => a.media_type === "image")
-                        const hasVideos = attachmentsForMessage.some(a => a.media_type === "video")
-                        const hasAudio = attachmentsForMessage.some(a => a.media_type === "audio")
-                        const isImageOnly = hasImages && !message.content
-                        const isVideoOnly = hasVideos && !message.content && !hasImages
-                        const isAudioOnly = hasAudio && !message.content && !hasImages && !hasVideos
-                        const isDeleting = deletingMessageId === message.id
-                        
-                        return (
-                          <div 
-                            key={message.id} 
-                            ref={(el) => {
-                              if (el) {
-                                messageRefs.current.set(message.id, el)
-                              } else {
-                                messageRefs.current.delete(message.id)
-                              }
-                            }}
-                            className={cn("flex gap-1.5 sm:gap-2 group", isOwn ? "justify-end" : "justify-start")}
-                          >
-                            <div
-                              className={cn(
-                                "rounded-2xl backdrop-blur-sm relative transition-all duration-500",
-                                highlightedMessageId === message.id && "ring-4 ring-white/70 shadow-2xl shadow-white/30 z-10",
-                                isAudioOnly 
-                                  ? "w-[280px] sm:w-[320px]"
-                                  : "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
-                                isImageOnly || isVideoOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
-                                isOwn
-                                  ? "bg-gradient-to-br from-black/40 to-black/60 text-white"
-                                  : "bg-gradient-to-br from-white/15 to-white/8 text-white",
-                                isDeleting && "opacity-50",
-                                isMobile && isOwn && !isDeleting && "select-none"
-                              )}
-                              onTouchStart={(e) => {
-                                if (!isDeleting && isMobile) {
-                                  handleLongPressStart(message.id, e)
-                                }
-                              }}
-                              onTouchMove={handleLongPressMove}
-                              onTouchEnd={handleLongPressEnd}
-                              onTouchCancel={handleLongPressEnd}
-                            >
-                              {isOwn && !isDeleting && (
-                                <DropdownMenu open={isMobile ? longPressMenuOpen === message.id : undefined} onOpenChange={(open) => {
-                                  if (isMobile && !open) {
-                                    setLongPressMenuOpen(null)
-                                  }
-                                }}>
-                                  <DropdownMenuTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-white/70 hover:text-white/90 focus:outline-none focus-visible:outline-none active:outline-none cursor-pointer p-2 z-40 rounded-full"
-                                      style={{
-                                        background: 'radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.03) 70%, transparent 100%)'
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                      }}
-                                      onTouchStart={(e) => {
-                                        e.stopPropagation()
-                                      }}
-                                    >
-                                      <ChevronDown className="h-5 w-5" />
-                                    </button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent
-                                    align="end"
-                                    side="bottom"
-                                    sideOffset={8}
-                                    className="bg-white/10 border border-white/20 backdrop-blur-xl"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setReplyingToMessage(message)
-                                        // Focus composer after a brief delay to ensure it's rendered
-                                        setTimeout(() => {
-                                          const composer = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
-                                          composer?.focus()
-                                        }, 100)
-                                      }}
-                                      className="text-white/80 hover:text-white hover:bg-white/10 cursor-pointer focus:text-white focus:bg-white/10"
-                                    >
-                                      <Reply className="h-3.5 w-3.5 mr-2" />
-                                      Reply
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleDeleteMessage(message.id)
-                                      }}
-                                      className="text-red-400 hover:text-red-300 hover:bg-red-500/20 cursor-pointer focus:text-red-300 focus:bg-red-500/20"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                      Delete message
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                              {!isOwn && !isDeleting && (
-                                <DropdownMenu open={isMobile ? longPressMenuOpen === message.id : undefined} onOpenChange={(open) => {
-                                  if (isMobile && !open) {
-                                    setLongPressMenuOpen(null)
-                                  }
-                                }}>
-                                  <DropdownMenuTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity text-white/70 hover:text-white/90 focus:outline-none focus-visible:outline-none active:outline-none cursor-pointer p-2 z-40 rounded-full"
-                                      style={{
-                                        background: 'radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.15) 30%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.03) 70%, transparent 100%)'
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                      }}
-                                      onTouchStart={(e) => {
-                                        e.stopPropagation()
-                                      }}
-                                    >
-                                      <ChevronDown className="h-5 w-5" />
-                                    </button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent
-                                    align="end"
-                                    side="bottom"
-                                    sideOffset={8}
-                                    className="bg-white/10 border border-white/20 backdrop-blur-xl"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setReplyingToMessage(message)
-                                        // Focus composer after a brief delay to ensure it's rendered
-                                        setTimeout(() => {
-                                          const composer = document.querySelector('textarea[placeholder*="message"]') as HTMLTextAreaElement
-                                          composer?.focus()
-                                        }, 100)
-                                      }}
-                                      className="text-white/80 hover:text-white hover:bg-white/10 cursor-pointer focus:text-white focus:bg-white/10"
-                                    >
-                                      <Reply className="h-3.5 w-3.5 mr-2" />
-                                      Reply
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                              {message.replied_to_message?.id && (() => {
-                                // Use attachments from replied_to_message if available, otherwise try to find in thread messages
-                                const repliedMessageAttachments = message.replied_to_message.attachments ?? 
-                                  (selectedThreadId ? (messagesByThread[selectedThreadId] ?? []) : [])
-                                    .find(m => m.id === message.replied_to_message?.id)
-                                    ?.attachments ?? []
-                                const imageAttachments = repliedMessageAttachments.filter(a => a.media_type === "image")
-                                const videoAttachments = repliedMessageAttachments.filter(a => a.media_type === "video")
-                                const documentAttachments = repliedMessageAttachments.filter(a => a.media_type === "file")
-                                const firstImage = imageAttachments[0]
-                                const firstVideo = videoAttachments[0]
-                                const firstDocument = documentAttachments[0]
-                                const hasImageOrVideo = firstImage || firstVideo
-                                const hasDocument = firstDocument && !hasImageOrVideo
-                                
-                                return (
-                                  <div 
-                                    className={cn(
-                                      "mb-1.5 w-full py-1.5 px-2 rounded-lg border-l-2 flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity",
-                                      isOwn 
-                                        ? "bg-black/20 border-white/30" 
-                                        : "bg-white/5 border-white/20"
-                                    )}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (message.replied_to_message?.id) {
-                                        scrollToMessage(message.replied_to_message.id)
-                                      }
-                                    }}
-                                  >
-                                    {(hasImageOrVideo || hasDocument) && (
-                                      <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0 relative">
-                                        {firstImage && attachmentUrls[firstImage.id]?.url ? (
-                                          <Image
-                                            src={attachmentUrls[firstImage.id].url}
-                                            alt="Shared image"
-                                            width={40}
-                                            height={40}
-                                            className="h-full w-full object-cover"
-                                          />
-                                        ) : firstVideo && attachmentUrls[firstVideo.id]?.url ? (
-                                          <>
-                                            <video
-                                              src={attachmentUrls[firstVideo.id].url}
-                                              className="h-full w-full object-cover"
-                                              muted
-                                              playsInline
-                                            />
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                                              <Video className="h-3 w-3 sm:h-4 sm:w-4 text-white/80" />
-                                            </div>
-                                          </>
-                                        ) : (
-                                          <div className="h-full w-full flex items-center justify-center bg-white/5">
-                                            {firstImage ? (
-                                              <ImageIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/50" />
-                                            ) : firstVideo ? (
-                                              <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/50" />
-                                            ) : (
-                                              <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white/50" />
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 mb-0.5">
-                                        <Reply className="h-3 w-3 text-white/50 flex-shrink-0" />
-                                        <span className="text-[10px] text-white/60 font-medium">
-                                          {message.replied_to_message.sender_id === viewer.id ? "You" : peerName}
-                                        </span>
-                                      </div>
-                                      {message.replied_to_message.content ? (
-                                        <p className="text-[10px] text-white/50 line-clamp-2 truncate">
-                                          {message.replied_to_message.content}
-                                        </p>
-                                      ) : message.replied_to_message.has_attachments ? (
-                                        <p className="text-[10px] text-white/50 italic">
-                                          {firstImage ? "[image]" : firstVideo ? "[video]" : firstDocument ? (firstDocument.file_name || "[document]") : "[attachment]"}
-                                        </p>
-                                      ) : (
-                                        <p className="text-[10px] text-white/50 italic">[message]</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )
-                              })()}
-                             <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-1.5", !hasImages && !hasVideos && !isAudioOnly && "pr-12 sm:pr-14")}>
-                                {attachmentsForMessage.length > 0 && (
-                                  <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-2", message.content && "mb-1.5")}>
-                                  {attachmentsForMessage.map((attachment, attachmentIndex) => {
-                                    const signedUrl = attachmentUrls[attachment.id]?.url
-                                    if (attachment.media_type === "image") {
-                                      // Get all image attachments for this message for lightbox navigation
-                                      const imageAttachments = attachmentsForMessage.filter(a => a.media_type === "image")
-                                      const imageIndex = imageAttachments.findIndex(a => a.id === attachment.id)
-                                      
-                                      const handleImageClick = () => {
-                                        // Build array of image URLs for lightbox
-                                        const images = imageAttachments.map(img => ({
-                                          id: img.id,
-                                          url: attachmentUrls[img.id]?.url || ""
-                                        })).filter(img => img.url) // Only include images with URLs
-                                        
-                                        if (images.length > 0) {
+  const handleImageClick = useCallback((images: Array<{ id: string; url: string }>, index: number) => {
                                           setLightboxImages(images)
-                                          setLightboxIndex(imageIndex >= 0 ? imageIndex : 0)
+    setLightboxIndex(index)
                                           setLightboxOpen(true)
-                                        }
-                                      }
-                                      
-                                      return (
-                                        <div 
-                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`} 
-                                          className={cn(
-                                            "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity",
-                                            isImageOnly ? "rounded-2xl" : "rounded-lg"
-                                          )}
-                                          onClick={handleImageClick}
-                                        >
-                                          {signedUrl ? (
-                                            <Image
-                                              src={signedUrl}
-                                              alt="Shared image"
-                                              width={640}
-                                              height={640}
-                                              className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block pointer-events-none"
-                                              style={{ maxHeight: '280px' }}
-                                            />
-                                          ) : (
-                                            <div className="h-32 flex items-center justify-center text-white/50 text-xs bg-white/5">
-                                              Loading image…
-                                            </div>
-                                          )}
-                                        </div>
-                                      )
-                                    }
-                                    if (attachment.media_type === "audio") {
-                                      const signedUrl = attachmentUrls[attachment.id]?.url
-                                      if (!signedUrl) return null
-                                      
-                                      const senderProfile = isOwn ? viewer : peerProfile
-                                      const senderAvatar = isOwn ? viewer.profile_picture : peerAvatar
-                                      const senderInitials = isOwn ? getInitials(viewer) : peerInitials
-                                      const senderName = isOwn ? getDisplayName(viewer) : peerName
-                                      const senderId = isOwn ? viewer.id : peerProfile?.id
-                                      
-                                      return (
-                                        <VoiceNotePlayer
-                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`}
-                                          audioUrl={signedUrl}
-                                          attachmentId={attachment.id}
-                                          senderId={senderId}
-                                          senderAvatar={senderAvatar}
-                                          senderInitials={senderInitials}
-                                          senderName={senderName}
-                                          isPlaying={playingAudio === attachment.id}
-                                          onPlayStateChange={(attachmentId, isPlaying) => {
-                                            setPlayingAudio(isPlaying ? attachmentId : null)
-                                          }}
-                                          onStopOthers={(currentId) => {
-                                            // Stop other audio (from other voice note players)
-                                            if (playingAudio && playingAudio !== currentId) {
-                                              setPlayingAudio(null)
-                                            }
-                                          }}
-                                        />
-                                      )
-                                    }
-                                    if (attachment.media_type === "video") {
-                                      const signedUrl = attachmentUrls[attachment.id]?.url
-                                      const isPlaying = playingVideo === attachment.id
-                                      
-                                      const handlePlayClick = async (e: React.MouseEvent) => {
-                                        e.stopPropagation()
-                                        const video = videoRefs.current[attachment.id]
-                                        if (!video) return
-                                        
-                                        try {
-                                          await video.play()
-                                          setPlayingVideo(attachment.id)
-                                        } catch (error) {
-                                          console.error('Error playing video:', error)
-                                        }
-                                      }
-                                      
-                                      return (
-                                        <div
-                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`}
-                                          className={cn(
-                                            "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 rounded-lg",
-                                            !isPlaying && "cursor-pointer",
-                                            isImageOnly || isVideoOnly ? "rounded-2xl" : "rounded-lg"
-                                          )}
-                                          onClick={!isPlaying ? handlePlayClick : undefined}
-                                        >
-                                          {signedUrl ? (
-                                            <div className="relative">
-                                              <video
-                                                ref={(el) => {
-                                                  if (el && !videoRefs.current[attachment.id]) {
-                                                    videoRefs.current[attachment.id] = el
-                                                    // Set up event listeners once
-                                                    const handlePlay = () => setPlayingVideo(attachment.id)
-                                                    const handlePause = () => {
-                                                      if (el.paused) {
-                                                        setPlayingVideo(null)
-                                                      }
-                                                    }
-                                                    const handleEnded = () => setPlayingVideo(null)
-                                                    
-                                                    el.addEventListener('play', handlePlay)
-                                                    el.addEventListener('pause', handlePause)
-                                                    el.addEventListener('ended', handleEnded)
-                                                    
-                                                    // Store cleanup function on the element
-                                                    ;(el as any)._cleanup = () => {
-                                                      el.removeEventListener('play', handlePlay)
-                                                      el.removeEventListener('pause', handlePause)
-                                                      el.removeEventListener('ended', handleEnded)
-                                                    }
-                                                  }
-                                                }}
-                                                src={signedUrl}
-                                                className="w-full h-auto object-cover max-h-[200px] sm:max-h-[280px] block rounded-lg"
-                                                style={{ maxHeight: '280px' }}
-                                                controls={isPlaying}
-                                                controlsList="nodownload"
-                                                playsInline
-                                                preload="metadata"
-                                                onClick={(e) => {
-                                                  if (isPlaying) {
-                                                    e.stopPropagation()
-                                                  }
-                                                }}
-                                              />
-                                              {!isPlaying && (
-                                                <div 
-                                                  className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none z-10 rounded-lg"
-                                                >
-                                                  <div className="bg-black/60 rounded-full p-3 backdrop-blur-sm">
-                                                    <Play className="h-8 w-8 text-white/90 fill-white/90" />
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            <div className="h-32 flex items-center justify-center text-white/50 text-xs bg-white/5">
-                                              <Video className="h-8 w-8 text-white/50" />
-                                            </div>
-                                          )}
-                                        </div>
-                                      )
-                                    }
-                                    if (attachment.media_type === "file") {
-                                      const signedUrl = attachmentUrls[attachment.id]?.url
-                                      // Use file_name from database (original file name), fallback to storage path for old records
-                                      const fileName = attachment.file_name ?? attachment.storage_path?.split('/').pop() ?? 'file'
-                                      
-                                      const handleDownload = async () => {
-                                        if (downloadingAttachmentId === attachment.id) return // Prevent double clicks
-                                        
-                                        try {
-                                          setDownloadingAttachmentId(attachment.id)
-                                          
-                                          // Use API route to download (hides Supabase URL and ensures proper download)
-                                          const response = await fetch(`/api/dm/download/${attachment.id}`)
-                                          
-                                          if (!response.ok) {
-                                            throw new Error("Download failed")
-                                          }
-                                          
-                                          // Get file blob
+  }, [])
+
+  const handleDownloadAttachment = useCallback(async (attachmentId: string) => {
+    if (downloadingAttachmentId === attachmentId) return
+    try {
+      setDownloadingAttachmentId(attachmentId)
+      const response = await fetch(`/api/dm/download/${attachmentId}`)
+      if (!response.ok) throw new Error("Download failed")
                                           const blob = await response.blob()
-                                          
-                                          // Create download link
                                           const url = window.URL.createObjectURL(blob)
                                           const link = document.createElement('a')
                                           link.href = url
-                                          link.download = fileName
+      link.download = `attachment-${attachmentId}`
                                           link.style.display = 'none'
                                           document.body.appendChild(link)
                                           link.click()
-                                          
-                                          // Cleanup
                                           document.body.removeChild(link)
                                           window.URL.revokeObjectURL(url)
                                         } catch (error) {
@@ -3429,144 +1552,106 @@ export default function MessagesView({
                                         } finally {
                                           setDownloadingAttachmentId(null)
                                         }
-                                      }
+  }, [downloadingAttachmentId])
                                       
                                       return (
-                                        <div
-                                          key={`${message.id}-${attachment.id}-${attachmentIndex}`}
-                                          className="bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-white/75 text-xs"
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <FileText className="h-4 w-4 text-white/70 flex-shrink-0" />
-                                            <span className="flex-1 truncate min-w-0" title={fileName}>
-                                              {fileName}
-                                            </span>
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleDownload()
-                                              }}
-                                              disabled={downloadingAttachmentId === attachment.id}
-                                              className="flex-shrink-0 p-1 rounded hover:bg-white/10 text-white/70 hover:text-white/90 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                                              title={downloadingAttachmentId === attachment.id ? "Downloading..." : "Download file"}
-                                            >
-                                              {downloadingAttachmentId === attachment.id ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                              ) : (
-                                                <Download className="h-3.5 w-3.5" />
-                                              )}
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )
-                                    }
-                                    return (
-                                      <div
-                                        key={`${message.id}-${attachment.id}-${attachmentIndex}`}
-                                        className="bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-white/75 text-xs"
-                                      >
-                                        <div className="flex items-center gap-1.5">
-                                          <ImageIcon className="h-3.5 w-3.5 text-white/60" />
-                                          <span>Attachment</span>
-                                        </div>
-                                      </div>
-                                    )
-                                    })}
-                                  </div>
-                                )}
-                                {message.content && (
-                                  <p className={cn(
-                                    "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words pr-12 sm:pr-14"
-                                  )}>{linkifyText(message.content)}</p>
-                                )}
-                              </div>
-                              {(() => {
-                                // Check if any video in this message is playing
-                                const hasPlayingVideo = attachmentsForMessage.some(
-                                  a => a.media_type === "video" && playingVideo === a.id
-                                )
-                                // Hide timestamp if a video is playing
-                                if (hasPlayingVideo) return null
-                                
-                                // Check read receipt status for sent messages
-                                const readReceipts = message.read_receipts ?? []
-                                const otherUserId = selectedConversation?.other_user_id
-                                const isRead = isOwn && otherUserId 
-                                  ? readReceipts.some((r) => r.user_id === otherUserId)
-                                  : false
-                                
-                                // Determine message status for dots
-                                const isSending = isOwn && message.id.startsWith('temp-')
-                                const isReadState = isOwn && isRead
-                                // For non-temp messages that aren't read, show as "delivered" (gold/purple)
-                                // This indicates the message was delivered but not yet read
-                                const isDelivered = isOwn && !isSending && !isReadState
-                                
-                                return (
+    <div className="flex flex-col h-[calc(100dvh-5rem-3rem)] lg:h-[calc(100dvh-5rem)] w-full">
+      <div className="flex flex-col lg:flex-row gap-4 h-full overflow-hidden">
+        <ConversationList
+          conversations={conversationsToRender}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchLoading={searchLoading}
+          selectedThreadId={selectedThreadId}
+          onSelectConversation={handleSelectConversation}
+          onPrefetchMessages={prefetchMessages}
+          isMobile={isMobile}
+          isClient={isClient}
+          viewerId={viewer.id}
+          unreadCounts={unreadCounts}
+          typingIndicators={typingIndicators}
+          presenceMap={presenceMap}
+          conversationImagePreviews={conversationImagePreviews}
+          liveMessagePreviews={liveMessagePreviews}
+        />
+
                                   <div className={cn(
-                                    "absolute flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded",
-                                    isImageOnly || isVideoOnly
-                                      ? "bottom-1.5 right-1.5 bg-black/60 text-white/90 backdrop-blur-sm"
-                                      : isAudioOnly
-                                      ? "bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 text-white/40 px-1"
-                                      : "bottom-1.5 right-1.5 text-white/40 px-1"
-                                  )}>
-                                    {formatTimestamp(message.created_at)}
-                                    {isOwn && (
-                                      <span className="flex-shrink-0 ml-1">
-                                        {isSending ? (
-                                          // Sending: White dot with glow
-                                          <span 
-                                            className="inline-block h-2 w-2 rounded-full bg-white border border-white/50 animate-pulse"
-                                            style={{
-                                              boxShadow: '0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px rgba(255, 255, 255, 0.3)',
-                                            }}
-                                          />
-                                        ) : isReadState ? (
-                                          // Read: Green/blue gradient dot
-                                          <span 
-                                            className="inline-block h-2 w-2 rounded-full"
-                                            style={{
-                                              background: 'linear-gradient(135deg, #10B981 0%, #3B82F6 50%, #06B6D4 100%)',
-                                              border: '1px solid rgba(16, 185, 129, 0.6)',
-                                              boxShadow: '0 0 6px rgba(16, 185, 129, 0.5), 0 0 12px rgba(59, 130, 246, 0.3)',
-                                            }}
-                                          />
-                                        ) : isDelivered ? (
-                                          // Delivered (not read): Gold/purple gradient dot
-                                          <span 
-                                            className="inline-block h-2 w-2 rounded-full"
-                                            style={{
-                                              background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
-                                              border: '1px solid rgba(255, 215, 0, 0.6)',
-                                              boxShadow: '0 0 6px rgba(255, 215, 0, 0.5), 0 0 12px rgba(147, 51, 234, 0.3)',
-                                            }}
-                                          />
-                                        ) : (
-                                          // Fallback: White dot
-                                          <span 
-                                            className="inline-block h-2 w-2 rounded-full bg-white/40 border border-white/20"
-                                          />
-                                        )}
-                                      </span>
-                                    )}
-                                  </div>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                        )
-                      })}
-                      
-                      <MessageImageLightbox
-                        images={lightboxImages}
-                        initialIndex={lightboxIndex}
-                        open={lightboxOpen}
-                        onOpenChange={setLightboxOpen}
-                      />
+          "flex flex-col h-full overflow-hidden lg:flex-1",
+          !isClient && "hidden lg:flex",
+          isClient && isMobile && mobileView === "list" && "hidden lg:flex",
+          isClient && isMobile && mobileView === "conversation" && "flex"
+        )}>
+          <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
+            {selectedConversation ? (
+              <>
+                <ConversationHeader
+                  conversation={selectedConversation}
+                  isMobile={isMobile}
+                  onBack={handleBackToList}
+                  isPeerOnline={isPeerOnline}
+                />
+                
+                {loadingThreadId === selectedThreadId && selectedMessages.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center min-h-[200px]">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="h-6 w-6 animate-spin text-white/60" />
+                      <p className="text-white/50 text-sm">Loading messages...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <MessageList
+                    messages={selectedMessages}
+                    viewer={viewer}
+                    peerProfile={peerProfile}
+                    peerName={peerName}
+                    peerInitials={peerInitials}
+                    peerAvatar={peerAvatar}
+                    isMobile={isMobile}
+                    highlightedMessageId={highlightedMessageId}
+                    longPressMenuOpen={longPressMenuOpen}
+                    onLongPressMenuChange={setLongPressMenuOpen}
+                    onReply={handleReply}
+                    onDelete={handleDelete}
+                    onScrollToMessage={scrollToMessage}
+                    attachmentUrls={attachmentUrls}
+                    playingAudio={playingAudio}
+                    playingVideo={playingVideo}
+                    onAudioPlayStateChange={(id, playing) => setPlayingAudio(playing ? id : null)}
+                    onVideoPlayStateChange={(id) => setPlayingVideo(id)}
+                    videoRefs={videoRefs}
+                    downloadingAttachmentId={downloadingAttachmentId}
+                    onDownloadAttachment={handleDownloadAttachment}
+                    swipeOffset={swipeOffset}
+                    swipingMessageId={swipingMessageId}
+                    onSwipeStart={(id, e) => {
+                      handleLongPressStart(id, e)
+                      handleSwipeStartBase(id, e)
+                    }}
+                    onSwipeMove={(e) => {
+                      handleLongPressMove(e)
+                      handleSwipeMoveBase(e)
+                    }}
+                    onSwipeEnd={(id, onReply) => {
+                      handleLongPressEnd()
+                      handleSwipeEnd(id)
+                    }}
+                    hasMore={threadPagination[selectedConversation.thread_id]?.hasMore ?? false}
+                    loadingOlderMessages={loadingOlderMessages}
+                    onLoadOlderMessages={handleLoadOlderMessages}
+                    selectedConversation={selectedConversation}
+                    messagesByThread={messagesByThread}
+                    selectedThreadId={selectedThreadId}
+                    lightboxOpen={lightboxOpen}
+                    lightboxImages={lightboxImages}
+                    lightboxIndex={lightboxIndex}
+                    onLightboxOpenChange={setLightboxOpen}
+                    onImageClick={handleImageClick}
+                    deletingMessageId={deletingMessageId}
+                  />
+                )}
                       
                       {typingActive && (
+                  <div className="px-2 sm:px-4 pb-2">
                         <div className="flex gap-1.5 sm:gap-2 justify-start">
                           <div className="rounded-2xl bg-white/10 text-white/85 backdrop-blur-sm px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1">
                             <style dangerouslySetInnerHTML={{
@@ -3606,546 +1691,36 @@ export default function MessagesView({
                             />
                           </div>
                         </div>
-                      )}
                       </div>
                     )}
-                  </div>
-                  {showScrollToBottom && (
-                    <Button
-                      type="button"
-                      onClick={scrollToBottom}
-                      className="absolute bottom-24 right-4 h-10 w-10 rounded-full border border-white/20 bg-white/10 backdrop-blur-md text-white/70 hover:bg-white/15 hover:text-white/90 hover:border-white/30 flex items-center justify-center shadow-lg z-10"
-                      title="Scroll to bottom"
-                    >
-                      <ChevronDown className="h-5 w-5" />
-                    </Button>
-                  )}
+
                   <Separator className="bg-white/10" />
-                  <div className="p-2 sm:p-3 space-y-2">
-                    {selectedConversation.participant_status === "blocked" && (
-                      <div className="bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white/70 text-sm">
-                        <div>
-                          You cannot send messages in this conversation.
-                        </div>
-                      </div>
-                    )}
-                    {(() => {
-                      const shouldRender = attachments.length > 0
-                      console.log('[Render] Attachments section check:', {
-                        attachmentsLength: attachments.length,
-                        shouldRender,
-                        attachments: attachments.map(a => ({ 
-                          id: a.id, 
-                          fileName: a.fileName, 
-                          mediaType: a.mediaType, 
-                          status: a.status, 
-                          hasPreview: !!a.previewUrl 
-                        })),
-                        selectedThreadId,
-                        composerDisabled
-                      })
-                      return shouldRender
-                    })() && (
-                      <div className="flex flex-wrap gap-2">
-                        {attachments.map((attachment, index) => {
-                          console.log('[Render] Rendering attachment item:', {
-                            index,
-                            id: attachment.id,
-                            fileName: attachment.fileName,
-                            mediaType: attachment.mediaType,
-                            status: attachment.status,
-                            hasPreviewUrl: !!attachment.previewUrl
-                          })
-                          return (
-                          <div
-                            key={`upload-${attachment.id}-${index}`}
-                            className={cn(
-                              "relative rounded-xl border px-2.5 sm:px-3 py-1.5 sm:py-2 flex items-center gap-2 text-xs",
-                              attachment.status === "error"
-                                ? "border-rose-400 text-rose-200 bg-rose-500/15"
-                                : "border-white/20 text-white/75 bg-white/10",
-                            )}
-                          >
-                            {attachment.mediaType === "image" && attachment.previewUrl ? (
-                              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0">
-                                <Image
-                                  src={attachment.previewUrl}
-                                  alt={attachment.fileName}
-                                  width={48}
-                                  height={48}
-                                  className="h-full w-full object-cover"
-                                />
-                              </div>
-                            ) : attachment.mediaType === "video" && attachment.previewUrl ? (
-                              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0 relative">
-                                <video
-                                  src={attachment.previewUrl}
-                                  className="h-full w-full object-cover"
-                                  muted
-                                  playsInline
-                                />
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                                  <Video className="h-4 w-4 text-white/80" />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg border border-white/20 bg-white/5 flex items-center justify-center flex-shrink-0">
-                                {attachment.mediaType === "audio" && (
-                                  <Mic className="h-4 w-4 text-white/70" />
-                                )}
-                                {attachment.mediaType === "video" && (
-                                  <Video className="h-4 w-4 text-white/70" />
-                                )}
-                                {attachment.mediaType === "file" && (
-                                  <FileText className="h-4 w-4 text-white/70" />
-                                )}
-                                {attachment.mediaType === "image" && (
-                                  <ImageIcon className="h-4 w-4 text-white/70" />
-                                )}
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="max-w-[160px] truncate" title={attachment.fileName}>
-                                {attachment.fileName}
-                              </div>
-                            </div>
-                            {attachment.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-white/60 flex-shrink-0" />}
-                            {attachment.status === "error" && <span className="text-rose-200 text-[10px] flex-shrink-0">Upload failed</span>}
-                            {attachment.mediaType === "file" && attachment.status === "ready" && attachment.storagePath && (
-                              <button
-                                type="button"
-                                onClick={async (e) => {
-                                  e.stopPropagation()
-                                  try {
-                                    // For files in composer, we need to get the attachment ID from the message
-                                    // For now, download directly from storage if we have the path
-                                    if (attachment.previewUrl) {
-                                      // Use preview URL (object URL) for local files
-                                      const link = document.createElement('a')
-                                      link.href = attachment.previewUrl
-                                      link.download = attachment.fileName
-                                      link.style.display = 'none'
-                                      document.body.appendChild(link)
-                                      link.click()
-                                      document.body.removeChild(link)
-                                    } else {
-                                      toast.error("File not available for download")
-                                    }
-                                  } catch (error) {
-                                    console.error("Download error:", error)
-                                    toast.error("Failed to download file")
-                                  }
-                                }}
-                                className="flex-shrink-0 p-1 rounded hover:bg-white/10 text-white/70 hover:text-white/90 transition"
-                                title="Download file"
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAttachment(attachment.id)}
-                              className="ml-1 rounded-full bg-white/10 hover:bg-white/20 p-1 text-white/60 hover:text-white/90 transition flex-shrink-0"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                    {isVoiceRecorderOpen && (
-                      <VoiceNoteRecorder
-                        onRecordingComplete={handleVoiceNoteComplete}
-                        onCancel={handleVoiceNoteCancel}
-                        maxDurationMinutes={5}
-                        autoStart={true}
-                      />
-                    )}
-                    {replyingToMessage && (
-                      <div className="w-full mb-2">
-                        <div 
-                          className="py-2.5 sm:py-3 px-3 sm:px-4 bg-white/5 border-l-2 border-white/30 rounded-lg flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => {
-                            if (replyingToMessage.id) {
-                              scrollToMessage(replyingToMessage.id)
-                            }
-                          }}
-                        >
-                          {(() => {
-                            const imageAttachments = replyingToMessage.attachments?.filter(a => a.media_type === "image") ?? []
-                            const videoAttachments = replyingToMessage.attachments?.filter(a => a.media_type === "video") ?? []
-                            const documentAttachments = replyingToMessage.attachments?.filter(a => a.media_type === "file") ?? []
-                            const firstImage = imageAttachments[0]
-                            const firstVideo = videoAttachments[0]
-                            const firstDocument = documentAttachments[0]
-                            const hasImageOrVideo = firstImage || firstVideo
-                            const hasDocument = firstDocument && !hasImageOrVideo
-                            
-                            return (
-                              <>
-                                {(hasImageOrVideo || hasDocument) && (
-                                  <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-lg overflow-hidden border border-white/20 bg-black/20 flex-shrink-0 relative">
-                                    {firstImage && attachmentUrls[firstImage.id]?.url ? (
-                                      <Image
-                                        src={attachmentUrls[firstImage.id].url}
-                                        alt="Shared image"
-                                        width={64}
-                                        height={64}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : firstVideo && attachmentUrls[firstVideo.id]?.url ? (
-                                      <>
-                                        <video
-                                          src={attachmentUrls[firstVideo.id].url}
-                                          className="h-full w-full object-cover"
-                                          muted
-                                          playsInline
-                                        />
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                                          <Video className="h-4 w-4 sm:h-5 sm:w-5 text-white/80" />
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <div className="h-full w-full flex items-center justify-center bg-white/5">
-                                        {firstImage ? (
-                                          <ImageIcon className="h-5 w-5 sm:h-6 sm:w-6 text-white/50" />
-                                        ) : firstVideo ? (
-                                          <Video className="h-5 w-5 sm:h-6 sm:w-6 text-white/50" />
-                                        ) : (
-                                          <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-white/50" />
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5 mb-0.5">
-                                    <Reply className="h-3 w-3 text-white/50 flex-shrink-0" />
-                                    <span className="text-[10px] text-white/60 font-medium">
-                                      Replying to {replyingToMessage.sender_id === viewer.id ? "yourself" : peerName}
-                                    </span>
-                                  </div>
-                                  {replyingToMessage.content ? (
-                                    <p className="text-[10px] text-white/50 line-clamp-2 truncate">
-                                      {replyingToMessage.content}
-                                    </p>
-                                  ) : replyingToMessage.has_attachments ? (
-                                    <p className="text-[10px] text-white/50 italic">
-                                      {firstImage ? "[image]" : firstVideo ? "[video]" : firstDocument ? (firstDocument.file_name || "[document]") : "[attachment]"}
-                                    </p>
-                                  ) : (
-                                    <p className="text-[10px] text-white/50 italic">[message]</p>
-                                  )}
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 rounded-full text-white/50 hover:text-white hover:bg-white/10 flex-shrink-0"
-                                  onClick={() => setReplyingToMessage(null)}
-                                >
-                                  <X className="h-3 w-3" />
-                                </Button>
-                              </>
-                            )
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                    <div
-                      className={cn(
-                        "flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-2 sm:px-3 py-1.5 sm:py-2",
-                        composerDisabled && "opacity-60 pointer-events-none",
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                        <DropdownMenu open={attachMenuOpen} onOpenChange={setAttachMenuOpen}>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="group relative flex items-center justify-center h-8 w-8 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
-                              title="Attach file"
-                            >
-                              <Paperclip className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="start"
-                            side="top"
-                            sideOffset={8}
-                            className="bg-white/10 border border-white/20 backdrop-blur-xl"
-                          >
-                            <DropdownMenuItem
-                              onSelect={(e) => {
-                                e.preventDefault()
-                                console.log('[DropdownMenuItem] Image selected, triggering file input')
-                                const input = fileInputRefs.current.image
-                                console.log('[DropdownMenuItem] File input ref:', {
-                                  exists: !!input,
-                                  type: input?.type,
-                                  accept: input?.accept
-                                })
-                                if (input) {
-                                  input.click()
-                                  console.log('[DropdownMenuItem] File input click() called')
-                                } else {
-                                  console.error('[DropdownMenuItem] File input ref is null!')
-                                }
-                              }}
-                              className="cursor-pointer"
-                            >
-                              <ImageIcon className="h-4 w-4 text-white/70 mr-2" />
-                              <span className="text-white/90">Image</span>
-                            </DropdownMenuItem>
-                            <input
-                              ref={(el) => {
-                                fileInputRefs.current.image = el
-                                console.log('[File Input Ref] Image input ref set:', {
-                                  exists: !!el,
-                                  type: el?.type,
-                                  accept: el?.accept
-                                })
-                              }}
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(event) => {
-                                console.log('[File Input] Image onChange triggered:', {
-                                  hasFiles: !!event.target.files,
-                                  filesCount: event.target.files?.length || 0,
-                                  files: event.target.files ? Array.from(event.target.files).map(f => ({
-                                    name: f.name,
-                                    type: f.type,
-                                    size: f.size
-                                  })) : null
-                                })
-                                
-                                const files = event.target.files ? Array.from(event.target.files) : null
-                                
-                                if (files && files.length > 0) {
-                                  console.log('[File Input] Calling handleAddFiles for images')
-                                  handleAddFiles(files, "image")
-                                } else {
-                                  console.log('[File Input] No files to add')
-                                }
-                                
-                                setAttachMenuOpen(false)
-                                event.target.value = ""
-                              }}
-                              multiple
-                            />
-                            <DropdownMenuItem
-                              onSelect={(e) => {
-                                e.preventDefault()
-                                console.log('[DropdownMenuItem] Video selected, triggering file input')
-                                const input = fileInputRefs.current.video
-                                console.log('[DropdownMenuItem] File input ref:', {
-                                  exists: !!input,
-                                  type: input?.type,
-                                  accept: input?.accept
-                                })
-                                if (input) {
-                                  input.click()
-                                  console.log('[DropdownMenuItem] File input click() called')
-                                } else {
-                                  console.error('[DropdownMenuItem] File input ref is null!')
-                                }
-                              }}
-                              className="cursor-pointer"
-                            >
-                              <Video className="h-4 w-4 text-white/70 mr-2" />
-                              <span className="text-white/90">Video</span>
-                            </DropdownMenuItem>
-                            <input
-                              ref={(el) => {
-                                fileInputRefs.current.video = el
-                                console.log('[File Input Ref] Video input ref set:', {
-                                  exists: !!el,
-                                  type: el?.type,
-                                  accept: el?.accept
-                                })
-                              }}
-                              type="file"
-                              accept="video/*"
-                              className="hidden"
-                              onChange={async (event) => {
-                                console.log('[File Input] Video onChange triggered:', {
-                                  hasFiles: !!event.target.files,
-                                  filesCount: event.target.files?.length || 0,
-                                  files: event.target.files ? Array.from(event.target.files).map(f => ({
-                                    name: f.name,
-                                    type: f.type,
-                                    size: f.size
-                                  })) : null
-                                })
-                                
-                                const files = event.target.files ? Array.from(event.target.files) : null
-                                
-                                if (files && files.length > 0) {
-                                  console.log('[File Input] Calling handleAddFiles for videos')
-                                  try {
-                                    await handleAddFiles(files, "video")
-                                  } catch (error) {
-                                    console.error('[File Input] Error in handleAddFiles for video:', error)
-                                  }
-                                } else {
-                                  console.log('[File Input] No files to add')
-                                }
-                                
-                                setAttachMenuOpen(false)
-                                event.target.value = ""
-                              }}
-                              multiple
-                            />
-                            <DropdownMenuItem
-                              onSelect={(e) => {
-                                e.preventDefault()
-                                console.log('[DropdownMenuItem] Audio selected')
-                                fileInputRefs.current.audio?.click()
-                              }}
-                              className="cursor-pointer"
-                            >
-                              <Mic className="h-4 w-4 text-white/70 mr-2" />
-                              <span className="text-white/90">Audio File</span>
-                            </DropdownMenuItem>
-                            <input
-                              ref={(el) => { fileInputRefs.current.audio = el }}
-                              type="file"
-                              accept="audio/*"
-                              className="hidden"
-                              onChange={(event) => {
-                                console.log('[File Input] Audio onChange triggered:', {
-                                  hasFiles: !!event.target.files,
-                                  filesCount: event.target.files?.length || 0
-                                })
-                                
-                                const files = event.target.files ? Array.from(event.target.files) : null
-                                
-                                if (files && files.length > 0) {
-                                  console.log('[File Input] Calling handleAddFiles for audio')
-                                  handleAddFiles(files, "audio")
-                                }
-                                
-                                setAttachMenuOpen(false)
-                                event.target.value = ""
-                              }}
-                              multiple
-                            />
-                            <DropdownMenuItem
-                              onSelect={(e) => {
-                                e.preventDefault()
-                                console.log('[DropdownMenuItem] Document selected')
-                                fileInputRefs.current.document?.click()
-                              }}
-                              className="cursor-pointer"
-                            >
-                              <FileText className="h-4 w-4 text-white/70 mr-2" />
-                              <span className="text-white/90">Document</span>
-                            </DropdownMenuItem>
-                            <input
-                              ref={(el) => { fileInputRefs.current.document = el }}
-                              type="file"
-                              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,application/rtf"
-                              className="hidden"
-                              onChange={(event) => {
-                                console.log('[File Input] Document onChange triggered:', {
-                                  hasFiles: !!event.target.files,
-                                  filesCount: event.target.files?.length || 0
-                                })
-                                
-                                const files = event.target.files ? Array.from(event.target.files) : null
-                                
-                                if (files && files.length > 0) {
-                                  console.log('[File Input] Calling handleAddFiles for documents')
-                                  handleAddFiles(files, "file")
-                                }
-                                
-                                setAttachMenuOpen(false)
-                                event.target.value = ""
-                              }}
-                              multiple
-                            />
-                            <DropdownMenuItem
-                              onSelect={(e) => {
-                                e.preventDefault()
-                                setIsVoiceRecorderOpen(true)
-                                setAttachMenuOpen(false)
-                              }}
-                              className="cursor-pointer"
-                              disabled={isVoiceRecorderOpen}
-                            >
-                              <Mic className="h-4 w-4 text-white/70 mr-2" />
-                              <span className="text-white/90">Voice Note</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        <EmojiPicker
+                
+                <MessageComposer
+                  composerValue={composerValue}
+                  onComposerChange={handleComposerChange}
+                  attachments={attachments}
+                  onRemoveAttachment={handleRemoveAttachment}
+                  onSendMessage={handleSendMessageWrapper}
+                  isSending={isSending}
+                  composerDisabled={composerDisabled}
+                  replyingToMessage={replyingToMessage}
+                  onCancelReply={() => setReplyingToMessage(null)}
+                  onScrollToMessage={scrollToMessage}
+                  attachmentUrls={attachmentUrls}
+                  peerName={peerName}
+                  viewerId={viewer.id}
+                  isVoiceRecorderOpen={isVoiceRecorderOpen}
+                  onVoiceRecorderOpen={setIsVoiceRecorderOpen}
+                  onVoiceNoteComplete={handleVoiceNoteComplete}
+                  onVoiceNoteCancel={handleVoiceNoteCancel}
+                  onAddFiles={handleAddFiles}
+                  fileInputRefs={fileInputRefs}
+                  attachMenuOpen={attachMenuOpen}
+                  onAttachMenuOpenChange={setAttachMenuOpen}
                           onEmojiSelect={handleEmojiSelect}
-                          disabled={isSending || isVoiceRecorderOpen || composerDisabled}
-                        />
-                      </div>
-                      <textarea
-                        ref={textareaRef}
-                        value={composerValue}
-                        onChange={(event) => handleComposerChange(event.target.value)}
-                        placeholder={
-                          selectedConversation.participant_status === "blocked"
-                            ? "Cannot send messages"
-                            : replyingToMessage
-                            ? "Type your reply..."
-                            : "Type a message"
-                        }
-                        className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-2 sm:pb-1.5"
-                        rows={1}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.keyCode === 13) {
-                            // Desktop: Enter sends, Shift+Enter creates new line
-                            // Mobile: Enter creates new line, Shift+Enter sends
-                            
-                            if (!isMobile) {
-                              // DESKTOP: Enter sends, Shift+Enter creates new line
-                              if (event.shiftKey) {
-                                // Shift+Enter pressed: allow default (new line)
-                                // Do nothing - let browser handle it
-                              } else {
-                                // Enter pressed (no Shift): send message
-                                event.preventDefault()
-                                event.stopPropagation()
-                                if (!isSending && !composerDisabled) {
-                                  handleSendMessage()
-                                }
-                              }
-                            } else {
-                              // MOBILE: Enter creates new line, Shift+Enter sends
-                              if (event.shiftKey) {
-                                // Shift+Enter pressed: send message
-                                event.preventDefault()
-                                event.stopPropagation()
-                                handleSendMessage()
-                              }
-                              // Enter pressed (no Shift): allow default (new line)
-                            }
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        disabled={isSending || composerDisabled}
-                        onClick={handleSendMessage}
-                        className="group relative flex items-center justify-center h-8 w-8 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30 flex-shrink-0"
-                      >
-                        {isSending ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-white/70 group-hover:text-white/80 transition-all" />
-                        ) : (
-                          <Send className="h-4 w-4 text-white/70 group-hover:text-white/80 transition-all" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                  isMobile={isMobile}
+                />
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center px-8 py-12 gap-4">
