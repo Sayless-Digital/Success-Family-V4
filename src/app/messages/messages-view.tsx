@@ -87,6 +87,7 @@ export default function MessagesView({
   const highlightedMessageIdRef = useRef<string | null>(null)
   const attachmentsRef = useRef<AttachmentState[]>(attachments)
   const lastThreadFromQueryRef = useRef<string | null>(null)
+  const hasInitializedRef = useRef(false)
 
   // Mobile detection
   useEffect(() => {
@@ -363,13 +364,6 @@ export default function MessagesView({
     fetchImagePreviews()
   }, [conversations, liveMessagePreviews, conversationImagePreviews])
 
-  // Set mobile view to conversation when initialThreadId is provided
-  useEffect(() => {
-    if (initialThreadId && isMobile && isClient) {
-      setMobileView("conversation")
-    }
-  }, [initialThreadId, isMobile, isClient])
-
   // Auto-select first conversation if none selected
   useEffect(() => {
     if (selectedThreadId) return
@@ -429,13 +423,6 @@ export default function MessagesView({
     }
   }, [selectedThreadId, selectedConversation, displayedConversations, initialThreadId])
 
-  // Set mobile view to conversation when initialThreadId is provided (e.g., from query parameter)
-  useEffect(() => {
-    if (initialThreadId && isMobile && isClient) {
-      setMobileView("conversation")
-    }
-  }, [initialThreadId, isMobile, isClient])
-
 
   const handleMarkThreadRead = useCallback(
     async (threadId: string) => {
@@ -458,9 +445,64 @@ export default function MessagesView({
     [],
   )
 
+  // Sync mobile view with URL state (handles browser back button)
+  // Use refs to avoid infinite loops when updating state
+  const prevThreadParamRef = useRef<string | null>(null)
+  
+  useEffect(() => {
+    if (!isClient || !isMobile || !hasInitializedRef.current) return
+    
+    const threadParam = searchParams?.get("thread")?.trim() || null
+    
+    // Only sync if the thread param actually changed
+    if (threadParam === prevThreadParamRef.current) return
+    
+    prevThreadParamRef.current = threadParam
+    
+    // If no thread param, ensure we're on list view
+    if (!threadParam) {
+      // Only update if current state doesn't match
+      if (mobileViewFromHook !== "list") {
+        startTransition(() => {
+          setMobileViewFromHook("list")
+        })
+      }
+      // Only clear selectedThreadId if it's set
+      if (selectedThreadIdRef.current) {
+        startTransition(() => {
+          setSelectedThreadId(null)
+          lastThreadFromQueryRef.current = null
+        })
+      }
+    } else {
+      // If thread param exists and matches selected thread, ensure we're on conversation view
+      const currentSelectedId = selectedThreadIdRef.current
+      if (threadParam === currentSelectedId && mobileViewFromHook !== "conversation") {
+        startTransition(() => {
+          setMobileViewFromHook("conversation")
+        })
+      }
+    }
+  }, [isClient, isMobile, searchParams, mobileViewFromHook, setMobileViewFromHook, setSelectedThreadId])
+
   useEffect(() => {
     const params = searchParams
-    if (!params) return
+    if (!params || !isClient) return
+
+    // Don't auto-open on initial load - only respect query params after user has interacted
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true
+      // Clear thread param from URL on initial load to prevent auto-opening
+      const threadParam = params.get("thread")?.trim()
+      const peerParam = params.get("peerId")?.trim()
+      if (threadParam && !peerParam) {
+        const nextParams = new URLSearchParams(params.toString())
+        nextParams.delete("thread")
+        const queryString = nextParams.toString()
+        router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+        return
+      }
+    }
 
     const peerParam = params.get("peerId")
     if (peerParam) {
@@ -490,10 +532,6 @@ export default function MessagesView({
         if (cancelled) return
 
         if (conversation) {
-          // Set mobile view to conversation when opening from query parameter
-          if (typeof window !== "undefined" && window.innerWidth < 1024) {
-            setMobileView("conversation")
-          }
           await handleSelectConversation(threadParam)
           if (!cancelled) {
             lastThreadFromQueryRef.current = threadParam
@@ -511,7 +549,7 @@ export default function MessagesView({
     return () => {
       cancelled = true
     }
-  }, [handleSelectConversation, refreshConversations, searchParams, selectedThreadId])
+  }, [handleSelectConversation, refreshConversations, searchParams, selectedThreadId, isClient, router, pathname])
 
   useEffect(() => {
     const params = searchParams
@@ -557,10 +595,6 @@ export default function MessagesView({
         const queryString = nextParams.toString()
         router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
 
-        // Set mobile view to conversation when opening from peerId
-        if (typeof window !== "undefined" && window.innerWidth < 1024) {
-          setMobileView("conversation")
-        }
         await handleSelectConversation(threadId)
         if (!cancelled) {
           lastThreadFromQueryRef.current = threadId
@@ -1521,9 +1555,18 @@ export default function MessagesView({
   const conversationsToRender = displayedConversations
 
   const handleBackToList = useCallback(() => {
-    setMobileViewFromHook("list")
-    setSelectedThreadId(null)
-  }, [setMobileViewFromHook, setSelectedThreadId])
+    startTransition(() => {
+      setMobileViewFromHook("list")
+      setSelectedThreadId(null)
+      lastThreadFromQueryRef.current = null
+    })
+    // Clear thread from URL
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? "")
+    nextParams.delete("thread")
+    nextParams.delete("peerId")
+    const queryString = nextParams.toString()
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+  }, [setMobileViewFromHook, setSelectedThreadId, searchParams, router, pathname])
 
   const handleImageClick = useCallback((images: Array<{ id: string; url: string }>, index: number) => {
                                           setLightboxImages(images)

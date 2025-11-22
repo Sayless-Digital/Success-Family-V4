@@ -1,4 +1,4 @@
-"use client"
+ "use client"
 
 import Image from "next/image"
 import { Search, Loader2 } from "lucide-react"
@@ -20,7 +20,7 @@ interface ConversationListProps {
   onPrefetchMessages: (threadId: string) => void
   isMobile: boolean
   isClient: boolean
-  mobileView: "list" | "conversation"
+  mobileView?: "list" | "conversation"
   viewerId: string
   unreadCounts: Record<string, number>
   typingIndicators: Record<string, { userId: string; expiresAt: number }>
@@ -39,7 +39,7 @@ export function ConversationList({
   onPrefetchMessages,
   isMobile,
   isClient,
-  mobileView,
+  mobileView = "list",
   viewerId,
   unreadCounts,
   typingIndicators,

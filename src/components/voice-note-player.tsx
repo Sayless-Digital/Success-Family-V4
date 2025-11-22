@@ -210,27 +210,27 @@ export function VoiceNotePlayer({
             </div>
           </button>
           <div className="flex-1 flex flex-col gap-1.5">
-            <div
+        <div
               className="w-full h-2 bg-white/10 rounded-full cursor-pointer relative group backdrop-blur-sm overflow-visible"
-              onClick={handleSeek}
-            >
-              <div
-                className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
-                style={{
-                  width: audioProgress.duration
-                    ? `${(audioProgress.current / audioProgress.duration) * 100}%`
-                    : '0%'
-                }}
-              >
-                <div
-                  className={cn(
-                    "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none transition-opacity",
-                    playing ? "animate-edge-glow opacity-100" : "opacity-0"
-                  )}
-                  style={{
-                    transform: 'translate(50%, -50%)'
-                  }}
-                />
+          onClick={handleSeek}
+        >
+          <div
+            className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
+            style={{
+              width: audioProgress.duration
+                ? `${(audioProgress.current / audioProgress.duration) * 100}%`
+                : '0%'
+            }}
+          >
+            <div
+              className={cn(
+                "absolute right-0 top-1/2 w-8 h-8 bg-white/90 blur-lg rounded-full pointer-events-none transition-opacity",
+                playing ? "animate-edge-glow opacity-100" : "opacity-0"
+              )}
+              style={{
+                transform: 'translate(50%, -50%)'
+              }}
+            />
               </div>
             </div>
             <div className="font-mono text-[10px] sm:text-xs text-white/60 whitespace-nowrap">

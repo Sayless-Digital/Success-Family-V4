@@ -70,6 +70,16 @@ export function useConversations({
     isMobileRef.current = isMobile
   }, [isMobile, isMobileRef])
 
+  // On mobile, always start with list view, even if there's an initial thread
+  // Only run once when client becomes available and we're on mobile
+  const hasInitializedMobileView = useRef(false)
+  useEffect(() => {
+    if (isMobile && isClient && !hasInitializedMobileView.current) {
+      setMobileView("list")
+      hasInitializedMobileView.current = true
+    }
+  }, [isMobile, isClient])
+
   const refreshConversations = useCallback(async () => {
     const response = await fetch("/api/dm/threads?limit=30", { cache: "no-store" })
     if (!response.ok) {

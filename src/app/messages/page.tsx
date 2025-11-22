@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation"
 
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import { getConversationSummaries, listMessages } from "@/lib/chat"
+import { getConversationSummaries } from "@/lib/chat"
+import type { MessageResult } from "@/lib/chat-shared"
 import MessagesView from "./messages-view"
 
 export default async function MessagesPage() {
@@ -24,21 +25,11 @@ export default async function MessagesPage() {
     limit: 30,
   })
 
-  const initialThread = conversations[0] ?? null
-  const initialThreadId = initialThread?.thread_id ?? null
+  // Don't auto-select the first conversation - let user choose
+  const initialThreadId = null
 
-  const initialMessagesByThread: Record<string, Awaited<ReturnType<typeof listMessages>>> = {}
+  const initialMessagesByThread: Record<string, MessageResult[]> = {}
   const initialPaginationByThread: Record<string, { hasMore: boolean; nextCursor: string | null }> = {}
-
-  if (initialThreadId) {
-    const messages = await listMessages(supabase, initialThreadId, 50)
-    const ordered = [...messages].reverse()
-    initialMessagesByThread[initialThreadId] = ordered
-    initialPaginationByThread[initialThreadId] = {
-      hasMore: messages.length === 50,
-      nextCursor: messages.length === 50 ? messages[messages.length - 1]?.created_at ?? null : null,
-    }
-  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
