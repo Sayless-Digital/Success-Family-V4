@@ -8,7 +8,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Separator } from "@/components/ui/separator"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { EmojiPicker } from "@/components/emoji-picker"
-import { cn } from "@/lib/utils"
+import { cn, extractFirstUrl } from "@/lib/utils"
+import { LinkPreviewCard } from "@/components/link-preview-card"
+import { useLinkPreview } from "@/hooks/use-link-preview"
+import { TiptapEditor } from "@/components/tiptap-editor"
 import type { AttachmentState } from "../types"
 import type { MessageResult } from "@/lib/chat-shared"
 
@@ -64,6 +67,13 @@ export function MessageComposer({
   isMobile,
 }: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  
+  // Extract URL from content for real-time preview
+  const detectedUrl = extractFirstUrl(composerValue)
+  const { preview, loading } = useLinkPreview(detectedUrl, {
+    enabled: !!detectedUrl && !isVoiceRecorderOpen,
+    debounceMs: 500,
+  })
 
   const autoResizeTextarea = () => {
     const textarea = textareaRef.current
@@ -82,11 +92,12 @@ export function MessageComposer({
     autoResizeTextarea()
   }, [composerValue])
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.keyCode === 13) {
       if (!isMobile) {
         if (event.shiftKey) {
           // Shift+Enter: allow default (new line)
+          return false
         } else {
           // Enter: send message
           event.preventDefault()
@@ -94,6 +105,7 @@ export function MessageComposer({
           if (!isSending && !composerDisabled) {
             onSendMessage()
           }
+          return false
         }
       } else {
         // MOBILE: Enter creates new line, Shift+Enter sends
@@ -101,10 +113,13 @@ export function MessageComposer({
           event.preventDefault()
           event.stopPropagation()
           onSendMessage()
+          return false
         }
         // Enter: allow default (new line)
+        return false
       }
     }
+    return true
   }
 
   return (
@@ -116,7 +131,7 @@ export function MessageComposer({
           </div>
         </div>
       )}
-      
+
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {attachments.map((attachment, index) => (
@@ -210,7 +225,7 @@ export function MessageComposer({
           ))}
         </div>
       )}
-      
+
       {isVoiceRecorderOpen && (
         <VoiceNoteRecorder
           onRecordingComplete={onVoiceNoteComplete}
@@ -220,9 +235,18 @@ export function MessageComposer({
         />
       )}
       
+      {/* Real-time Link Preview */}
+      {detectedUrl && !isVoiceRecorderOpen && (
+        <LinkPreviewCard
+          preview={preview}
+          loading={loading}
+          compact={true}
+        />
+      )}
+
       {replyingToMessage && (
         <div className="w-full mb-2">
-          <div 
+          <div
             className="py-2.5 sm:py-3 px-3 sm:px-4 bg-white/5 border-l-2 border-white/30 rounded-lg flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => {
               if (replyingToMessage.id) {
@@ -239,7 +263,7 @@ export function MessageComposer({
               const firstDocument = documentAttachments[0]
               const hasImageOrVideo = firstImage || firstVideo
               const hasDocument = firstDocument && !hasImageOrVideo
-              
+
               return (
                 <>
                   {(hasImageOrVideo || hasDocument) && (
@@ -311,7 +335,7 @@ export function MessageComposer({
           </div>
         </div>
       )}
-      
+
       <div
         className={cn(
           "flex items-end gap-2 sm:gap-3 bg-white/10 border border-white/20 rounded-2xl px-2 sm:px-3 py-1.5 sm:py-2",
@@ -460,21 +484,25 @@ export function MessageComposer({
             disabled={isSending || isVoiceRecorderOpen || composerDisabled}
           />
         </div>
-        <textarea
-          ref={textareaRef}
+        <div className="flex-1 min-w-0">
+          <TiptapEditor
           value={composerValue}
-          onChange={(event) => onComposerChange(event.target.value)}
+            onChange={onComposerChange}
           placeholder={
             composerDisabled
               ? "Cannot send messages"
               : replyingToMessage
-              ? "Type your reply..."
-              : "Type a message"
+                ? "Type your reply..."
+                : "Type a message"
           }
-          className="flex-1 bg-transparent border-0 resize-none outline-none text-sm sm:text-[15px] text-white/80 placeholder:text-white/40 max-h-24 sm:max-h-32 min-h-[32px] leading-[1.4] overflow-y-auto pt-1.5 pb-0.5 sm:pt-2 sm:pb-1.5"
-          rows={1}
+            disabled={composerDisabled}
+            minHeight={32}
+            maxHeight={isMobile ? 96 : 128}
           onKeyDown={handleKeyDown}
+            size="sm"
+            className="text-sm sm:text-[15px] leading-[1.4]"
         />
+        </div>
         <Button
           type="button"
           disabled={isSending || composerDisabled}

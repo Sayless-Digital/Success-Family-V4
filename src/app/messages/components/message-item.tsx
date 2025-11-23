@@ -3,7 +3,8 @@
 import { useMemo } from "react"
 import Image from "next/image"
 import { ChevronDown, Reply, Trash2, Video, FileText, ImageIcon, Download, Loader2 } from "lucide-react"
-import { cn, linkifyText } from "@/lib/utils"
+import { cn } from "@/lib/utils"
+import { FormattedContent } from "@/components/formatted-content"
 import { VoiceNotePlayer } from "@/components/voice-note-player"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -100,7 +101,7 @@ export function MessageItem({
 
   const readReceipts = message.read_receipts ?? []
   const otherUserId = selectedConversation?.other_user_id
-  const isRead = isOwn && otherUserId 
+  const isRead = isOwn && otherUserId
     ? readReceipts.some((r) => r.user_id === otherUserId)
     : false
   const isSending = isOwn && message.id.startsWith('temp-')
@@ -108,14 +109,14 @@ export function MessageItem({
   const isDelivered = isOwn && !isSending && !isReadState
 
   return (
-    <div 
+    <div
       className={cn("flex gap-1.5 sm:gap-2 group relative items-center", isOwn ? "justify-end" : "justify-start")}
     >
       <div
         className={cn(
           "rounded-2xl backdrop-blur-sm relative transition-all duration-500 z-10",
           highlightedMessageId === message.id && "ring-4 ring-white/70 shadow-2xl shadow-white/30 z-10",
-          isAudioOnly 
+          isAudioOnly
             ? "w-[280px] sm:w-[320px]"
             : "max-w-[85%] sm:max-w-[70%] lg:max-w-[65%]",
           isImageOnly || isVideoOnly || isAudioOnly ? "p-0" : "px-2.5 sm:px-3 py-2 sm:py-2.5",
@@ -138,7 +139,7 @@ export function MessageItem({
         {isMobile && !isDeleting && swipeOffset > 0 && (
           <ReplyIndicator isOwn={isOwn} offset={swipeOffset} />
         )}
-        
+
         {isOwn && !isDeleting && (
           <DropdownMenu open={isMobile ? longPressMenuOpen === message.id : undefined} onOpenChange={(open) => {
             if (isMobile && !open) {
@@ -188,7 +189,7 @@ export function MessageItem({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        
+
         {!isOwn && !isDeleting && (
           <DropdownMenu open={isMobile ? longPressMenuOpen === message.id : undefined} onOpenChange={(open) => {
             if (isMobile && !open) {
@@ -228,9 +229,9 @@ export function MessageItem({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        
+
         {message.replied_to_message?.id && (() => {
-          const repliedMessageAttachments = message.replied_to_message.attachments ?? 
+          const repliedMessageAttachments = message.replied_to_message.attachments ??
             (selectedThreadId ? (messagesByThread[selectedThreadId] ?? []) : [])
               .find(m => m.id === message.replied_to_message?.id)
               ?.attachments ?? []
@@ -242,13 +243,13 @@ export function MessageItem({
           const firstDocument = documentAttachments[0]
           const hasImageOrVideo = firstImage || firstVideo
           const hasDocument = firstDocument && !hasImageOrVideo
-          
+
           return (
-            <div 
+            <div
               className={cn(
                 "mb-1.5 w-full py-1.5 px-2 rounded-lg border-l-2 flex items-start gap-2 cursor-pointer hover:opacity-80 transition-opacity",
-                isOwn 
-                  ? "bg-black/20 border-white/30" 
+                isOwn
+                  ? "bg-black/20 border-white/30"
                   : "bg-white/5 border-white/20"
               )}
               onClick={(e) => {
@@ -315,33 +316,33 @@ export function MessageItem({
             </div>
           )
         })()}
-        
+
         <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-1.5", !hasImages && !hasVideos && !isAudioOnly && "pr-12 sm:pr-14")}>
           {attachmentsForMessage.length > 0 && (
             <div className={cn(isImageOnly || isVideoOnly ? "" : "space-y-2", message.content && "mb-1.5")}>
               {attachmentsForMessage.map((attachment, attachmentIndex) => {
                 const signedUrl = attachmentUrls[attachment.id]?.url
-                
+
                 if (attachment.media_type === "image") {
                   const imageAttachments = attachmentsForMessage.filter(a => a.media_type === "image")
                   const imageIndex = imageAttachments.findIndex(a => a.id === attachment.id)
-                  
+
                   const handleImageClick = () => {
                     if (onImageClick) {
                       const images = imageAttachments.map(img => ({
                         id: img.id,
                         url: attachmentUrls[img.id]?.url || ""
                       })).filter(img => img.url)
-                      
+
                       if (images.length > 0) {
                         onImageClick(images, imageIndex >= 0 ? imageIndex : 0)
                       }
                     }
                   }
-                  
+
                   return (
-                    <div 
-                      key={`${message.id}-${attachment.id}-${attachmentIndex}`} 
+                    <div
+                      key={`${message.id}-${attachment.id}-${attachmentIndex}`}
                       className={cn(
                         "overflow-hidden border border-white/20 bg-black/20 relative flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity",
                         isImageOnly ? "rounded-2xl" : "rounded-lg"
@@ -365,10 +366,10 @@ export function MessageItem({
                     </div>
                   )
                 }
-                
+
                 if (attachment.media_type === "audio") {
                   if (!signedUrl) return null
-                  
+
                   return (
                     <VoiceNotePlayer
                       key={`${message.id}-${attachment.id}-${attachmentIndex}`}
@@ -388,15 +389,15 @@ export function MessageItem({
                     />
                   )
                 }
-                
+
                 if (attachment.media_type === "video") {
                   const isPlaying = playingVideo === attachment.id
-                  
+
                   const handlePlayClick = async (e: React.MouseEvent) => {
                     e.stopPropagation()
                     const video = videoRefs.current[attachment.id]
                     if (!video) return
-                    
+
                     try {
                       await video.play()
                       onVideoPlayStateChange(attachment.id)
@@ -404,7 +405,7 @@ export function MessageItem({
                       console.error('Error playing video:', error)
                     }
                   }
-                  
+
                   return (
                     <div
                       key={`${message.id}-${attachment.id}-${attachmentIndex}`}
@@ -428,16 +429,16 @@ export function MessageItem({
                                   }
                                 }
                                 const handleEnded = () => onVideoPlayStateChange(null)
-                                
+
                                 el.addEventListener('play', handlePlay)
                                 el.addEventListener('pause', handlePause)
                                 el.addEventListener('ended', handleEnded)
-                                
-                                ;(el as any)._cleanup = () => {
-                                  el.removeEventListener('play', handlePlay)
-                                  el.removeEventListener('pause', handlePause)
-                                  el.removeEventListener('ended', handleEnded)
-                                }
+
+                                  ; (el as any)._cleanup = () => {
+                                    el.removeEventListener('play', handlePlay)
+                                    el.removeEventListener('pause', handlePause)
+                                    el.removeEventListener('ended', handleEnded)
+                                  }
                               }
                             }}
                             src={signedUrl}
@@ -454,7 +455,7 @@ export function MessageItem({
                             }}
                           />
                           {!isPlaying && (
-                            <div 
+                            <div
                               className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none z-10 rounded-lg"
                             >
                               <div className="bg-black/60 rounded-full p-3 backdrop-blur-sm">
@@ -471,10 +472,10 @@ export function MessageItem({
                     </div>
                   )
                 }
-                
+
                 if (attachment.media_type === "file") {
                   const fileName = attachment.file_name ?? attachment.storage_path?.split('/').pop() ?? 'file'
-                  
+
                   return (
                     <div
                       key={`${message.id}-${attachment.id}-${attachmentIndex}`}
@@ -505,7 +506,7 @@ export function MessageItem({
                     </div>
                   )
                 }
-                
+
                 return (
                   <div
                     key={`${message.id}-${attachment.id}-${attachmentIndex}`}
@@ -520,41 +521,46 @@ export function MessageItem({
               })}
             </div>
           )}
-          
+
           {message.content && (
-            <p className={cn(
-              "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words pr-12 sm:pr-14"
-            )}>{linkifyText(message.content)}</p>
+            <div className={cn("pr-12 sm:pr-14")}>
+              <FormattedContent
+                text={message.content}
+                showLinkPreviews={true}
+                size="sm"
+                previewCompact={true}
+              />
+            </div>
           )}
         </div>
-        
+
         {(() => {
           const hasPlayingVideo = attachmentsForMessage.some(
             a => a.media_type === "video" && playingVideo === a.id
           )
           if (hasPlayingVideo) return null
-          
+
           return (
             <div className={cn(
               "absolute flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded",
               isImageOnly || isVideoOnly
                 ? "bottom-1.5 right-1.5 bg-black/60 text-white/90 backdrop-blur-sm"
                 : isAudioOnly
-                ? "bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 text-white/40 px-1"
-                : "bottom-1.5 right-1.5 text-white/40 px-1"
+                  ? "bottom-2 right-2 sm:bottom-2.5 sm:right-2.5 text-white/40 px-1"
+                  : "bottom-1.5 right-1.5 text-white/40 px-1"
             )}>
               {formatTimestamp(message.created_at)}
               {isOwn && (
                 <span className="flex-shrink-0 ml-1">
                   {isSending ? (
-                    <span 
+                    <span
                       className="inline-block h-2 w-2 rounded-full bg-white border border-white/50 animate-pulse"
                       style={{
                         boxShadow: '0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px rgba(255, 255, 255, 0.3)',
                       }}
                     />
                   ) : isReadState ? (
-                    <span 
+                    <span
                       className="inline-block h-2 w-2 rounded-full"
                       style={{
                         background: 'linear-gradient(135deg, #10B981 0%, #3B82F6 50%, #06B6D4 100%)',
@@ -563,7 +569,7 @@ export function MessageItem({
                       }}
                     />
                   ) : isDelivered ? (
-                    <span 
+                    <span
                       className="inline-block h-2 w-2 rounded-full"
                       style={{
                         background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #9333EA 100%)',
@@ -572,7 +578,7 @@ export function MessageItem({
                       }}
                     />
                   ) : (
-                    <span 
+                    <span
                       className="inline-block h-2 w-2 rounded-full bg-white/40 border border-white/20"
                     />
                   )}

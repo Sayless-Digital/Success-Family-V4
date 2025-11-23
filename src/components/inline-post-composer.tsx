@@ -12,11 +12,14 @@ import { Badge } from "@/components/ui/badge"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import type { MediaType, PostWithAuthor, Topic } from "@/types"
-import { cn } from "@/lib/utils"
+import { cn, extractFirstUrl } from "@/lib/utils"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { toast } from "sonner"
 import { BoostRewardsDialog } from "@/components/boost-rewards-dialog"
 import { EmojiPicker } from "@/components/emoji-picker"
+import { LinkPreviewCard } from "@/components/link-preview-card"
+import { useLinkPreview } from "@/hooks/use-link-preview"
+import { TiptapEditor } from "@/components/tiptap-editor"
 import {
   Select,
   SelectContent,
@@ -118,6 +121,13 @@ export function InlinePostComposer({
   const [content, setContent] = React.useState("")
   const [voiceNote, setVoiceNote] = React.useState<MediaFile | null>(null)
   const [imageFiles, setImageFiles] = React.useState<MediaFile[]>([])
+  
+  // Extract URL from content for real-time preview
+  const detectedUrl = React.useMemo(() => extractFirstUrl(content), [content])
+  const { preview, loading } = useLinkPreview(detectedUrl, {
+    enabled: !!detectedUrl && isExpanded,
+    debounceMs: 500,
+  })
   const [submitting, setSubmitting] = React.useState(false)
   const [selectedTopics, setSelectedTopics] = React.useState<string[]>([])
   const [selectedTopicsData, setSelectedTopicsData] = React.useState<Topic[]>([])
@@ -312,7 +322,7 @@ export function InlinePostComposer({
       const spaceBelow = viewportHeight - rect.bottom
       const spaceAbove = rect.top
       const dropdownHeight = Math.min(300, topicSearchResults.length * 50 + 16)
-      
+
       let top: number | undefined
       let bottom: number | undefined
       let maxHeight: number
@@ -361,7 +371,7 @@ export function InlinePostComposer({
     // Create or get audio element
     if (!audioRefs.current[previewUrl]) {
       const audio = new Audio(previewUrl)
-      
+
       audio.addEventListener('loadedmetadata', () => {
         setAudioProgress(prev => ({
           ...prev,
@@ -371,7 +381,7 @@ export function InlinePostComposer({
           }
         }))
       })
-      
+
       audio.addEventListener('timeupdate', () => {
         setAudioProgress(prev => ({
           ...prev,
@@ -381,7 +391,7 @@ export function InlinePostComposer({
           }
         }))
       })
-      
+
       audio.addEventListener('ended', () => {
         setPlayingAudio(null)
         setAudioProgress(prev => ({
@@ -392,7 +402,7 @@ export function InlinePostComposer({
           }
         }))
       })
-      
+
       audio.addEventListener('pause', () => {
         // Only clear playing state if audio ended or is at the start
         // Don't clear it on normal pause so position is preserved
@@ -400,15 +410,15 @@ export function InlinePostComposer({
           setPlayingAudio(null)
         }
       })
-      
+
       audioRefs.current[previewUrl] = audio
-      
+
       // Load metadata to get duration
       audio.load()
     }
 
     const audio = audioRefs.current[previewUrl]
-    
+
     if (playingAudio === previewUrl) {
       // Pause if already playing - preserve currentTime
       audio.pause()
@@ -443,14 +453,14 @@ export function InlinePostComposer({
 
     // Create preview URL
     const preview = URL.createObjectURL(audioBlob)
-    
+
     // Create file from blob
     const fileName = `voice-note-${Date.now()}.webm`
     const file = new File([audioBlob], fileName, { type: 'audio/webm' })
-    
+
     // Immediately load audio metadata to get duration
     const audio = new Audio(preview)
-    
+
     audio.addEventListener('loadedmetadata', () => {
       setAudioProgress(prev => ({
         ...prev,
@@ -460,7 +470,7 @@ export function InlinePostComposer({
         }
       }))
     })
-    
+
     audio.addEventListener('timeupdate', () => {
       setAudioProgress(prev => ({
         ...prev,
@@ -470,7 +480,7 @@ export function InlinePostComposer({
         }
       }))
     })
-    
+
     audio.addEventListener('ended', () => {
       setPlayingAudio(null)
       setAudioProgress(prev => ({
@@ -481,17 +491,17 @@ export function InlinePostComposer({
         }
       }))
     })
-    
+
     audio.addEventListener('pause', () => {
       if (audio.currentTime === 0 || audio.ended) {
         setPlayingAudio(null)
       }
     })
-    
+
     // Store audio element for later playback
     audioRefs.current[preview] = audio
     audio.load()
-    
+
     // Replace existing voice note if any (only one allowed)
     setVoiceNote({ file, preview, type: 'audio', requiresBoost: false })
     setShowVoiceRecorder(false)
@@ -505,7 +515,7 @@ export function InlinePostComposer({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!resolvedAllowImages) return
     const files = Array.from(e.target.files || [])
-    
+
     files.forEach(file => {
       // Only accept images for now
       if (!file.type.startsWith('image/')) {
@@ -514,7 +524,7 @@ export function InlinePostComposer({
 
       // Create preview URL
       const preview = URL.createObjectURL(file)
-      
+
       setImageFiles(prev => [...prev, { file, preview, type: 'image' }])
     })
 
@@ -552,7 +562,7 @@ export function InlinePostComposer({
 
   const removeVoiceNote = () => {
     if (!voiceNote) return
-    
+
     // Cleanup audio element if it exists
     if (audioRefs.current[voiceNote.preview]) {
       const audio = audioRefs.current[voiceNote.preview]
@@ -560,14 +570,14 @@ export function InlinePostComposer({
       audio.src = ''
       delete audioRefs.current[voiceNote.preview]
     }
-    
+
     // Cleanup audio progress
     setAudioProgress(prev => {
       const updated = { ...prev }
       delete updated[voiceNote.preview]
       return updated
     })
-    
+
     URL.revokeObjectURL(voiceNote.preview)
     setVoiceNote(null)
     setPlayingAudio(null)
@@ -585,20 +595,20 @@ export function InlinePostComposer({
 
   const handleEmojiSelect = (emoji: string) => {
     if (!textareaRef.current) return
-    
+
     const textarea = textareaRef.current
     // Focus the textarea first to ensure selection is valid
     textarea.focus()
-    
+
     // Get cursor position (default to end if no selection)
     const start = textarea.selectionStart ?? content.length
     const end = textarea.selectionEnd ?? content.length
     const textBefore = content.substring(0, start)
     const textAfter = content.substring(end)
-    
+
     const newContent = textBefore + emoji + textAfter
     setContent(newContent)
-    
+
     // Set cursor position after the inserted emoji
     setTimeout(() => {
       if (textareaRef.current) {
@@ -611,17 +621,17 @@ export function InlinePostComposer({
 
   React.useEffect(() => {
     updateScrollButtons()
-        }, [imageFiles])
+  }, [imageFiles])
 
-        React.useEffect(() => {
-          // Cleanup audio elements on unmount
-          return () => {
-            Object.values(audioRefs.current).forEach(audio => {
-              audio.pause()
-              audio.src = ''
-            })
-          }
-        }, [])
+  React.useEffect(() => {
+    // Cleanup audio elements on unmount
+    return () => {
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause()
+        audio.src = ''
+      })
+    }
+  }, [])
 
   const uploadMedia = async (postId: string): Promise<void> => {
     const totalFiles = (voiceNote ? 1 : 0) + imageFiles.length
@@ -653,7 +663,7 @@ export function InlinePostComposer({
     // Upload voice note first (if present)
     if (voiceNote) {
       setUploadProgress({ current: 1, total: totalFiles })
-      
+
       const { file, type, requiresBoost } = voiceNote
       const fileExt = file.name.split('.').pop()
       const timestamp = Date.now()
@@ -698,7 +708,7 @@ export function InlinePostComposer({
     // Upload images
     for (let i = 0; i < imageFiles.length; i++) {
       setUploadProgress({ current: (voiceNote ? 2 : 1) + i, total: totalFiles })
-      
+
       const { file, type } = imageFiles[i]
       const fileExt = file.name.split('.').pop()
       const timestamp = Date.now()
@@ -799,7 +809,7 @@ export function InlinePostComposer({
       setError("Please sign in to create a post.")
       return
     }
-    
+
     const currentTrimmedContent = content.trim()
     const currentHasVoiceNote = !!voiceNote
     const currentHasImages = imageFiles.length > 0
@@ -819,13 +829,13 @@ export function InlinePostComposer({
 
     setSubmitting(true)
     setError(null)
-    
+
     try {
       const contentToSave = currentTrimmedContent.length > 0 ? currentTrimmedContent : ""
       const hasBoostRewardMessage = boostRewardMessage.trim().length > 0
       const hasBoostRewardAttachments = boostRewardAttachments.length > 0
       const hasBoostReward = hasBoostRewardMessage || hasBoostRewardAttachments
-      
+
       // Check balance for boost reward message/attachments (skip for admins)
       const isAdmin = userProfile?.role === 'admin'
       if (hasBoostReward && !isAdmin) {
@@ -836,7 +846,7 @@ export function InlinePostComposer({
           return
         }
       }
-      
+
       const { data: insertedPost, error: postError } = await supabase
         .from('posts')
         .insert({
@@ -965,9 +975,9 @@ export function InlinePostComposer({
               // Determine if this is a comment or reply
               const isReply = createdPost.depth > 1
               const commentPreview = contentToSave.slice(0, 50) + (contentToSave.length > 50 ? "..." : "")
-              
-              const communitySlug = Array.isArray(parentPost.communities) 
-                ? parentPost.communities[0]?.slug 
+
+              const communitySlug = Array.isArray(parentPost.communities)
+                ? parentPost.communities[0]?.slug
                 : (parentPost.communities as any)?.slug
               const postUrl = communitySlug
                 ? `/${communitySlug}/feed?post=${parentPost.id}`
@@ -1007,7 +1017,7 @@ export function InlinePostComposer({
 
       reset()
       if (!disableRouterRefresh) {
-      router.refresh()
+        router.refresh()
       }
     } catch (e: any) {
       console.error('Error creating post:', e)
@@ -1035,7 +1045,7 @@ export function InlinePostComposer({
       <CardContent className={cn("p-3", contentClassName)}>
         {!hideCollapsedTrigger && !isExpanded ? (
           // Collapsed State - Click to Expand
-          <div 
+          <div
             className="flex items-center gap-3"
             onClick={() => setIsExpanded(true)}
           >
@@ -1114,31 +1124,25 @@ export function InlinePostComposer({
               )}
             </div>
 
-            {/* Text Input */}
-            <div className={`rounded-lg p-4 border ${
-              disabled 
-                ? "bg-white/5 border-white/10 opacity-50" 
-                : "bg-white/10 border-white/20"
-            }`}>
-              <textarea
-                ref={textareaRef}
+            {/* Rich Text Editor */}
+            <TiptapEditor
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+              onChange={setContent}
                 placeholder={placeholderText}
                 disabled={disabled}
-                className={`w-full bg-transparent border-0 text-base resize-none focus:outline-none focus:ring-0 min-h-[100px] ${
-                  disabled
-                    ? "text-white/30 placeholder:text-white/20 cursor-not-allowed"
-                    : "text-white placeholder:text-white/40"
-                }`}
-                onInput={(e) => {
-                  if (disabled) return
-                  const target = e.target as HTMLTextAreaElement
-                  target.style.height = 'auto'
-                  target.style.height = Math.max(100, target.scrollHeight) + 'px'
-                }}
+              minHeight={100}
+              maxHeight={400}
+              size="base"
+            />
+
+            {/* Real-time Link Preview */}
+            {detectedUrl && isExpanded && (
+              <LinkPreviewCard
+                preview={preview}
+                loading={loading}
+                compact={resolvedMode !== "post"}
               />
-            </div>
+            )}
 
             {/* Topic Selection - Only for posts */}
             {resolvedMode === "post" && (
@@ -1189,9 +1193,8 @@ export function InlinePostComposer({
                     onFocus={() => { if (!disabled && topicSearchQuery.length > 0) setShowTopicSearch(true) }}
                     onBlur={() => { setTimeout(() => setShowTopicSearch(false), 200) }}
                     disabled={disabled}
-                    className={`bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-white/30 ${
-                      disabled ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    className={`bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-white/30 ${disabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                   />
                 </div>
                 {typeof window !== 'undefined' && showTopicSearch && topicSearchResults.length > 0 && topicDropdownPosition && createPortal(
@@ -1261,7 +1264,7 @@ export function InlinePostComposer({
                 <div className="p-3 relative overflow-hidden">
                   <div className="flex items-center gap-2">
                     <div className="font-mono text-sm text-white/80">
-                      {audioProgress[voiceNote.preview]?.duration 
+                      {audioProgress[voiceNote.preview]?.duration
                         ? `${formatAudioTime(audioProgress[voiceNote.preview].current)} / ${formatAudioTime(audioProgress[voiceNote.preview].duration)}`
                         : `0:00 / —`
                       }
@@ -1298,17 +1301,17 @@ export function InlinePostComposer({
                       <Trash2 className="h-4 w-4 text-white/70 hover:text-white/80 transition-all" />
                     </button>
                   </div>
-                  <div 
+                  <div
                     className="w-full h-2 bg-white/10 rounded-full mt-2 cursor-pointer relative group backdrop-blur-sm overflow-visible"
                     onClick={(e) => {
                       const audio = audioRefs.current[voiceNote.preview]
                       if (!audio || !audioProgress[voiceNote.preview]?.duration) return
-                      
+
                       const rect = e.currentTarget.getBoundingClientRect()
                       const clickX = e.clientX - rect.left
                       const percentage = clickX / rect.width
                       const newTime = percentage * audioProgress[voiceNote.preview].duration
-                      
+
                       audio.currentTime = Math.max(0, Math.min(newTime, audio.duration))
                       setAudioProgress(prev => ({
                         ...prev,
@@ -1319,10 +1322,10 @@ export function InlinePostComposer({
                       }))
                     }}
                   >
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-white via-white to-white transition-all duration-100 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.5),0_0_8px_rgba(255,255,255,0.3)] relative"
-                      style={{ 
-                        width: audioProgress[voiceNote.preview]?.duration 
+                      style={{
+                        width: audioProgress[voiceNote.preview]?.duration
                           ? `${(audioProgress[voiceNote.preview].current / audioProgress[voiceNote.preview].duration) * 100}%`
                           : '0%'
                       }}
@@ -1402,18 +1405,18 @@ export function InlinePostComposer({
             )}
 
             {resolvedAllowImages && (
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
             )}
 
             {error && <p className="text-sm text-red-400">{error}</p>}
-            
+
             {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-2">
               <EmojiPicker
@@ -1424,7 +1427,7 @@ export function InlinePostComposer({
               {resolvedAllowImages && (
                 <button
                   type="button"
-                onClick={() => fileInputRef.current?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={disabled || submitting || imageFiles.length >= 8 || showVoiceRecorder}
                   className="group relative flex items-center justify-center p-2 rounded-full border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border-white/20 hover:bg-white/10 hover:border-white/30"
                 >
@@ -1503,7 +1506,7 @@ export function InlinePostComposer({
           </div>
         )}
       </CardContent>
-      
+
       {/* Boost Rewards Dialog */}
       <BoostRewardsDialog
         open={showBoostRewardsDialog}

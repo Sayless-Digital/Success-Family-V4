@@ -36,8 +36,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
+import { FormattedContent } from "@/components/formatted-content"
 import type { Community } from "@/types"
-import { TwemojiText } from "@/components/twemoji-text"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 const INITIAL_VISIBLE_POSTS = 8
@@ -2038,9 +2038,11 @@ export default function DiscoveryFeedView({
                                 <div className="space-y-2">
                                   {post.content && (
                                     <div>
-                                      <p className="text-white/80 text-base whitespace-pre-wrap break-words">
-                                        <TwemojiText text={post.content} size={20} />
-                                      </p>
+                                      <FormattedContent
+                                        text={post.content}
+                                        showLinkPreviews={true}
+                                        size="base"
+                                      />
                                     </div>
                                   )}
 
@@ -2081,10 +2083,10 @@ export default function DiscoveryFeedView({
 
                                 {/* Scroll Indicator - Shows when entering focus mode */}
                                 {showScrollIndicator && isActive && index === 0 && (
-                                  <div 
+                                  <div
                                     className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none"
                                     style={{
-                                      animation: isFadingOut 
+                                      animation: isFadingOut
                                         ? 'fade-out 0.5s ease-out forwards'
                                         : 'fade-in 0.5s ease-out forwards'
                                     }}
@@ -2092,10 +2094,10 @@ export default function DiscoveryFeedView({
                                     <div className="flex flex-col items-center gap-2 bg-gradient-to-br from-white/15 to-white/5 backdrop-blur-2xl rounded-full px-4 py-3 border border-white/20 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)]" style={{ backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
                                       <div className="flex items-center gap-2">
                                         <div className="relative flex items-center">
-                                          <Hand 
+                                          <Hand
                                             className="h-5 w-5 text-white/80"
                                             style={{
-                                              animation: isFadingOut 
+                                              animation: isFadingOut
                                                 ? 'none'
                                                 : 'swipe-left 1.5s ease-in-out infinite'
                                             }}
@@ -2423,9 +2425,11 @@ export default function DiscoveryFeedView({
                       ) : (
                         <>
                           <div className="mb-3">
-                            <p className="text-white/80 text-base whitespace-pre-wrap break-words">
-                              <TwemojiText text={post.content} size={20} />
-                            </p>
+                              <FormattedContent
+                                text={post.content}
+                                showLinkPreviews={true}
+                                size="base"
+                              />
 
                             {/* Post Media Slider */}
                             {post.media && post.media.length > 0 && (
@@ -2721,9 +2725,11 @@ export default function DiscoveryFeedView({
                     </div>
 
                     {post.content && (
-                      <p className="text-white/80 text-sm whitespace-pre-wrap break-words">
-                        <TwemojiText text={post.content} size={18} />
-                      </p>
+                        <FormattedContent
+                          text={post.content}
+                          showLinkPreviews={true}
+                          size="sm"
+                        />
                     )}
 
                     {post.media && post.media.length > 0 && (
@@ -2894,9 +2900,12 @@ export default function DiscoveryFeedView({
                             </div>
 
                             {comment.content && (
-                              <p className="text-white/80 text-sm whitespace-pre-wrap break-words">
-                                <TwemojiText text={comment.content} size={18} />
-                              </p>
+                                <FormattedContent
+                                  text={comment.content}
+                                  showLinkPreviews={true}
+                                  size="sm"
+                                  previewCompact={true}
+                                />
                             )}
 
                             {comment.media && comment.media.length > 0 && (

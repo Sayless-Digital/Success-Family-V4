@@ -113,6 +113,44 @@ export function linkifyText(text: string): React.ReactNode[] {
   return parts.length > 0 ? parts : [text]
 }
 
+/**
+ * Extracts the first URL from text
+ * Returns null if no URL found
+ */
+export function extractFirstUrl(text: string): string | null {
+  if (!text) return null
+  
+  const urlPattern = /(https?:\/\/[^\s]+|www\.[^\s]+)/g
+  const match = text.match(urlPattern)
+  
+  if (!match || match.length === 0) return null
+  
+  const url = match[0]
+  // Normalize www. URLs
+  if (url.startsWith("www.")) {
+    return `https://${url}`
+  }
+  
+  return url
+}
+
+/**
+ * Extracts all URLs from text
+ */
+export function extractUrls(text: string): string[] {
+  if (!text) return []
+  
+  const urlPattern = /(https?:\/\/[^\s]+|www\.[^\s]+)/g
+  const matches = text.match(urlPattern) || []
+  
+  return matches.map(url => {
+    if (url.startsWith("www.")) {
+      return `https://${url}`
+    }
+    return url
+  })
+}
+
 
 
 

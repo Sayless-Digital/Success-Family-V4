@@ -40,7 +40,7 @@ import { ImageIcon, Mic, Play, Pause, X, Save, Feather, ArrowLeft, ArrowRight, C
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { VoiceNoteRecorder } from "@/components/voice-note-recorder"
 import { LoadingSpinner } from "@/components/loading-spinner"
-import { TwemojiText } from "@/components/twemoji-text"
+import { FormattedContent } from "@/components/formatted-content"
 
 const RELATIVE_TIME_REFRESH_INTERVAL = 60_000
 
@@ -2314,9 +2314,11 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                   <>
                     {/* Content Preview */}
                     {post.content && (
-                      <p className="text-white/80 text-base whitespace-pre-wrap break-words">
-                        <TwemojiText text={post.content || ''} size={20} />
-                      </p>
+                      <FormattedContent
+                        text={post.content || ''}
+                        showLinkPreviews={true}
+                        size="base"
+                      />
                     )}
 
                     {/* Post Media Slider */}
@@ -2552,9 +2554,11 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                       </div>
 
                       {post.content && (
-                        <p className="text-white/80 text-sm whitespace-pre-wrap">
-                          <TwemojiText text={post.content} size={18} />
-                        </p>
+                        <FormattedContent
+                          text={post.content}
+                          showLinkPreviews={true}
+                          size="sm"
+                        />
                       )}
 
                       {post.media && post.media.length > 0 && (
@@ -2704,9 +2708,11 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                                 </div>
 
                                 {comment.content && (
-                                  <p className="text-white/80 text-sm whitespace-pre-wrap">
-                                    <TwemojiText text={comment.content} size={18} />
-                                  </p>
+                                  <FormattedContent
+                                    text={comment.content}
+                                    showLinkPreviews={true}
+                                    size="sm"
+                                  />
                                 )}
 
                                 {comment.media && comment.media.length > 0 && (
@@ -2874,9 +2880,12 @@ const [expandedReplies, setExpandedReplies] = React.useState<Record<string, bool
                                             </div>
 
                                             {reply.content && (
-                                              <p className="text-white/70 text-sm whitespace-pre-wrap">
-                                                <TwemojiText text={reply.content} size={16} />
-                                              </p>
+                                              <FormattedContent
+                                                text={reply.content}
+                                                showLinkPreviews={true}
+                                                size="sm"
+                                                previewCompact={true}
+                                              />
                                             )}
                                           </div>
                                         ))}

@@ -21,7 +21,7 @@ import { LoadingSpinner } from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { CommunityLogo } from "@/components/community-logo"
-import { TwemojiText } from "@/components/twemoji-text"
+import { FormattedContent } from "@/components/formatted-content"
 import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
@@ -1951,9 +1951,12 @@ export default function ProfileView({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-white/80 text-base mb-3 whitespace-pre-wrap break-words">
-                      <TwemojiText text={post.content} size={20} />
-                    </p>
+                    <FormattedContent
+                      text={post.content}
+                      showLinkPreviews={true}
+                      size="base"
+                      className="mb-3"
+                    />
                   )}
 
                   {/* Post Media Slider */}
