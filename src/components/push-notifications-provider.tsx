@@ -24,13 +24,6 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
       // 3. Subscribe to push notifications
       // 4. Save subscription to database
       subscribeToPushNotifications(user.id)
-        .then((result) => {
-          if (result) {
-            console.log('[push-notifications-provider] ✅ Push notifications initialized successfully')
-          } else {
-            console.warn('[push-notifications-provider] ⚠️ Push notifications not available (permission denied or not supported)')
-          }
-        })
         .catch((error) => {
           console.error('[push-notifications-provider] ❌ Error initializing push notifications:', error)
           // Non-critical error - app continues to work without push notifications

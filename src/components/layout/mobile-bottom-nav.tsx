@@ -23,11 +23,6 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const { unreadCount } = useUnreadMessagesCount(user?.id ?? null)
   
-  // Debug: Log unread count changes
-  React.useEffect(() => {
-    console.log("[MobileBottomNav] Unread count changed:", unreadCount)
-  }, [unreadCount])
-  
   // Check if we're on the home page
   const isHomePage = pathname === "/"
   
@@ -239,10 +234,13 @@ export function MobileBottomNav({ isMobile }: MobileBottomNavProps) {
                 <Link href={`/profile/${userProfile?.username || user.id}`} prefetch={true} className="flex items-center">
                   <Button variant="ghost" className="h-10 w-10 rounded-full p-0 avatar-feedback flex items-center justify-center" disabled={isProfileLoading}>
                     <Avatar className="h-9 w-9 border-2 border-white/20" userId={user?.id}>
-                      <AvatarImage 
-                        src={userProfile?.profile_picture || undefined} 
-                        alt={userProfile?.username || user.email || "User"} 
-                      />
+                      {userProfile?.profile_picture ? (
+                        <AvatarImage 
+                          key={`${user.id}-${userProfile.profile_picture}-${userProfile.updated_at || ''}`}
+                          src={userProfile.profile_picture} 
+                          alt={userProfile?.username || user.email || "User"}
+                        />
+                      ) : null}
                       <AvatarFallback className="text-xs bg-white/10">
                         {isProfileLoading ? (
                           <Skeleton className="h-full w-full rounded-full bg-white/20" />

@@ -43,10 +43,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   const pathname = usePathname()
   const { unreadCount } = useUnreadMessagesCount(user?.id ?? null)
   
-  // Debug: Log unread count changes
-  React.useEffect(() => {
-    console.log("[GlobalHeader] Unread count changed:", unreadCount)
-  }, [unreadCount])
   const [authDialogOpen, setAuthDialogOpen] = React.useState(false)
   const [authDialogTab, setAuthDialogTab] = React.useState<"signin" | "signup">("signin")
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -724,14 +720,16 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                   userId={user?.id}
                   loading={isLoading || !userProfile}
                 >
-                  {!isLoading && userProfile && (
-                    <>
-                      <AvatarImage src={userProfile?.profile_picture || undefined} alt={userProfile?.username || user.email || "User"} />
-                      <AvatarFallback className="text-xs">
-                        {userInitials}
-                      </AvatarFallback>
-                    </>
-                  )}
+                  {userProfile?.profile_picture ? (
+                    <AvatarImage 
+                      key={`${user.id}-${userProfile.profile_picture}-${userProfile.updated_at || ''}`}
+                      src={userProfile.profile_picture} 
+                      alt={userProfile?.username || user.email || "User"}
+                    />
+                  ) : null}
+                  <AvatarFallback className="text-xs">
+                    {userInitials}
+                  </AvatarFallback>
                 </Avatar>
               </Button>
             </Link>

@@ -43,9 +43,14 @@ function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number, message: stri
 }
 
 // Helper function to fetch profile with retry logic
-async function fetchProfileWithRetry(userId: string, maxRetries = 3, timeout = 10000): Promise<User | null> {
+async function fetchProfileWithRetry(userId: string, maxRetries = 3, timeout = 12000): Promise<User | null> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Add small delay on retries to allow session to propagate
+      if (attempt > 1) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt))
+      }
+      
       const profile = await runWithTimeout(
         getUserProfile(userId).then((result) => result as User | null),
         timeout,
@@ -107,6 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const stuckStateStartTimeRef = React.useRef<number | null>(null)
   const initializationCompleteRef = React.useRef(false)
   const initializationCompleteTimeRef = React.useRef<number | null>(null)
+  const pendingSignInEventsRef = React.useRef<Array<{ event: string; session: any }>>([])
 
   // Update refs when state changes
   React.useEffect(() => {
@@ -174,7 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let isMounted = true
     let authInitialized = false
-    const MAX_INITIALIZATION_TIME = 10000
+    const MAX_INITIALIZATION_TIME = 15000
 
     // Mark initialization as not complete
     initializationCompleteRef.current = false
@@ -203,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             const userPromise = supabase.auth.getUser()
             // Mobile: Longer timeout for slower networks
-            const timeoutMs = isMobile && attempt > 0 ? 10000 : 6000
+            const timeoutMs = isMobile && attempt > 0 ? 15000 : 10000
             const timeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
               setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), timeoutMs)
             })
@@ -255,8 +261,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(user)
         userRef.current = user
         
+        // Wait a bit for session cookies to propagate to Supabase client
+        await new Promise(resolve => setTimeout(resolve, 200))
+        
         // Fetch profile with retry logic
-        const profile = await fetchProfileWithRetry(user.id, 3, 8000)
+        const profile = await fetchProfileWithRetry(user.id, 3, 12000)
         
         if (!isMounted || authInitialized) {
           clearTimeout(globalTimeout)
@@ -291,6 +300,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           initializationCompleteTimeRef.current = Date.now()
           clearTimeout(globalTimeout)
           setIsLoading(false)
+          
+          // Process any queued SIGNED_IN events asynchronously
+          const pendingEvents = pendingSignInEventsRef.current
+          pendingSignInEventsRef.current = []
+          if (pendingEvents.length > 0) {
+            (async () => {
+              for (const { session } of pendingEvents) {
+                if (session?.user && !userRef.current && isMounted) {
+                  setUser(session.user)
+                  userRef.current = session.user
+                  setIsLoading(true)
+                  
+                  // Wait for session cookies to propagate
+                  await new Promise(resolve => setTimeout(resolve, 300))
+                  
+                  const profile = await fetchProfileWithRetry(session.user.id, 3, 12000)
+                  if (profile && isMounted) {
+                    setUserProfile(profile)
+                    userProfileRef.current = profile
+                    setProfileError(false)
+                    setIsLoading(false)
+                  } else if (isMounted) {
+                    setProfileError(true)
+                    setIsLoading(false)
+                  }
+                }
+              }
+            })()
+          }
         }
       }
     }
@@ -302,8 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         if (!isMounted) return
 
-        // During initialization, only process explicit sign-outs
-        // TOKEN_REFRESHED events are handled after initialization to avoid race conditions
+        // During initialization, queue SIGNED_IN events and process sign-outs immediately
         if (!initializationCompleteRef.current) {
           if (event === 'SIGNED_OUT') {
             clearAuthState()
@@ -313,8 +350,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             stuckStateStartTimeRef.current = null
             authStateChangeResolversRef.current.forEach(resolve => resolve(false))
             authStateChangeResolversRef.current.clear()
+            return
           }
-          // Ignore other events during initialization - they'll be processed after init completes
+          // Queue SIGNED_IN events to process after initialization
+          if (event === 'SIGNED_IN' && session?.user) {
+            pendingSignInEventsRef.current.push({ event, session })
+          }
           return
         }
 
@@ -350,8 +391,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               userRef.current = session.user
               setIsLoading(true)
               
+              // Wait for session cookies to propagate
+              await new Promise(resolve => setTimeout(resolve, 300))
+              
               // Fetch profile
-              const profile = await fetchProfileWithRetry(session.user.id, 2, 8000)
+              const profile = await fetchProfileWithRetry(session.user.id, 3, 12000)
               
               if (!isMounted) return
               
@@ -385,8 +429,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               userRef.current = session.user
               setIsLoading(true)
               
+              // Wait for session cookies to propagate
+              await new Promise(resolve => setTimeout(resolve, 300))
+              
               // Fetch profile for new sign-ins
-              const profile = await fetchProfileWithRetry(session.user.id, 2, 8000)
+              const profile = await fetchProfileWithRetry(session.user.id, 3, 12000)
               
               if (!isMounted) return
               
@@ -434,6 +481,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearAuthState, isHydrated])
 
+  // Refresh profile when tab becomes visible again (handles tab switching)
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return
+    
+    const handleVisibilityChange = async () => {
+      // Only refresh if tab becomes visible, user exists, and we have a profile
+      // This ensures the profile image stays up-to-date after tab switches
+      if (document.visibilityState === 'visible' && user && userProfile) {
+        // Silently refresh profile in background without showing loading state
+        try {
+          const profile = await fetchProfileWithRetry(user.id, 1, 5000)
+          if (profile && profile.profile_picture !== userProfile.profile_picture) {
+            // Only update if profile picture changed to avoid unnecessary re-renders
+            setUserProfile(profile)
+            userProfileRef.current = profile
+          }
+        } catch (error) {
+          // Silently fail - don't disrupt user experience
+          // Profile will refresh on next interaction
+        }
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [user, userProfile])
+
   // Stuck state detection - uses ref to track start time properly
   React.useEffect(() => {
     if (isLoading) return
@@ -444,12 +520,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
     
+    let isMounted = true
+    
     // Initialize stuck state timer if not already set
     if (!stuckStateStartTimeRef.current) {
       stuckStateStartTimeRef.current = Date.now()
     }
     
-    const MAX_STUCK_TIME = 30000 // 30 seconds
+    const MAX_STUCK_TIME = 120000 // 2 minutes - don't auto sign out on profile fetch failures
     
     // Check periodically if still stuck
     const checkInterval = setInterval(() => {
@@ -477,25 +555,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const stuckDuration = Date.now() - startTime
       
       if (stuckDuration > MAX_STUCK_TIME) {
-        console.warn(`Stuck state detected: user exists but no profile for ${Math.round(stuckDuration / 1000)}s - invalidating session`)
+        console.warn(`Stuck state detected: user exists but no profile for ${Math.round(stuckDuration / 1000)}s - attempting profile refresh`)
         
         clearInterval(checkInterval)
         stuckStateStartTimeRef.current = null
         
-        // Clear state
-        clearAuthState()
-        userRef.current = null
-        userProfileRef.current = null
-        setIsLoading(false)
-        
-        // Sign out to clear potentially corrupted session
-        supabase.auth.signOut().catch(err => {
-          console.error("Error signing out stuck session:", err)
-        })
+        // Try to refresh profile one more time instead of signing out
+        if (userRef.current) {
+          fetchProfileWithRetry(userRef.current.id, 3, 12000).then(profile => {
+            if (profile && isMounted) {
+              setUserProfile(profile)
+              userProfileRef.current = profile
+              setProfileError(false)
+            }
+          }).catch(() => {
+            // If refresh fails, just log - don't sign out
+            console.error("Profile refresh failed after stuck state detection")
+          })
+        }
       }
     }, 5000)
     
     return () => {
+      isMounted = false
       clearInterval(checkInterval)
     }
   }, [user, userProfile, isLoading, clearAuthState])
@@ -621,6 +703,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user])
 
   // Real-time subscription for wallet balance
+  // Load wallet independently of profile - don't wait for profile to load
   React.useEffect(() => {
     if (!user) {
       setWalletBalance(null)
@@ -632,10 +715,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     let isMounted = true
+    let timer: NodeJS.Timeout | null = null
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    refreshWalletBalance()
+    // Small delay to ensure session is ready, then load wallet
+    timer = setTimeout(() => {
+      refreshWalletBalance()
+    }, 100)
 
-    const channel = supabase
+    channel = supabase
       .channel(`wallet-${user.id}`)
       .on(
         'postgres_changes',
@@ -662,7 +750,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false
-      supabase.removeChannel(channel)
+      if (timer) clearTimeout(timer)
+      if (channel) supabase.removeChannel(channel)
     }
   }, [user, refreshWalletBalance])
 

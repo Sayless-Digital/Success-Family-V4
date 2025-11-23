@@ -230,11 +230,15 @@ export async function getUserProfile(userId: string) {
       .single()
 
     if (error) {
-      // Only log meaningful errors (not 401/unauthorized, which shouldn't happen for public profiles)
-      // Also ignore "no rows returned" errors
+      // Log all errors for debugging - we need to see what's actually failing
       const isUnauthorized = (error as any).status === 401 || (error as any).status === 403
       const isNotFound = error.code === 'PGRST301' || error.message?.includes('No rows')
-      if (!isUnauthorized && !isNotFound) {
+      
+      if (isUnauthorized) {
+        console.warn("Profile fetch unauthorized (unexpected for public profiles):", error)
+      } else if (isNotFound) {
+        console.warn("Profile not found for user:", userId, error)
+      } else {
         console.error("Error fetching user profile:", error)
       }
       return null

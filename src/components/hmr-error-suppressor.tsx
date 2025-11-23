@@ -50,6 +50,25 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       /forward-logs-shared\.ts/i,
       /web-socket/i,
       /forward-logs/i,
+      // React DevTools message
+      /Download the React DevTools/i,
+      /react\.dev\/link\/react-devtools/i,
+      /React DevTools/i,
+      /for a better development experience/i,
+      // PWA banner warnings
+      /Banner not shown/i,
+      /beforeinstallpromptevent\.preventDefault\(\)/i,
+      /beforeinstallpromptevent\.prompt\(\)/i,
+      // Application debug logs
+      /\[TopUpBonus\]/i,
+      /\[push-notifications\]/i,
+      /\[push-notifications-provider\]/i,
+      /\[GlobalHeader\]/i,
+      /\[MobileBottomNav\]/i,
+      /\[useUnreadMessagesCount\]/i,
+      // Preload warnings
+      /was preloaded using link preload but not used/i,
+      /Please make sure it has an appropriate `as` value/i,
       // Next.js LCP image warnings (dev-only)
       /Largest Contentful Paint.*LCP/i,
       /was detected as the Largest Contentful Paint/i,
@@ -181,14 +200,36 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     };
 
     console.log = function(...args: unknown[]) {
-      const msg = args.map(a => String(a)).join(' ');
+      const msg = args.map(a => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return [a.message, a.stack].filter(Boolean).join(' ');
+        if (typeof a === 'object' && a !== null) {
+          try {
+            return JSON.stringify(a);
+          } catch {
+            return String(a);
+          }
+        }
+        return String(a);
+      }).join(' ');
       if (!shouldSuppress(msg)) {
         origLog.apply(console, args);
       }
     };
 
     console.info = function(...args: unknown[]) {
-      const msg = args.map(a => String(a)).join(' ');
+      const msg = args.map(a => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return [a.message, a.stack].filter(Boolean).join(' ');
+        if (typeof a === 'object' && a !== null) {
+          try {
+            return JSON.stringify(a);
+          } catch {
+            return String(a);
+          }
+        }
+        return String(a);
+      }).join(' ');
       if (!shouldSuppress(msg)) {
         origInfo.apply(console, args);
       }
@@ -328,6 +369,20 @@ export function HMRErrorSuppressor() {
       /react\.dev\/link\/react-devtools/i,
       /React DevTools/i,
       /for a better development experience/i,
+      // PWA banner warnings
+      /Banner not shown/i,
+      /beforeinstallpromptevent\.preventDefault\(\)/i,
+      /beforeinstallpromptevent\.prompt\(\)/i,
+      // Application debug logs
+      /\[TopUpBonus\]/i,
+      /\[push-notifications\]/i,
+      /\[push-notifications-provider\]/i,
+      /\[GlobalHeader\]/i,
+      /\[MobileBottomNav\]/i,
+      /\[useUnreadMessagesCount\]/i,
+      // Preload warnings
+      /was preloaded using link preload but not used/i,
+      /Please make sure it has an appropriate `as` value/i,
       // HMR suppressor's own message
       /\[HMR\] WebSocket errors suppressed/i,
       /custom HTTPS server uses polling for HMR/i,

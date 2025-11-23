@@ -46,7 +46,6 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     const registration = await navigator.serviceWorker.register('/sw.js', {
       scope: '/'
     })
-    console.log('[push-notifications] Service Worker registered:', registration)
     return registration
   } catch (error) {
     console.error('[push-notifications] Service Worker registration failed:', error)
@@ -75,21 +74,15 @@ export async function getPushSubscription(
 export async function subscribeToPushNotifications(
   userId: string
 ): Promise<PushSubscriptionData | null> {
-  console.log('[push-notifications] Starting push notification subscription for user:', userId)
-  
   const permission = await requestNotificationPermission()
   if (!permission) {
-    console.warn('[push-notifications] ⚠️ Permission denied or not granted, cannot subscribe')
     return null
   }
-  console.log('[push-notifications] ✅ Notification permission granted')
 
   const registration = await registerServiceWorker()
   if (!registration) {
-    console.warn('[push-notifications] ⚠️ Service Worker not available, cannot subscribe')
     return null
   }
-  console.log('[push-notifications] ✅ Service Worker registered')
 
   try {
     let subscription = await registration.pushManager.getSubscription()
@@ -104,14 +97,10 @@ export async function subscribeToPushNotifications(
         return null
       }
       
-      console.log('[push-notifications] Creating new push subscription with VAPID key...')
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
       })
-      console.log('[push-notifications] ✅ New push subscription created')
-    } else {
-      console.log('[push-notifications] ✅ Existing push subscription found')
     }
 
     const subscriptionData: PushSubscriptionData = {
@@ -123,7 +112,6 @@ export async function subscribeToPushNotifications(
     }
 
     // Store subscription in Supabase
-    console.log('[push-notifications] Saving push subscription to database...')
     const { error, data } = await supabase
       .from('push_subscriptions')
       .upsert({
@@ -148,8 +136,6 @@ export async function subscribeToPushNotifications(
       return null
     }
 
-    console.log('[push-notifications] ✅ Successfully subscribed to push notifications')
-    console.log('[push-notifications] Subscription saved to database:', data?.[0]?.id)
     return subscriptionData
   } catch (error) {
     console.error('[push-notifications] Error subscribing to push notifications:', error)

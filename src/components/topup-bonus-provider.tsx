@@ -24,25 +24,21 @@ export function TopUpBonusProvider() {
 
   const checkBonusEligibility = React.useCallback(async (isNewSignIn = false) => {
     if (!mounted) {
-      console.log('[TopUpBonus] Not mounted yet, skipping check')
       return
     }
 
     if (!user) {
-      console.log('[TopUpBonus] No user, hiding dialog')
       setShowDialog(false)
       return
     }
 
     // Prevent multiple simultaneous checks
     if (isCheckingRef.current) {
-      console.log('[TopUpBonus] Already checking, skipping duplicate check')
       return
     }
 
     // Don't check again if dialog is already open (user might have just dismissed it)
     if (showDialog) {
-      console.log('[TopUpBonus] Dialog already open, skipping check')
       return
     }
 
@@ -62,16 +58,12 @@ export function TopUpBonusProvider() {
         const timeSinceLastShow = now - lastShownTime
         
         if (timeSinceLastShow < tenMinutes) {
-          const minutesRemaining = Math.ceil((tenMinutes - timeSinceLastShow) / 60000)
-          console.log(`[TopUpBonus] Dialog shown recently, waiting ${minutesRemaining} more minute(s)`)
           setShowDialog(false)
           isCheckingRef.current = false
           return
         }
       }
     }
-
-    console.log('[TopUpBonus] Checking bonus eligibility for user:', user.id)
 
     try {
       // Check if bonus is enabled and get bonus points
@@ -87,14 +79,7 @@ export function TopUpBonusProvider() {
         return
       }
 
-      console.log('[TopUpBonus] Settings:', {
-        enabled: settings?.topup_bonus_enabled,
-        points: settings?.topup_bonus_points,
-        endTime: settings?.topup_bonus_end_time
-      })
-
       if (!settings?.topup_bonus_enabled || !settings?.topup_bonus_points) {
-        console.log('[TopUpBonus] Bonus not enabled or no points')
         setShowDialog(false)
         return
       }
@@ -103,23 +88,11 @@ export function TopUpBonusProvider() {
       if (settings.topup_bonus_end_time) {
         const expirationTime = new Date(settings.topup_bonus_end_time)
         const now = new Date()
-        console.log('[TopUpBonus] Time check:', {
-          now: now.toISOString(),
-          expiration: expirationTime.toISOString(),
-          nowLocal: now.toString(),
-          expirationLocal: expirationTime.toString(),
-          isExpired: now >= expirationTime
-        })
         if (now >= expirationTime) {
-          console.log('[TopUpBonus] Bonus expired:', expirationTime)
           setShowDialog(false)
           return
         }
-        console.log('[TopUpBonus] Bonus not expired, expires at:', expirationTime)
       }
-
-      // Show dialog if bonus is enabled and not expired, and 10 minutes have passed
-      console.log('[TopUpBonus] Showing dialog with', settings.topup_bonus_points, 'points')
       setBonusPoints(settings.topup_bonus_points)
       setBonusEndTime(settings.topup_bonus_end_time)
       setShowDialog(true)
@@ -143,12 +116,10 @@ export function TopUpBonusProvider() {
   // Check when both mounted and user become available (handles initial load and reload)
   React.useEffect(() => {
     if (!mounted) {
-      console.log('[TopUpBonus] Waiting for mount...')
       return
     }
 
     if (!user) {
-      console.log('[TopUpBonus] Waiting for user...')
       setShowDialog(false)
       // Reset check flag when user signs out
       if (prevUserRef.current) {
@@ -184,11 +155,6 @@ export function TopUpBonusProvider() {
 
     // If we've already checked in this session for this user, don't check again (prevents showing on every page load)
     if (sessionChecked && storedPreviousUserId === currentUserId) {
-      console.log('[TopUpBonus] Already checked in this session, skipping', {
-        sessionChecked,
-        storedPreviousUserId,
-        currentUserId
-      })
       prevUserRef.current = currentUserId
       // Update stored user ID if not set
       if (typeof window !== 'undefined' && !storedPreviousUserId) {
@@ -199,11 +165,6 @@ export function TopUpBonusProvider() {
 
     // On new sign-in, always check (cooldown doesn't apply)
     if (isNewSignIn) {
-      console.log('[TopUpBonus] New sign-in detected, checking eligibility (cooldown bypassed)', {
-        storedPreviousUserId,
-        currentUserId,
-        sessionChecked
-      })
       prevUserRef.current = currentUserId
       hasCheckedRef.current = false
       // Clear session check and update stored user ID so it shows on new sign-in
@@ -227,11 +188,8 @@ export function TopUpBonusProvider() {
 
     // Only check once when user becomes available (first time in this session)
     if (hasCheckedRef.current && previousUserId === currentUserId) {
-      console.log('[TopUpBonus] Already checked for this user, skipping')
       return
     }
-    
-    console.log('[TopUpBonus] First check in this session, checking eligibility')
     // Check once after a short delay to ensure everything is ready
     const timeoutId = setTimeout(() => {
       checkBonusEligibility(false) // Normal check with cooldown
@@ -242,16 +200,6 @@ export function TopUpBonusProvider() {
     }
   }, [mounted, user, checkBonusEligibility])
 
-  // Log dialog state changes
-  React.useEffect(() => {
-    console.log('[TopUpBonus] Dialog state changed:', {
-      showDialog,
-      bonusPoints,
-      bonusEndTime,
-      mounted,
-      hasUser: !!user
-    })
-  }, [showDialog, bonusPoints, bonusEndTime, mounted, user])
 
   // Don't render anything until mounted to avoid hydration issues
   if (!mounted) {
@@ -262,7 +210,6 @@ export function TopUpBonusProvider() {
     <TopUpBonusDialog
       open={showDialog}
       onOpenChange={(open) => {
-        console.log('[TopUpBonus] Dialog onOpenChange called with:', open)
         setShowDialog(open)
         // Store timestamp when dialog is closed (user dismissed it) - use sessionStorage
         if (!open && user && typeof window !== 'undefined') {
