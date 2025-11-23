@@ -7,6 +7,7 @@ import Image from "next/image"
 import { Sidebar, Menu, Users, ChevronDown, Home, Wallet as WalletIcon, Coins, Maximize2, Minimize2, MessageCircle, LogIn, UserPlus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -303,6 +304,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
       vendorEvents.forEach((event) => document.removeEventListener(event as any, handler))
     }
   }, [updateFullscreenState])
+
 
   const toggleFullscreen = React.useCallback(async () => {
     if (typeof document === "undefined") return
@@ -718,7 +720,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                 <Avatar 
                   className="h-8 w-8 border-2 border-white/20" 
                   userId={user?.id}
-                  loading={isLoading || !userProfile}
                 >
                   {userProfile?.profile_picture ? (
                     <AvatarImage 
@@ -728,7 +729,11 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
                     />
                   ) : null}
                   <AvatarFallback className="text-xs">
-                    {userInitials}
+                    {(isLoading || !userProfile) ? (
+                      <Skeleton className="h-full w-full rounded-full bg-white/20" />
+                    ) : (
+                      userInitials
+                    )}
                   </AvatarFallback>
                 </Avatar>
               </Button>
