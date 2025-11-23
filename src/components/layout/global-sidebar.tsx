@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift, TrendingUp, Wallet, Mail, HelpCircle, Briefcase } from "lucide-react"
+import { X, Home, Users, Settings, BarChart3, Shield, Database, FileText, Building2, Package, LogOut, CreditCard, User, HardDrive, Coins, Download, Gift, TrendingUp, Wallet, Mail, HelpCircle, Briefcase, GraduationCap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -49,6 +49,9 @@ const adminNavigationItems = [
   { icon: FileText, label: "Reports", href: "/admin/reports" },
   { icon: CreditCard, label: "Transactions", href: "/admin/transactions" },
   { icon: Coins, label: "Payouts", href: "/admin/payouts" },
+  { icon: CreditCard, label: "Payment Verification", href: "/admin/payments" },
+  { icon: Mail, label: "Test Emails", href: "/admin/emails" },
+  { icon: GraduationCap, label: "Webinar Signups", href: "/admin/webinar-signups" },
   { icon: Settings, label: "Platform Settings", href: "/admin/settings" },
 ]
 

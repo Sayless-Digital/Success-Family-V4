@@ -193,15 +193,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         // Use getUser() directly - it's more reliable than getSession() + getUser()
         // getUser() validates the session and refreshes tokens if needed
-        const userPromise = supabase.auth.getUser()
-        const timeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
-          setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), 6000)
-        })
+        // Mobile: Add retry logic for slower networks
+        let user: SupabaseUser | null = null
+        let userError: unknown = null
+        const maxRetries = 2
+        const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
         
-        const { data: { user }, error: userError } = await Promise.race([
-          userPromise,
-          timeoutPromise
-        ]) as { data: { user: SupabaseUser | null }, error: unknown } | { data: { user: null }, error: { message: string } }
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            const userPromise = supabase.auth.getUser()
+            // Mobile: Longer timeout for slower networks
+            const timeoutMs = isMobile && attempt > 0 ? 10000 : 6000
+            const timeoutPromise = new Promise<{ data: { user: null }, error: { message: 'Timeout' } }>((resolve) => {
+              setTimeout(() => resolve({ data: { user: null }, error: { message: 'Timeout' } }), timeoutMs)
+            })
+            
+            const result = await Promise.race([
+              userPromise,
+              timeoutPromise
+            ]) as { data: { user: SupabaseUser | null }, error: unknown } | { data: { user: null }, error: { message: string } }
+            
+            user = result.data?.user ?? null
+            userError = result.error
+            
+            // If we got a user or a non-timeout error, break retry loop
+            if (user || (userError && (userError as { message?: string })?.message !== 'Timeout')) {
+              break
+            }
+            
+            // If timeout and not last attempt, wait before retry
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
+            }
+          } catch (error) {
+            userError = error
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
+            }
+          }
+        }
         
         if (!isMounted || authInitialized) {
           clearTimeout(globalTimeout)

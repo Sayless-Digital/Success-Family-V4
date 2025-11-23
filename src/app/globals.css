@@ -183,6 +183,15 @@
     max-height: 100vh;
   }
   
+  /* All buttons should show pointer cursor */
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"] {
+    cursor: pointer;
+  }
+  
   /* Clean minimal scrollbar - just the thumb, no track background */
   * {
     scrollbar-width: thin;

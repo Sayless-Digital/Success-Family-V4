@@ -24,6 +24,8 @@ async function getSettings() {
     topup_bonus_end_time: null,
     auto_join_community_id: null,
     holiday_mode: 'none',
+    learn_page_video_id: null,
+    learn_page_redirect_link: null,
   }
   
   // Convert null to 'none' for Select component (Select doesn't allow empty string values)
@@ -41,6 +43,17 @@ async function getCommunities() {
     .select('id, name, slug')
     .eq('is_active', true)
     .order('name', { ascending: true })
+  return data || []
+}
+
+async function getUploadedVideos() {
+  const supabase = await createServerSupabaseClient()
+  const { data } = await supabase
+    .from('uploaded_videos')
+    .select('id, title, storage_url, created_at')
+    .eq('is_learn_page_video', true)
+    .order('created_at', { ascending: false })
+    .limit(100)
   return data || []
 }
 
@@ -84,6 +97,11 @@ async function updateSettings(formData: FormData) {
     : null
   const holidayModeStr = (formData.get('holiday_mode') as string | null)?.trim().toLowerCase() || 'none'
   const holidayMode = HOLIDAY_MODES.includes(holidayModeStr as HolidayMode) ? (holidayModeStr as HolidayMode) : 'none'
+  const learnPageVideoIdStr = formData.get('learn_page_video_id') as string | null
+  const learnPageVideoId = learnPageVideoIdStr && learnPageVideoIdStr.trim() && learnPageVideoIdStr !== 'none'
+    ? learnPageVideoIdStr 
+    : null
+  const learnPageRedirectLink = (formData.get('learn_page_redirect_link') as string | null)?.trim() || null
 
   if (!Number.isFinite(buyPrice) || buyPrice <= 0) {
     throw new Error('Invalid buy price per point')
@@ -138,6 +156,8 @@ async function updateSettings(formData: FormData) {
       topup_bonus_end_time: topupBonusEndTime,
       auto_join_community_id: autoJoinCommunityId,
       holiday_mode: holidayMode,
+      learn_page_video_id: learnPageVideoId,
+      learn_page_redirect_link: learnPageRedirectLink,
     })
 
   if (error) {
@@ -153,11 +173,16 @@ async function updateSettings(formData: FormData) {
 export default async function AdminSettingsPage() {
   const settings = await getSettings()
   const communities = await getCommunities()
+  const uploadedVideos = await getUploadedVideos()
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Platform Settings" subtitle="Configure point pricing, payouts, and stream costs." />
-      <AdminSettingsView settings={settings} communities={communities} updateSettings={updateSettings} />
+      <AdminSettingsView 
+        settings={settings} 
+        communities={communities} 
+        uploadedVideos={uploadedVideos} 
+        updateSettings={updateSettings}
+      />
     </div>
   )
 }

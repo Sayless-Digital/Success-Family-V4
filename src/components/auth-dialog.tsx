@@ -316,7 +316,12 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
     }
 
     if (!rememberMe) {
-      window.localStorage.removeItem(REMEMBER_ME_STORAGE_KEY)
+      try {
+        window.localStorage.removeItem(REMEMBER_ME_STORAGE_KEY)
+      } catch (storageError) {
+        // Silently fail - localStorage may be disabled or quota exceeded on mobile
+        console.warn("Failed to remove remembered email:", storageError)
+      }
       return
     }
 
@@ -332,7 +337,10 @@ export function AuthDialog({ open, onOpenChange, defaultTab = "signin" }: AuthDi
       })
       window.localStorage.setItem(REMEMBER_ME_STORAGE_KEY, payload)
     } catch (storageError) {
-      console.error("Failed to persist remembered email:", storageError)
+      // Handle mobile-specific storage issues (quota exceeded, disabled storage, etc.)
+      console.warn("Failed to persist remembered email:", storageError)
+      // Don't throw - continue without remembering email
+      // This prevents mobile sign-in failures due to storage issues
     }
   }, [rememberMe, signInData.email])
 

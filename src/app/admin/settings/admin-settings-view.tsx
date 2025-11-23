@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TopUpBonusCheckbox } from '@/components/topup-bonus-checkbox'
 import { DateTimeInput } from '@/components/datetime-input'
-import { DollarSign, Video, HardDrive, Wallet, Users, Gift, UserPlus, Loader2, Snowflake } from 'lucide-react'
+import { DollarSign, Video, HardDrive, Wallet, Users, Gift, UserPlus, Loader2, Snowflake, GraduationCap, Upload, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 import type { HolidayMode } from '@/types/holiday'
@@ -31,22 +32,36 @@ interface AdminSettingsViewProps {
     topup_bonus_end_time: string | null
     auto_join_community_id: string | null | 'none'
     holiday_mode: HolidayMode | null
+    learn_page_video_id?: string | null
+    learn_page_redirect_link?: string | null
   }
   communities: Array<{
     id: string
     name: string
     slug: string
   }>
+  uploadedVideos: Array<{
+    id: string
+    title: string | null
+    storage_url: string | null
+    created_at: string
+  }>
   updateSettings: (formData: FormData) => Promise<{ success: boolean }>
 }
 
-export default function AdminSettingsView({ settings, communities, updateSettings }: AdminSettingsViewProps) {
+export default function AdminSettingsView({ settings, communities, uploadedVideos, updateSettings }: AdminSettingsViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const formRef = React.useRef<HTMLFormElement>(null)
   const [autoJoinCommunityId, setAutoJoinCommunityId] = React.useState(settings.auto_join_community_id || 'none')
   const [holidayMode, setHolidayMode] = React.useState<HolidayMode>(settings.holiday_mode || 'none')
+  const [learnPageVideoId, setLearnPageVideoId] = React.useState(settings.learn_page_video_id || 'none')
   const [isSaving, setIsSaving] = React.useState(false)
+  const [uploadFile, setUploadFile] = React.useState<File | null>(null)
+  const [uploadTitle, setUploadTitle] = React.useState("")
+  const [isUploading, setIsUploading] = React.useState(false)
+  const [learnPageVideos, setLearnPageVideos] = React.useState(uploadedVideos)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const tabsListRef = React.useRef<HTMLDivElement>(null)
   const isDraggingRef = React.useRef(false)
   const startXRef = React.useRef<number | null>(null)
@@ -197,7 +212,9 @@ export default function AdminSettingsView({ settings, communities, updateSetting
       formData.set('topup_bonus_points', getValue('topup_bonus_points'))
       formData.set('topup_bonus_end_time', getValue('topup_bonus_end_time'))
       formData.set('auto_join_community_id', autoJoinCommunityId === 'none' ? '' : autoJoinCommunityId)
-      formData.set('holiday_mode', getValue('holiday_mode') || 'none')
+      formData.set('holiday_mode', holidayMode)
+      formData.set('learn_page_video_id', learnPageVideoId === 'none' ? '' : learnPageVideoId)
+      formData.set('learn_page_redirect_link', getValue('learn_page_redirect_link'))
 
       await updateSettings(formData)
       toast.success('Settings saved successfully!')
@@ -210,77 +227,6 @@ export default function AdminSettingsView({ settings, communities, updateSetting
     }
   }
 
-  // Draggable scroll handlers
-  React.useEffect(() => {
-    const element = tabsListRef.current
-    if (!element) return
-
-    element.style.cursor = 'grab'
-
-    const handleMouseDown = (e: MouseEvent) => {
-      isDraggingRef.current = false
-      startXRef.current = e.pageX - element.offsetLeft
-      scrollLeftRef.current = element.scrollLeft
-      element.style.userSelect = 'none'
-    }
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!element || startXRef.current === null) return
-      
-      const x = e.pageX - element.offsetLeft
-      const walk = x - startXRef.current
-      
-      // Only start dragging if movement exceeds threshold
-      if (Math.abs(walk) > dragThreshold) {
-        isDraggingRef.current = true
-        element.style.cursor = 'grabbing'
-        e.preventDefault()
-        element.scrollLeft = scrollLeftRef.current - walk * 2 // Scroll speed multiplier
-      }
-    }
-
-    const handleMouseUp = () => {
-      const wasDragging = isDraggingRef.current
-      isDraggingRef.current = false
-      startXRef.current = null
-      if (!element) return
-      element.style.cursor = 'grab'
-      element.style.userSelect = ''
-      
-      // Prevent click if we were dragging
-      if (wasDragging) {
-        const handleClick = (e: MouseEvent) => {
-          e.preventDefault()
-          e.stopPropagation()
-          element.removeEventListener('click', handleClick, true)
-        }
-        element.addEventListener('click', handleClick, true)
-        setTimeout(() => {
-          element.removeEventListener('click', handleClick, true)
-        }, 100)
-      }
-    }
-
-    const handleMouseLeave = () => {
-      if (!element) return
-      isDraggingRef.current = false
-      startXRef.current = null
-      element.style.cursor = 'grab'
-      element.style.userSelect = ''
-    }
-
-    element.addEventListener('mousedown', handleMouseDown)
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    element.addEventListener('mouseleave', handleMouseLeave)
-
-    return () => {
-      element.removeEventListener('mousedown', handleMouseDown)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      element.removeEventListener('mouseleave', handleMouseLeave)
-    }
-  }, [])
 
   const buy = Number(settings.buy_price_per_point || 0)
   const userValue = Number(settings.user_value_per_point || 0)
@@ -315,46 +261,143 @@ export default function AdminSettingsView({ settings, communities, updateSetting
         })() : ''} />
         <input type="hidden" name="auto_join_community_id" defaultValue={autoJoinCommunityId === 'none' ? '' : autoJoinCommunityId} />
         <input type="hidden" name="holiday_mode" defaultValue={settings.holiday_mode || 'none'} />
+        <input type="hidden" name="learn_page_video_id" defaultValue={learnPageVideoId === 'none' ? '' : learnPageVideoId} />
+        <input type="hidden" name="learn_page_redirect_link" defaultValue={settings.learn_page_redirect_link || ''} />
       </div>
       
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 w-full">
-        <TabsList
-          ref={tabsListRef}
-          className="w-full cursor-grab active:cursor-grabbing"
-        >
-          <TabsTrigger value="point-pricing" className="whitespace-nowrap snap-start">
-            <DollarSign className="h-4 w-4 mr-2" />
-            Point Pricing
-          </TabsTrigger>
-          <TabsTrigger value="stream-pricing" className="whitespace-nowrap snap-start">
-            <Video className="h-4 w-4 mr-2" />
-            Stream Pricing
-          </TabsTrigger>
-          <TabsTrigger value="storage-pricing" className="whitespace-nowrap snap-start">
-            <HardDrive className="h-4 w-4 mr-2" />
-            Storage Pricing
-          </TabsTrigger>
-          <TabsTrigger value="payouts-wallet" className="whitespace-nowrap snap-start">
-            <Wallet className="h-4 w-4 mr-2" />
-            Payouts & Wallet
-          </TabsTrigger>
-          <TabsTrigger value="referral" className="whitespace-nowrap snap-start">
-            <Users className="h-4 w-4 mr-2" />
-            Referral Program
-          </TabsTrigger>
-          <TabsTrigger value="topup-bonus" className="whitespace-nowrap snap-start">
-            <Gift className="h-4 w-4 mr-2" />
-            Top-Up Bonus
-          </TabsTrigger>
-          <TabsTrigger value="user-onboarding" className="whitespace-nowrap snap-start">
-            <UserPlus className="h-4 w-4 mr-2" />
-            User Onboarding
-          </TabsTrigger>
-          <TabsTrigger value="holiday-mode" className="whitespace-nowrap snap-start">
-            <Snowflake className="h-4 w-4 mr-2" />
-            Holiday Mode
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col lg:flex-row gap-6 w-full">
+        {/* Vertical Sidebar Menu */}
+        <div className="w-full lg:w-64 flex-shrink-0">
+          <div className="bg-white/10 border border-white/20 rounded-lg backdrop-blur-md p-2 space-y-1">
+            {/* Save Button */}
+            <Button 
+              type="submit" 
+              disabled={isSaving}
+              className="w-full bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-50 mb-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Settings'
+              )}
+            </Button>
+            <button
+              onClick={() => handleTabChange("point-pricing")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "point-pricing"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <DollarSign className="h-4 w-4 flex-shrink-0" />
+              <span>Point Pricing</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("stream-pricing")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "stream-pricing"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Video className="h-4 w-4 flex-shrink-0" />
+              <span>Stream Pricing</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("storage-pricing")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "storage-pricing"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <HardDrive className="h-4 w-4 flex-shrink-0" />
+              <span>Storage Pricing</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("payouts-wallet")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "payouts-wallet"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Wallet className="h-4 w-4 flex-shrink-0" />
+              <span>Payouts & Wallet</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("referral")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "referral"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Users className="h-4 w-4 flex-shrink-0" />
+              <span>Referral Program</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("topup-bonus")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "topup-bonus"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Gift className="h-4 w-4 flex-shrink-0" />
+              <span>Top-Up Bonus</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("user-onboarding")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "user-onboarding"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <UserPlus className="h-4 w-4 flex-shrink-0" />
+              <span>User Onboarding</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("holiday-mode")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "holiday-mode"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Snowflake className="h-4 w-4 flex-shrink-0" />
+              <span>Holiday Mode</span>
+            </button>
+            <button
+              onClick={() => handleTabChange("learn-page")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors text-left",
+                activeTab === "learn-page"
+                  ? "bg-white/20 text-white"
+                  : "text-white/80 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <GraduationCap className="h-4 w-4 flex-shrink-0" />
+              <span>Learn Page</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 min-w-0">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
 
         <TabsContent value="point-pricing" className="space-y-6 max-w-xl">
           <div className="space-y-4">
@@ -603,23 +646,233 @@ export default function AdminSettingsView({ settings, communities, updateSetting
             </div>
           </div>
         </TabsContent>
-      </Tabs>
+        <TabsContent value="learn-page" className="space-y-6 max-w-xl">
+          <div className="space-y-4">
+            {/* Video Upload Section */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-white/80">Upload New Video</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file && !file.type.startsWith("video/")) {
+                      toast.error("Please select a video file")
+                      e.target.value = ""
+                      return
+                    }
+                    setUploadFile(file ?? null)
+                    if (file && !uploadTitle) {
+                      setUploadTitle(file.name.replace(/\.[^/.]+$/, ""))
+                    }
+                  }}
+                  className="hidden"
+                  disabled={isUploading}
+                />
+                
+                {uploadFile ? (
+                  <div className="rounded-lg border border-white/20 bg-white/10 p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 rounded-md bg-white/10 p-2.5 border border-white/20">
+                        <Video className="h-5 w-5 text-white/80" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-white/90 truncate">
+                            {uploadFile.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUploadFile(null)
+                              setUploadTitle("")
+                              if (fileInputRef.current) {
+                                fileInputRef.current.value = ""
+                              }
+                            }}
+                            className="flex-shrink-0 p-1 rounded-md hover:bg-white/10 transition-colors"
+                            aria-label="Remove file"
+                            disabled={isUploading}
+                          >
+                            <X className="h-4 w-4 text-white/70 hover:text-white/90" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-white/60 mt-1">
+                          {(() => {
+                            const bytes = uploadFile.size
+                            if (bytes === 0) return '0 Bytes'
+                            const k = 1024
+                            const sizes = ['Bytes', 'KB', 'MB', 'GB']
+                            const i = Math.floor(Math.log(bytes) / Math.log(k))
+                            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+                          })()} • Video
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 pt-2 border-t border-white/20">
+                      <Label htmlFor="upload_title" className="text-white/80 text-xs">Video Title (Optional)</Label>
+                      <Input
+                        id="upload_title"
+                        type="text"
+                        placeholder="Enter video title"
+                        value={uploadTitle}
+                        onChange={(e) => setUploadTitle(e.target.value)}
+                        disabled={isUploading}
+                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 h-9"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        if (!uploadFile) return
+                        setIsUploading(true)
+                        try {
+                          const formData = new FormData()
+                          formData.append("file", uploadFile)
+                          if (uploadTitle.trim()) {
+                            formData.append("title", uploadTitle.trim())
+                          }
 
-      <div className="pt-4 max-w-xl">
-        <Button 
-          type="submit" 
-          disabled={isSaving}
-          className="bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-50"
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Save Settings'
-          )}
-        </Button>
+                          const response = await fetch("/api/videos/upload-learn-page", {
+                            method: "POST",
+                            body: formData,
+                          })
+
+                          const data = await response.json()
+
+                          if (!response.ok) {
+                            throw new Error(data.error || "Failed to upload video")
+                          }
+
+                          toast.success("Video uploaded successfully!")
+                          
+                          // Refresh video list
+                          const refreshResponse = await fetch("/api/admin/learn-page-videos")
+                          if (refreshResponse.ok) {
+                            const videos = await refreshResponse.json()
+                            setLearnPageVideos(videos)
+                          }
+
+                          // Reset form
+                          setUploadFile(null)
+                          setUploadTitle("")
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = ""
+                          }
+
+                          // Optionally select the newly uploaded video
+                          if (data.video?.id) {
+                            setLearnPageVideoId(data.video.id)
+                            const hiddenInput = document.querySelector('input[name="learn_page_video_id"]') as HTMLInputElement
+                            if (hiddenInput) {
+                              hiddenInput.value = data.video.id
+                            }
+                          }
+                        } catch (error) {
+                          console.error("Upload error:", error)
+                          toast.error(error instanceof Error ? error.message : "Failed to upload video")
+                        } finally {
+                          setIsUploading(false)
+                        }
+                      }}
+                      disabled={isUploading}
+                      className="w-full bg-white/10 text-white hover:bg-white/20 border border-white/20"
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin text-white/80" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2 text-white/80" />
+                          Upload Video
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className={cn(
+                      "w-full rounded-lg border-2 border-dashed border-white/30 bg-white/5 p-6 transition-all",
+                      "hover:border-white/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-0",
+                      "flex flex-col items-center justify-center gap-3 cursor-pointer group",
+                      isUploading && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <div className="rounded-full bg-white/10 p-3 border border-white/20 group-hover:bg-white/20 group-hover:border-white/30 transition-colors">
+                      <Upload className="h-6 w-6 text-white/70 group-hover:text-white/90" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-white/90 mb-1">
+                        Click to upload video
+                      </p>
+                      <p className="text-xs text-white/60">
+                        MP4, WebM, MOV up to 500MB
+                      </p>
+                    </div>
+                  </button>
+                )}
+                <p className="text-xs text-white/60">
+                  Upload a video to display on the learn page.
+                </p>
+              </div>
+            </div>
+
+            {/* Video Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="learn_page_video_id" className="text-white/80">Selected Learn Page Video</Label>
+              <Select
+                value={learnPageVideoId}
+                onValueChange={(value) => {
+                  setLearnPageVideoId(value)
+                  const hiddenInput = document.querySelector('input[name="learn_page_video_id"]') as HTMLInputElement
+                  if (hiddenInput) {
+                    hiddenInput.value = value === 'none' ? '' : value
+                  }
+                }}
+              >
+                <SelectTrigger id="learn_page_video_id" className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Select a video (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None - No video</SelectItem>
+                  {learnPageVideos.map((video) => (
+                    <SelectItem key={video.id} value={video.id}>
+                      {video.title || `Video ${new Date(video.created_at).toLocaleDateString()}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-white/60 text-xs">
+                Select a video to display on the learn page. Upload videos using the form above.
+              </p>
+            </div>
+
+            {/* Redirect Link */}
+            <div className="space-y-2">
+              <Label htmlFor="learn_page_redirect_link" className="text-white/80">WhatsApp Community Redirect Link</Label>
+              <Input
+                id="learn_page_redirect_link"
+                name="learn_page_redirect_link"
+                type="url"
+                placeholder="https://chat.whatsapp.com/..."
+                defaultValue={settings.learn_page_redirect_link || ''}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+              />
+              <p className="text-white/60 text-xs">
+                Link to redirect users to after they sign up for the webinar. This will be used for the "Join WhatsApp Community" button and auto-redirect.
+              </p>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+        </div>
       </div>
     </form>
   )

@@ -72,10 +72,13 @@ const generateSWSource = (version: string) => `
     const url = new URL(event.request.url);
     
     // NEVER intercept these - let them go through normally
+    // CRITICAL: Skip auth routes to prevent mobile sign-in issues
     const shouldSkip = 
       event.request.method !== "GET" ||
       url.hostname.includes("supabase.co") ||
       url.pathname.startsWith("/api/") ||
+      url.pathname.startsWith("/auth/") ||
+      url.pathname.startsWith("/signup/") ||
       url.hostname !== self.location.hostname;
     
     if (shouldSkip) {
@@ -170,10 +173,13 @@ export async function GET(request: Request) {
     const url = new URL(event.request.url);
     
     // NEVER intercept these - let them go through normally
+    // CRITICAL: Skip auth routes to prevent mobile sign-in issues
     const shouldSkip = 
       event.request.method !== "GET" ||
       url.hostname.includes("supabase.co") ||
       url.pathname.startsWith("/api/") ||
+      url.pathname.startsWith("/auth/") ||
+      url.pathname.startsWith("/signup/") ||
       url.hostname !== self.location.hostname;
     
     if (shouldSkip) {
