@@ -25,6 +25,7 @@ interface AvatarProps extends React.ComponentPropsWithoutRef<typeof AvatarPrimit
   lastName?: string
   bio?: string | null
   profilePicture?: string | null
+  hideChristmasHat?: boolean // Disable Christmas hat overlay
 }
 
 const Avatar = React.forwardRef<
@@ -41,6 +42,7 @@ const Avatar = React.forwardRef<
   lastName,
   bio,
   profilePicture,
+  hideChristmasHat = false,
   children,
   ...props
 }, ref) => {
@@ -397,7 +399,7 @@ const Avatar = React.forwardRef<
         {children}
       </AvatarPrimitive.Root>
       {/* Santa Hat Overlay - Christmas season */}
-      {isChristmasSeason && (
+      {isChristmasSeason && !hideChristmasHat && (
         <div
           className="absolute pointer-events-none"
           style={{

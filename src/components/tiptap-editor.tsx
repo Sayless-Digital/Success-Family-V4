@@ -215,6 +215,7 @@ function jsonToMarkdown(json: any): string {
   if (!json.content) return ""
 
   let markdown = ""
+  let isFirstParagraph = true
 
   const processNode = (node: any): void => {
     if (node.type === "text") {
@@ -224,9 +225,9 @@ function jsonToMarkdown(json: any): string {
       // Apply marks in reverse order (inner to outer)
       for (const mark of marks.reverse()) {
         if (mark.type === "bold") {
-          text = `*${text}*`
+          text = `*${text}*` // Single asterisk for bold
         } else if (mark.type === "italic") {
-          text = `**${text}**`
+          text = `**${text}**` // Double asterisk for italic
         } else if (mark.type === "strike") {
           text = `~${text}~`
         } else if (mark.type === "underline") {
@@ -236,13 +237,31 @@ function jsonToMarkdown(json: any): string {
 
       markdown += text
     } else if (node.type === "hardBreak") {
+      // Hard break (Shift+Enter) - add a line break
       markdown += "\n"
+    } else if (node.type === "paragraph") {
+      // Add line break before paragraph (except the first one)
+      if (!isFirstParagraph) {
+        markdown += "\n"
+      }
+      isFirstParagraph = false
+      
+      // Process paragraph content
+      if (node.content && node.content.length > 0) {
+        for (const child of node.content) {
+          processNode(child)
+        }
+      } else {
+        // Empty paragraph - add a line break to preserve spacing
+        markdown += "\n"
+      }
     } else if (node.type === "mention") {
       // Handle mention node - convert to @username (for markdown export)
-      const username = node.attrs?.id || ""
+      // Use username attribute if available, otherwise fall back to id
+      const username = node.attrs?.username || node.attrs?.id || ""
       markdown += `@${username}`
     } else if (node.content) {
-      // Process child nodes
+      // Process child nodes for other node types
       for (const child of node.content) {
         processNode(child)
       }
@@ -253,7 +272,7 @@ function jsonToMarkdown(json: any): string {
     processNode(node)
   }
 
-  return markdown.trim()
+  return markdown
 }
 
 // Mention suggestion component - receives selectedIndex from Tiptap's suggestion system
@@ -356,6 +375,18 @@ export function TiptapEditor({
                 }
               },
             },
+            username: {
+              default: null,
+              parseHTML: element => element.getAttribute('data-username'),
+              renderHTML: attributes => {
+                if (!attributes.username) {
+                  return {}
+                }
+                return {
+                  'data-username': attributes.username,
+                }
+              },
+            },
           }
         },
         renderHTML({ node }) {
@@ -435,6 +466,7 @@ export function TiptapEditor({
                   id: props.item.id,
                   label: props.item.fullName || props.item.label || props.item.username,
                   avatar: props.item.avatar || null,
+                  username: props.item.username || null,
                 },
               })
               .insertContent(" ") // Insert space after mention
@@ -651,6 +683,7 @@ export function TiptapEditor({
                         id: item.id,
                         label: item.fullName || item.label || item.username,
                         avatar: item.avatar || null,
+                        username: item.username || null,
                       },
                     })
                     .insertContent(" ") // Insert space after mention
@@ -862,6 +895,7 @@ export function TiptapEditor({
             id: item.id,
             label: item.fullName || item.label || item.username,
             avatar: item.avatar || null,
+            username: item.username || null,
           },
         })
         .insertContent(" ") // Insert space as plain text

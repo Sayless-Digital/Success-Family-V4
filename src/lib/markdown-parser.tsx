@@ -1,9 +1,11 @@
 import React from "react"
+import { Mention } from "@/components/mention"
 
 /**
  * Parses WhatsApp-style markdown formatting with smarter pattern matching:
  * Only formats complete patterns (surrounded by spaces/start/end)
  * Shows incomplete patterns as plain text (e.g., *word without closing *)
+ * Also handles @mentions
  */
 export function parseMarkdown(text: string): React.ReactNode[] {
   if (!text) return []
@@ -17,10 +19,35 @@ export function parseMarkdown(text: string): React.ReactNode[] {
   const patterns: Array<{
     start: number
     end: number
-    type: 'bold' | 'italic' | 'strike' | 'underline'
+    type: 'bold' | 'italic' | 'strike' | 'underline' | 'mention'
     content: string
     fullMatch: string
   }> = []
+
+  // Match @mentions first (before other patterns to avoid conflicts)
+  // Pattern: @username (alphanumeric, underscore, hyphen)
+  const mentionRegex = /@([a-zA-Z0-9_-]+)/g
+  let match
+  while ((match = mentionRegex.exec(text)) !== null) {
+    const start = match.index
+    const end = start + match[0].length
+    const username = match[1]
+    
+    // Only match if it's at a word boundary (start of text, after space, or after newline)
+    const isAtBoundary = start === 0 || 
+      /\s/.test(text[start - 1]) || 
+      text[start - 1] === '\n'
+    
+    if (isAtBoundary && username.length > 0) {
+      patterns.push({
+        start,
+        end,
+        type: 'mention',
+        content: username,
+        fullMatch: match[0]
+      })
+    }
+  }
 
   // Helper to check if a position is at a word boundary
   const isWordBoundary = (pos: number): boolean => {
@@ -31,12 +58,15 @@ export function parseMarkdown(text: string): React.ReactNode[] {
 
   // Match **italic** (double asterisk)
   const italicRegex = /\*\*(.+?)\*\*/g
-  let match
   while ((match = italicRegex.exec(text)) !== null) {
     const start = match.index
     const end = start + match[0].length
-    // Only match if it's at word boundaries or the content is not empty
-    if (match[1].trim().length > 0) {
+    // Check if this overlaps with a mention
+    const isPartOfMention = patterns.some(p => 
+      p.type === 'mention' && start >= p.start && start < p.end
+    )
+    // Only match if it's at word boundaries or the content is not empty, and not part of mention
+    if (!isPartOfMention && match[1].trim().length > 0) {
       patterns.push({
         start,
         end,
@@ -50,13 +80,16 @@ export function parseMarkdown(text: string): React.ReactNode[] {
   // Match *bold* (single asterisk, but not part of **)
   const boldRegex = /(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)/g
   while ((match = boldRegex.exec(text)) !== null) {
-    // Check if this is already part of an italic match
+    // Check if this is already part of an italic match or mention
     const start = match.index
     const isPartOfItalic = patterns.some(p => 
       p.type === 'italic' && start >= p.start && start < p.end
     )
+    const isPartOfMention = patterns.some(p => 
+      p.type === 'mention' && start >= p.start && start < p.end
+    )
     
-    if (!isPartOfItalic && match[1].trim().length > 0) {
+    if (!isPartOfItalic && !isPartOfMention && match[1].trim().length > 0) {
       patterns.push({
         start,
         end: start + match[0].length,
@@ -71,7 +104,9 @@ export function parseMarkdown(text: string): React.ReactNode[] {
   const strikeRegex = /~(.+?)~/g
   while ((match = strikeRegex.exec(text)) !== null) {
     const start = match.index
-    const isPartOfOther = patterns.some(p => start >= p.start && start < p.end)
+    const isPartOfOther = patterns.some(p => 
+      p.type !== 'mention' && start >= p.start && start < p.end
+    )
     
     if (!isPartOfOther && match[1].trim().length > 0) {
       patterns.push({
@@ -88,7 +123,9 @@ export function parseMarkdown(text: string): React.ReactNode[] {
   const underlineRegex = /_(.+?)_/g
   while ((match = underlineRegex.exec(text)) !== null) {
     const start = match.index
-    const isPartOfOther = patterns.some(p => start >= p.start && start < p.end)
+    const isPartOfOther = patterns.some(p => 
+      p.type !== 'mention' && start >= p.start && start < p.end
+    )
     
     if (!isPartOfOther && match[1].trim().length > 0) {
       patterns.push({
@@ -104,19 +141,42 @@ export function parseMarkdown(text: string): React.ReactNode[] {
   // Sort patterns by start position
   patterns.sort((a, b) => a.start - b.start)
 
+  // Helper function to split text by newlines and preserve them
+  const splitByNewlines = (text: string): React.ReactNode[] => {
+    const parts = text.split('\n')
+    const result: React.ReactNode[] = []
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        // Add line break between parts
+        result.push(<br key={`br-${keyCounter++}`} />)
+      }
+      if (parts[i]) {
+        result.push(parts[i])
+      }
+    }
+    return result
+  }
+
   // Build React nodes from patterns
   const nodes: React.ReactNode[] = []
   let lastIndex = 0
   let keyCounter = 0
 
   for (const pattern of patterns) {
-    // Add text before pattern
+    // Add text before pattern (split by newlines to preserve them)
     if (pattern.start > lastIndex) {
-      nodes.push(text.substring(lastIndex, pattern.start))
+      const textBefore = text.substring(lastIndex, pattern.start)
+      const splitText = splitByNewlines(textBefore)
+      nodes.push(...splitText)
     }
 
     // Add formatted element
     switch (pattern.type) {
+      case 'mention':
+        nodes.push(
+          <Mention key={`mention-${keyCounter++}`} username={pattern.content} />
+        )
+        break
       case 'bold':
         nodes.push(
           <strong key={`md-${keyCounter++}`} className="font-semibold">
@@ -150,9 +210,11 @@ export function parseMarkdown(text: string): React.ReactNode[] {
     lastIndex = pattern.end
   }
 
-  // Add remaining text after last pattern
+  // Add remaining text after last pattern (split by newlines to preserve them)
   if (lastIndex < text.length) {
-    nodes.push(text.substring(lastIndex))
+    const textAfter = text.substring(lastIndex)
+    const splitText = splitByNewlines(textAfter)
+    nodes.push(...splitText)
   }
 
   return nodes.length > 0 ? nodes : [text]
