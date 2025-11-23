@@ -40,7 +40,12 @@ export function formatRelativeTime(
   if (diffHours < 24) return `${diffHours}h`
   if (diffDays < 7) return `${diffDays}d`
 
-  return date.toLocaleDateString()
+  // Use consistent date format to avoid hydration mismatches
+  // Format: MM/DD/YYYY (US format) for consistency across server/client
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const year = date.getFullYear()
+  return `${month}/${day}/${year}`
 }
 
 /**

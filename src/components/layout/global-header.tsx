@@ -189,34 +189,47 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
     
     setCommunitiesLoading(true)
     try {
-      const { data, error } = await supabase
+      // Use a simpler query format to avoid 406 errors with nested selects
+      // First get community_ids, then fetch communities separately
+      const { data: memberships, error: membershipsError } = await supabase
         .from('community_members')
-        .select(`
-          community_id,
-          communities (
-            id,
-            name,
-            slug,
-            description,
-            is_active,
-            logo_url
-          )
-        `)
+        .select('community_id')
         .eq('user_id', user.id)
 
-      if (error) {
-        console.error('Error fetching user communities:', error)
+      if (membershipsError) {
+        console.error('Error fetching user community memberships:', membershipsError)
+        setUserCommunities([])
         return
       }
 
-      // Transform the data to extract communities
-      const communities = data
-        ?.map((item: any) => item.communities)
-        .filter(Boolean) || []
+      if (!memberships || memberships.length === 0) {
+        setUserCommunities([])
+        return
+      }
+
+      const communityIds = memberships.map(m => m.community_id).filter(Boolean)
       
-      setUserCommunities(communities)
+      if (communityIds.length === 0) {
+        setUserCommunities([])
+        return
+      }
+
+      // Fetch communities separately to avoid nested select issues
+      const { data: communities, error: communitiesError } = await supabase
+        .from('communities')
+        .select('id, name, slug, description, is_active, logo_url')
+        .in('id', communityIds)
+
+      if (communitiesError) {
+        console.error('Error fetching communities:', communitiesError)
+        setUserCommunities([])
+        return
+      }
+
+      setUserCommunities((communities || []) as Community[])
     } catch (error) {
       console.error('Error fetching user communities:', error)
+      setUserCommunities([])
     } finally {
       setCommunitiesLoading(false)
     }

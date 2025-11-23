@@ -242,7 +242,13 @@ export function useUnreadMessagesCount(userId: string | null) {
         )
         .subscribe((status) => {
           if (status === "CHANNEL_ERROR") {
-            console.error("[useUnreadMessagesCount] Channel subscription error")
+            // Channel subscription failed - this is non-critical
+            // The polling fallback will continue to work
+            // Only log in development to avoid console noise in production
+            if (process.env.NODE_ENV === 'development') {
+              console.warn("[useUnreadMessagesCount] Channel subscription error - using polling fallback")
+            }
+            // Don't throw or set error state - polling will handle updates
           }
         })
 
