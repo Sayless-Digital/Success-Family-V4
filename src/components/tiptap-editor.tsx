@@ -31,6 +31,9 @@ interface TiptapEditorProps {
   maxHeight?: number
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void | boolean
   size?: "sm" | "base" | "lg"
+  showToolbarOnFocus?: boolean // Show toolbar only when editor is focused
+  hideToolbar?: boolean // Completely hide the toolbar
+  compact?: boolean // Compact mode for messages (no border/background wrapper)
 }
 
 // Search users for mentions
@@ -279,16 +282,21 @@ function jsonToMarkdown(json: any): string {
 function MentionList({ 
   items, 
   selectedIndex,
-  onSelect 
+  onSelect,
+  maxHeight
 }: { 
   items: any[]
   selectedIndex: number
-  onSelect: (item: any, index: number) => void 
+  onSelect: (item: any, index: number) => void
+  maxHeight?: number
 }) {
   if (items.length === 0) return null
 
   return (
-    <div className="bg-white/10 border border-white/20 rounded-lg shadow-lg p-1 backdrop-blur-md max-h-[300px] overflow-y-auto">
+    <div 
+      className="bg-white/10 border border-white/20 rounded-lg shadow-lg p-1 backdrop-blur-md overflow-y-auto"
+      style={{ maxHeight: maxHeight ? `${maxHeight}px` : '300px' }}
+    >
       {items.map((item, index) => (
         <button
           key={item.id}
@@ -333,16 +341,63 @@ export function TiptapEditor({
   maxHeight,
   onKeyDown,
   size = "base",
+  showToolbarOnFocus = false,
+  hideToolbar = false,
+  compact = false,
 }: TiptapEditorProps) {
   const [mentionItems, setMentionItems] = useState<any[]>([])
   const [showMentionList, setShowMentionList] = useState(false)
-  const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number } | null>(null)
+  const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number; maxHeight?: number } | null>(null)
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
+  const [isFocused, setIsFocused] = useState(false)
   const mentionSuggestionRef = useRef<any>(null) // Store Tiptap's suggestion props
   const mentionListRef = useRef<HTMLDivElement>(null)
   const mentionItemsRef = useRef<any[]>([]) // Store current items for onKeyDown access
   const selectedMentionIndexRef = useRef<number>(0) // Store current selected index for onKeyDown access
   const editorRef = useRef<any>(null) // Store editor instance for onKeyDown access
+
+  // Calculate edge-aware position for mention dropdown
+  const calculateMentionPosition = (rect: { top: number; left: number; bottom: number; right: number }) => {
+    if (typeof window === 'undefined') return
+
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const dropdownWidth = 280 // Approximate width of mention dropdown
+    const dropdownItemHeight = 56 // Height per item (including padding)
+    const currentItemsCount = mentionItemsRef.current.length || mentionItems.length || 5
+    const maxItems = Math.min(currentItemsCount, 5) // Show max 5 items
+    const estimatedHeight = maxItems * dropdownItemHeight + 16 // Add padding
+    const offset = 8 // Space from cursor
+
+    // Calculate vertical position
+    const spaceBelow = viewportHeight - rect.bottom
+    const spaceAbove = rect.top
+    let top: number
+    let maxHeight: number
+
+    if (spaceBelow >= estimatedHeight || spaceBelow > spaceAbove) {
+      // Show below cursor
+      top = rect.bottom + offset
+      maxHeight = Math.min(estimatedHeight, spaceBelow - offset - 8)
+    } else {
+      // Show above cursor
+      top = rect.top - estimatedHeight - offset
+      maxHeight = Math.min(estimatedHeight, spaceAbove - offset - 8)
+    }
+
+    // Calculate horizontal position
+    let left = rect.left
+    if (left + dropdownWidth > viewportWidth) {
+      // Adjust to fit within viewport
+      left = viewportWidth - dropdownWidth - 16
+    }
+    if (left < 16) {
+      // Ensure minimum margin from left edge
+      left = 16
+    }
+
+    setMentionPosition({ top, left, maxHeight: Math.max(100, maxHeight) })
+  }
 
   // Initialize editor
   const editor = useEditor({
@@ -398,7 +453,7 @@ export function TiptapEditor({
             return [
               'span',
               {
-                class: 'mention inline-flex items-center gap-1.5 bg-white/10 text-white/90 pl-0.5 pr-1.5 py-0 rounded-full text-sm',
+                class: 'mention inline-flex items-center gap-[3px] bg-white/10 text-white/90 pl-0 pr-[4px] py-0 rounded-full text-sm',
                 'data-type': 'mention',
                 'data-id': node.attrs.id,
                 'data-avatar': avatar,
@@ -408,11 +463,17 @@ export function TiptapEditor({
                 {
                   src: avatar,
                   alt: label,
-                  class: 'h-4 w-4 rounded-full object-cover',
-                  style: 'display: inline-block; vertical-align: middle;',
+                  class: 'h-4 w-4 rounded-full object-cover flex-shrink-0',
+                  style: 'display: block;',
                 },
               ],
-              label,
+              [
+                'span',
+                {
+                  style: 'line-height: 1;',
+                },
+                label,
+              ],
             ]
           }
           
@@ -487,7 +548,7 @@ export function TiptapEditor({
                 mentionItemsRef.current = [] // Clear items ref
                 const rect = props.clientRect?.()
                 if (rect) {
-                  setMentionPosition({ top: rect.top, left: rect.left })
+                  calculateMentionPosition(rect)
                 }
                 console.log('🚀 Mention started, waiting for items...')
               },
@@ -495,7 +556,7 @@ export function TiptapEditor({
                 mentionSuggestionRef.current = props // Update stored props
                 const rect = props.clientRect?.()
                 if (rect) {
-                  setMentionPosition({ top: rect.top, left: rect.left })
+                  calculateMentionPosition(rect)
                 }
                 const items = props.items || []
                 
@@ -740,6 +801,12 @@ export function TiptapEditor({
       // Clear editor ref when destroyed
       editorRef.current = null
     },
+    onFocus: () => {
+      setIsFocused(true)
+    },
+    onBlur: () => {
+      setIsFocused(false)
+    },
     editorProps: {
       attributes: {
         class: cn(
@@ -748,7 +815,7 @@ export function TiptapEditor({
           size === "sm" && "text-sm",
           size === "base" && "text-base",
           size === "lg" && "text-lg",
-          "min-h-[100px] p-4"
+          compact ? "min-h-[32px] p-2" : "min-h-[100px] p-4"
         ),
       },
       handleKeyDown: (view, event) => {
@@ -928,6 +995,16 @@ export function TiptapEditor({
   }, [editor])
 
   // Update editor content when value changes externally
+  // Recalculate position when items change
+  useEffect(() => {
+    if (showMentionList && mentionSuggestionRef.current) {
+      const rect = mentionSuggestionRef.current.clientRect?.()
+      if (rect) {
+        calculateMentionPosition(rect)
+      }
+    }
+  }, [mentionItems, showMentionList])
+
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
       const currentMarkdown = jsonToMarkdown(editor.getJSON())
@@ -957,21 +1034,15 @@ export function TiptapEditor({
 
   if (!editor) return null
 
-  return (
-    <div
-      className={cn(
-        "w-full rounded-lg bg-white/10 border border-white/20",
-        disabled && "opacity-50 cursor-not-allowed",
-        className
-      )}
-      style={{
-        minHeight: `${minHeight}px`,
-        maxHeight: maxHeight ? `${maxHeight}px` : undefined,
-        overflowY: maxHeight ? "auto" : "visible",
-      }}
-    >
+  const shouldShowToolbar = !hideToolbar && (!showToolbarOnFocus || isFocused)
+
+  const editorContent = (
+    <>
       {/* Toolbar */}
-      <div className="flex items-center gap-1 p-2 border-b border-white/10">
+      {shouldShowToolbar && (
+          <div className={cn(
+            "flex items-center gap-1 bg-white/2 backdrop-blur-sm rounded-lg p-1"
+          )}>
         <Button
           type="button"
           variant="ghost"
@@ -979,7 +1050,7 @@ export function TiptapEditor({
           onClick={() => (editor.chain().focus() as any).toggleBold().run()}
           disabled={!(editor.can().chain().focus() as any).toggleBold().run()}
           className={cn(
-            "h-8 w-8 p-0",
+            "h-6 w-6 p-0",
             editor.isActive("bold") && "bg-white/20"
           )}
         >
@@ -992,7 +1063,7 @@ export function TiptapEditor({
           onClick={() => (editor.chain().focus() as any).toggleItalic().run()}
           disabled={!(editor.can().chain().focus() as any).toggleItalic().run()}
           className={cn(
-            "h-8 w-8 p-0",
+            "h-6 w-6 p-0",
             editor.isActive("italic") && "bg-white/20"
           )}
         >
@@ -1005,7 +1076,7 @@ export function TiptapEditor({
           onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
           disabled={!(editor.can().chain().focus() as any).toggleUnderline().run()}
           className={cn(
-            "h-8 w-8 p-0",
+            "h-6 w-6 p-0",
             editor.isActive("underline") && "bg-white/20"
           )}
         >
@@ -1018,7 +1089,7 @@ export function TiptapEditor({
           onClick={() => (editor.chain().focus() as any).toggleStrike().run()}
           disabled={!(editor.can().chain().focus() as any).toggleStrike().run()}
           className={cn(
-            "h-8 w-8 p-0",
+            "h-6 w-6 p-0",
             editor.isActive("strike") && "bg-white/20"
           )}
         >
@@ -1032,12 +1103,13 @@ export function TiptapEditor({
           onClick={() => {
             editor.chain().focus().insertContent("@").run()
           }}
-          className="h-8 w-8 p-0"
+          className="h-6 w-6 p-0"
           title="Mention user"
         >
           <AtSign className="h-4 w-4 text-white/70" />
         </Button>
-      </div>
+        </div>
+      )}
 
       {/* Editor */}
       <EditorContent editor={editor} />
@@ -1048,18 +1120,46 @@ export function TiptapEditor({
           ref={mentionListRef}
           className="fixed z-[9999]"
           style={{
-            top: `${mentionPosition.top + 20}px`,
+            top: `${mentionPosition.top}px`,
             left: `${mentionPosition.left}px`,
           }}
         >
           <MentionList 
             items={mentionItems} 
             selectedIndex={selectedMentionIndex}
-            onSelect={(item, index) => handleMentionSelect(item, index)} 
+            onSelect={(item, index) => handleMentionSelect(item, index)}
+            maxHeight={mentionPosition.maxHeight}
           />
         </div>,
         document.body
       )}
+    </>
+  )
+
+  // Compact mode: no wrapper, just the content
+  if (compact) {
+    return (
+      <div className={cn("w-full", className)}>
+        {editorContent}
+      </div>
+    )
+  }
+
+  // Normal mode: with border and background wrapper
+  return (
+    <div
+      className={cn(
+        "w-full rounded-lg bg-white/10 border border-white/20",
+        disabled && "opacity-50 cursor-not-allowed",
+        className
+      )}
+      style={{
+        minHeight: `${minHeight}px`,
+        maxHeight: maxHeight ? `${maxHeight}px` : undefined,
+        overflowY: maxHeight ? "auto" : "visible",
+      }}
+    >
+      {editorContent}
     </div>
   )
 }

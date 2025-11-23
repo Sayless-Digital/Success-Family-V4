@@ -486,22 +486,24 @@ export function MessageComposer({
         </div>
         <div className="flex-1 min-w-0">
           <TiptapEditor
-          value={composerValue}
+            value={composerValue}
             onChange={onComposerChange}
-          placeholder={
-            composerDisabled
-              ? "Cannot send messages"
-              : replyingToMessage
-                ? "Type your reply..."
-                : "Type a message"
-          }
+            placeholder={
+              composerDisabled
+                ? "Cannot send messages"
+                : replyingToMessage
+                  ? "Type your reply..."
+                  : "Type a message"
+            }
             disabled={composerDisabled}
             minHeight={32}
             maxHeight={isMobile ? 96 : 128}
-          onKeyDown={handleKeyDown}
+            onKeyDown={handleKeyDown}
             size="sm"
             className="text-sm sm:text-[15px] leading-[1.4]"
-        />
+            compact={true}
+            showToolbarOnFocus={true}
+          />
         </div>
         <Button
           type="button"

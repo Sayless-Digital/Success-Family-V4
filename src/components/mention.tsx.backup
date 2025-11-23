@@ -68,22 +68,17 @@ export function Mention({ username, className }: MentionProps) {
       href={`/profile/${userData.username}`}
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "mention inline-flex items-center gap-[3px] bg-white/10 text-white/90 pl-0 pr-[4px] py-0 rounded-full text-sm hover:bg-white/20 transition-colors",
+        "mention inline-flex items-center gap-1.5 bg-white/10 text-white/90 pl-0.5 pr-1.5 py-0.5 rounded-full text-sm hover:bg-white/20 transition-colors",
         className
       )}
     >
       {userData.profile_picture && (
-        <span className="inline-flex items-center justify-center flex-shrink-0" style={{ lineHeight: 0 }}>
-          <Avatar 
-            className="h-4 w-4" 
-            hideChristmasHat={true}
-          >
-            <AvatarImage src={userData.profile_picture} alt={fullName} className="object-cover" />
-            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white/80 text-xs">
-              {userData.first_name?.[0] || ""}{userData.last_name?.[0] || ""}
-            </AvatarFallback>
-          </Avatar>
-        </span>
+        <Avatar className="h-4 w-4 flex-shrink-0" hideChristmasHat={true}>
+          <AvatarImage src={userData.profile_picture} alt={fullName} className="object-cover" />
+          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-white/80 text-xs">
+            {userData.first_name?.[0] || ""}{userData.last_name?.[0] || ""}
+          </AvatarFallback>
+        </Avatar>
       )}
       <span className="leading-none">{fullName}</span>
     </Link>

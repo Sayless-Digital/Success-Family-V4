@@ -2083,10 +2083,10 @@ export default function DiscoveryFeedView({
 
                                 {/* Scroll Indicator - Shows when entering focus mode */}
                                 {showScrollIndicator && isActive && index === 0 && (
-                                  <div
+                                  <div 
                                     className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none"
                                     style={{
-                                      animation: isFadingOut
+                                      animation: isFadingOut 
                                         ? 'fade-out 0.5s ease-out forwards'
                                         : 'fade-in 0.5s ease-out forwards'
                                     }}
@@ -2094,10 +2094,10 @@ export default function DiscoveryFeedView({
                                     <div className="flex flex-col items-center gap-2 bg-gradient-to-br from-white/15 to-white/5 backdrop-blur-2xl rounded-full px-4 py-3 border border-white/20 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)]" style={{ backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
                                       <div className="flex items-center gap-2">
                                         <div className="relative flex items-center">
-                                          <Hand
+                                          <Hand 
                                             className="h-5 w-5 text-white/80"
                                             style={{
-                                              animation: isFadingOut
+                                              animation: isFadingOut 
                                                 ? 'none'
                                                 : 'swipe-left 1.5s ease-in-out infinite'
                                             }}
