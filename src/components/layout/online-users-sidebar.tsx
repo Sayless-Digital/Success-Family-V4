@@ -16,6 +16,7 @@ interface OnlineUsersSidebarProps {
   isPinned: boolean
   onClose: () => void
   onHoverChange?: (isHovered: boolean) => void
+  isFullscreen?: boolean
 }
 
 interface UserProfile {
@@ -26,7 +27,7 @@ interface UserProfile {
   profile_picture: string | null
 }
 
-export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHoverChange }: OnlineUsersSidebarProps) {
+export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHoverChange, isFullscreen = false }: OnlineUsersSidebarProps) {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([])
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -164,8 +165,8 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
     "fixed w-64 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md transition-all duration-300 ease-in-out rounded-lg border border-white/20",
     {
       // Mobile: slide from right (same as global sidebar)
-      "top-14 right-2 left-auto": isMobile,
-      "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
+      "top-14 right-2 left-auto": isMobile && !isFullscreen,
+      "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile && !isFullscreen, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
       "z-[9000]": isMobile,
       // Desktop: slide from right (same as global sidebar but on right side)
       "top-14 right-2": !isMobile,
@@ -180,6 +181,12 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
       "pointer-events-none": allowPointerEvents ? false : !shouldShowSidebar,
     }
   )
+
+  // In fullscreen mode on mobile, adjust positioning to account for header position
+  const fullscreenStyle = isFullscreen && isMobile ? {
+    top: "calc(env(safe-area-inset-top, 0) + 8px + 3rem + 0.5rem)",
+    height: "calc(100vh - env(safe-area-inset-top, 0) - 8px - 3rem - 0.5rem - 3rem - 0.5rem)", // 100vh - top - header - gap - bottom nav - gap
+  } : {}
 
   return (
     <>
@@ -196,6 +203,7 @@ export function OnlineUsersSidebar({ isMobile, isOpen, isPinned, onClose, onHove
       {/* Sidebar */}
       <aside
         className={sidebarClasses}
+        style={fullscreenStyle}
         onMouseEnter={handleSidebarMouseEnter}
         onMouseLeave={() => {
           // Notify parent that mouse left - parent will handle closing with delay

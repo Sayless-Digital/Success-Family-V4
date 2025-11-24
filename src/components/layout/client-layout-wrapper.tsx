@@ -7,6 +7,7 @@ import { GlobalHeader } from "./global-header"
 import { GlobalSidebar } from "./global-sidebar"
 import { OnlineUsersSidebar } from "./online-users-sidebar"
 import { MobileBottomNav } from "./mobile-bottom-nav"
+import { MobileStatusBar } from "./mobile-status-bar"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
 import { Toaster } from "@/components/toaster"
@@ -404,12 +405,13 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
         // Otherwise use 100dvh for normal viewport
         height: isFullscreen && isMobile ? "100vh" : "100dvh",
         minHeight: isFullscreen && isMobile ? "100vh" : "100dvh",
-        paddingTop: "env(safe-area-inset-top, 0)",
+        // In fullscreen mode on mobile, remove all padding to allow content into notch area
+        paddingTop: isFullscreen && isMobile ? "0" : "env(safe-area-inset-top, 0)",
         paddingBottom: isFullscreen && isMobile
-          ? "calc(env(safe-area-inset-bottom, 0) + 64px)"
+          ? "0"
           : "env(safe-area-inset-bottom, 0)",
-        paddingLeft: "env(safe-area-inset-left, 0)",
-        paddingRight: "env(safe-area-inset-right, 0)",
+        paddingLeft: isFullscreen && isMobile ? "0" : "env(safe-area-inset-left, 0)",
+        paddingRight: isFullscreen && isMobile ? "0" : "env(safe-area-inset-right, 0)",
       }}
     >
       {/* Silk Background - On all pages */}
@@ -444,6 +446,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
       
       {!isStreamPage && (
         <>
+          <MobileStatusBar isFullscreen={isFullscreen} isMobile={isMobile} />
           <GlobalHeader
             onMenuClick={handleMenuClick}
             isSidebarOpen={isSidebarOpen}
@@ -460,6 +463,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
             onTogglePin={handleTogglePin}
             onHoverChange={handleSidebarHoverChange}
             isMobile={isMobile}
+            isFullscreen={isFullscreen}
           />
 
           {/* Online Users Sidebar - Available on all pages */}
@@ -469,6 +473,7 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
             isPinned={isOnlineUsersSidebarPinned}
             onClose={handleOnlineUsersSidebarClose}
             onHoverChange={handleOnlineUsersSidebarHoverChange}
+            isFullscreen={isFullscreen}
           />
 
           {isMobile && isSidebarOpen && (
@@ -493,16 +498,12 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
         data-scrollable-content
         className={cn(
           pageAreaClasses, 
-          "flex-1 relative z-10 min-h-0 flex flex-col"
+          isFullscreen && isMobile 
+            ? "absolute inset-0 z-10 flex flex-col" 
+            : "flex-1 relative z-10 min-h-0 flex flex-col"
         )}
         style={{
           marginRight: contentRightMargin,
-          // In fullscreen mode on mobile, ensure main fills the full viewport height
-          // Account for header height (3rem = 48px) + safe area top + 8px spacing
-          ...(isFullscreen && isMobile ? {
-            height: "calc(100vh - env(safe-area-inset-top, 0) - 8px - 3rem)",
-            minHeight: "calc(100vh - env(safe-area-inset-top, 0) - 8px - 3rem)",
-          } : {}),
         }}
       >
         {isStreamPage ? (
@@ -514,14 +515,24 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
               isMobile ? "pb-16" : "pb-4" // Extra padding on mobile for bottom nav (48px nav + 16px spacing = 64px)
             )}
             style={(() => {
-              const headerOffset = isFullscreen && isMobile
-                ? "calc(env(safe-area-inset-top, 0) + 8px)"
-                : "0px"
+              // In fullscreen mode on mobile, start content from the very top (no safe area offset)
+              // Content can extend into the notch area
+              if (isFullscreen && isMobile) {
+                return {
+                  // Start from the very top of the viewport (into notch area)
+                  top: "0",
+                  left: "0",
+                  right: "0",
+                  bottom: "0",
+                  // Add padding to account for header position and height
+                  // Header is at: calc(env(safe-area-inset-top, 0) + 8px), height: 3rem
+                  // Add extra spacing (12px) so content isn't hidden behind header
+                  paddingTop: "calc(env(safe-area-inset-top, 0) + 8px + 3rem + 12px)",
+                }
+              }
               return {
-                // Shift the scrollable surface upward by the header height so content can glide beneath it
-                top: `calc(${headerOffset} - 3rem)`,
-                // Add equal padding so content isn't hidden when at rest (header height + 12px spacing)
-                paddingTop: `calc(${headerOffset} + 3rem + 12px)`,
+                top: "0",
+                paddingTop: "16px",
               }
             })()}
           >

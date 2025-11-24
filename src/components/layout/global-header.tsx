@@ -51,7 +51,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
   const [allCommunities, setAllCommunities] = React.useState<Community[]>([])
   const [communitiesLoading, setCommunitiesLoading] = React.useState(false)
   const [allCommunitiesLoading, setAllCommunitiesLoading] = React.useState(false)
-  const [isRetryingProfile, setIsRetryingProfile] = React.useState(false)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const earningsDollarValue = React.useMemo(() => {
     if (walletEarningsBalance === null || userValuePerPoint === null) {
@@ -83,15 +82,6 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
     return (firstInitial + lastInitial).toUpperCase() || "U"
   }, [userProfile?.first_name, userProfile?.last_name])
 
-  // Handle profile retry
-  const handleRetryProfile = React.useCallback(async () => {
-    setIsRetryingProfile(true)
-    try {
-      await refreshProfile()
-    } finally {
-      setIsRetryingProfile(false)
-    }
-  }, [refreshProfile])
 
   const currentCommunitySlug = React.useMemo(() => {
     if (!pathname) return null
@@ -389,22 +379,32 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
     <>
     <header 
       className={cn(
-        "fixed z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md relative overflow-visible",
-        // In fullscreen mode on mobile: rounded on all edges, border all around, spaced from edges
+        "fixed z-[150000] h-12 bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md relative",
+        // In fullscreen mode on mobile: rounded on all edges, border all around, spaced from edges, hide overflow
         isFullscreen && isMobile 
-          ? "rounded-lg border border-white/20 left-2 right-2"
-          : "left-0 right-0 rounded-b-lg border-b border-white/20"
+          ? "rounded-lg border border-white/20 overflow-hidden"
+          : "left-0 right-0 rounded-b-lg border-b border-white/20 overflow-visible"
       )}
       style={{
         // In fullscreen mode on mobile, push header down to respect notch area + 8px spacing
         top: isFullscreen && isMobile ? "calc(env(safe-area-inset-top, 0) + 8px)" : "0",
+        // In fullscreen mode on mobile, account for safe area insets on left and right
+        left: isFullscreen && isMobile ? "calc(env(safe-area-inset-left, 0) + 0.5rem)" : undefined,
+        right: isFullscreen && isMobile ? "calc(env(safe-area-inset-right, 0) + 0.5rem)" : undefined,
+        // In fullscreen mode on mobile, constrain width to prevent overflow
+        width: isFullscreen && isMobile 
+          ? "calc(100vw - env(safe-area-inset-left, 0) - env(safe-area-inset-right, 0) - 1rem)" 
+          : undefined,
       }}
     >
       {/* Christmas Lights at the bottom of header */}
       <ChristmasLights lightCount={isMobile ? 12 : 24} spacing={12} edges="bottom" />
-      <div className="h-full px-1 flex items-center justify-between">
+      <div className={cn(
+        "h-full flex items-center justify-between",
+        isFullscreen && isMobile ? "px-0.5" : "px-1"
+      )}>
         {/* Left side - Menu Button (desktop only) and Logo */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-shrink">
           {!isMobile && (
             <Button
               variant="ghost"
@@ -605,18 +605,11 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
         </div>
 
         {/* Right side - Menu Button (mobile only) and Auth Buttons */}
-        <div className="flex items-center gap-2">
-          {user && !userProfile && !isRetryingProfile ? (
-            // User is authenticated but profile failed to load - show retry option
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs hover:bg-white/20 touch-feedback"
-              onClick={handleRetryProfile}
-            >
-              Retry Loading Profile
-            </Button>
-          ) : !user ? (
+        <div className={cn(
+          "flex items-center flex-shrink-0",
+          isFullscreen && isMobile ? "gap-1.5 pr-0.5" : "gap-2"
+        )}>
+          {!user ? (
             <>
               {/* Desktop auth buttons only - hide on mobile */}
               <Button
@@ -664,13 +657,16 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
             variant="ghost"
             size="icon"
             onClick={toggleFullscreen}
-            className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+            className={cn(
+              "rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
+              isFullscreen && isMobile ? "h-7 w-7 p-1" : "h-9 w-9"
+            )}
             aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
           >
             {isFullscreen ? (
-              <Minimize2 className="h-4 w-4" />
+              <Minimize2 className={cn(isFullscreen && isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
             ) : (
-              <Maximize2 className="h-4 w-4" />
+              <Maximize2 className={cn(isFullscreen && isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
             )}
           </Button>
           
@@ -680,13 +676,16 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
               variant="ghost"
               size="icon"
               onClick={onOnlineUsersSidebarToggle}
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+              className={cn(
+                "rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
+                isFullscreen && isMobile ? "h-7 w-7 p-1" : "h-9 w-9"
+              )}
               aria-label={isOnlineUsersSidebarOpen ? "Close online users" : "Open online users"}
             >
               {isMobile && isOnlineUsersSidebarOpen ? (
-                <X className="h-4 w-4" />
+                <X className={cn(isFullscreen && isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
               ) : (
-                <Users className="h-4 w-4" />
+                <Users className={cn(isFullscreen && isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
               )}
             </Button>
           )}
@@ -710,7 +709,7 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
 
           {/* Notifications dropdown - shown when user is logged in, all screen sizes */}
           {user && (
-            <NotificationsDropdown userId={user.id} />
+            <NotificationsDropdown userId={user.id} isFullscreen={isFullscreen} isMobile={isMobile} />
           )}
 
           {/* Profile button - shown when user is logged in, farthest right, desktop only */}
@@ -746,13 +745,16 @@ export function GlobalHeader({ onMenuClick, isSidebarOpen, isMobile = false, ful
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback"
+              className={cn(
+                "rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback",
+                isFullscreen ? "h-7 w-7 p-1" : "h-9 w-9"
+              )}
               aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
             >
               {isSidebarOpen ? (
-                <X className="h-4 w-4" />
+                <X className={cn(isFullscreen ? "h-3.5 w-3.5" : "h-4 w-4")} />
               ) : (
-                <Menu className="h-4 w-4" />
+                <Menu className={cn(isFullscreen ? "h-3.5 w-3.5" : "h-4 w-4")} />
               )}
             </Button>
           )}

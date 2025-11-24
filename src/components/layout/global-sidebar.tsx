@@ -18,6 +18,7 @@ interface GlobalSidebarProps {
   onHoverChange?: (isHovered: boolean) => void
   isMobile: boolean
   isAdminMode?: boolean
+  isFullscreen?: boolean
 }
 
 const baseNavigationItems = [
@@ -60,7 +61,7 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>
 }
 
-export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverChange, isMobile }: GlobalSidebarProps) {
+export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverChange, isMobile, isFullscreen = false }: GlobalSidebarProps) {
   const [isHoverTriggerActive, setIsHoverTriggerActive] = useState(false)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isAppInstalled, setIsAppInstalled] = useState(false)
@@ -178,8 +179,8 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       // Header is h-12 (3rem) fixed at top, bottom nav is h-12 (3rem) fixed at bottom
       // Sidebar starts at top-14 (3.5rem from top = 3rem header + 0.5rem gap)
       // Height: Available space from top-14 to bottom, minus bottom nav and gap
-      "top-14 right-2 left-auto": isMobile,
-      "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
+      "top-14 right-2 left-auto": isMobile && !isFullscreen,
+      "h-[calc(100dvh-3.5rem-3rem-0.5rem)]": isMobile && !isFullscreen, // 100dvh - sidebar top (3.5rem) - bottom nav (3rem) - bottom gap (0.5rem)
       "translate-x-0": shouldShowSidebar,
       "translate-x-full": isMobile && !shouldShowSidebar,
       // Desktop: slide from left
@@ -190,6 +191,12 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       "opacity-0 pointer-events-none": !shouldShowSidebar,
     }
   )
+
+  // In fullscreen mode on mobile, adjust positioning to account for header position
+  const fullscreenStyle = isFullscreen && isMobile ? {
+    top: "calc(env(safe-area-inset-top, 0) + 8px + 3rem + 0.5rem)",
+    height: "calc(100vh - env(safe-area-inset-top, 0) - 8px - 3rem - 0.5rem - 3rem - 0.5rem)", // 100vh - top - header - gap - bottom nav - gap
+  } : {}
 
   return (
     <>
@@ -205,6 +212,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       {/* Sidebar */}
       <aside
         className={sidebarClasses}
+        style={fullscreenStyle}
         onMouseLeave={() => {
           // Close sidebar when mouse leaves if unpinned
           if (!isPinned && !isMobile) {

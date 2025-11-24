@@ -21,9 +21,11 @@ import { formatDistanceToNow } from 'date-fns'
 
 interface NotificationsDropdownProps {
   userId: string
+  isFullscreen?: boolean
+  isMobile?: boolean
 }
 
-export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
+export function NotificationsDropdown({ userId, isFullscreen = false, isMobile = false }: NotificationsDropdownProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -137,12 +139,22 @@ export function NotificationsDropdown({ userId }: NotificationsDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback relative">
-          <Bell className="h-4 w-4 text-white/70" />
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className={cn(
+            "rounded-full bg-white/10 hover:bg-white/20 text-white/80 touch-feedback relative",
+            isFullscreen && isMobile ? "h-7 w-7 p-1" : "h-9 w-9"
+          )}
+        >
+          <Bell className={cn("text-white/70", isFullscreen && isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
           {unreadCount > 0 && (
             <Badge 
               key={`notifications-unread-${unreadCount}`}
-              className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 text-[9px] font-semibold shadow-md"
+              className={cn(
+                "absolute -top-0.5 -right-0.5 min-w-4 px-1 flex items-center justify-center bg-white/90 text-black border-0 font-semibold shadow-md",
+                isFullscreen && isMobile ? "h-3 text-[8px]" : "h-4 text-[9px]"
+              )}
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
