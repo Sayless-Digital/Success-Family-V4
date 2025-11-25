@@ -298,18 +298,24 @@
     animation: twinkle 1.5s ease-in-out infinite;
   }
 
-  /* Christmas lights blink animation */
+  /* Christmas lights fade animation */
   @keyframes blink {
-    0%, 45% {
+    0% {
+      opacity: 0.15;
+    }
+    40% {
       opacity: 1;
     }
-    46%, 100% {
+    60% {
+      opacity: 0.2;
+    }
+    100% {
       opacity: 0.15;
     }
   }
   
   .animate-blink {
-    animation: blink 1.2s ease-in-out infinite;
+    animation: blink 2.4s ease-in-out infinite;
   }
 
   /* Snowman wave animation */

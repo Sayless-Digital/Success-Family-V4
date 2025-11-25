@@ -89,8 +89,8 @@ export function ChristmasLights({
           const x = startOffset + (i * adjustedSpacing)
           const y = height - bottomOffset
           const tiltVariation = ((i * 7) % 31) - 15
-          // Varied delay for each light to create organic blinking pattern
-          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
+          // Alternating delay for predictable blinking
+          const delay = (i % 2) * 1.2
           
           positions.push({
             x,
@@ -105,8 +105,7 @@ export function ChristmasLights({
           const x = i * actualSpacing
           const y = topOffset
           const tiltVariation = ((i * 7) % 31) - 15
-          // Varied delay for each light to create organic blinking pattern
-          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
+          const delay = (i % 2) * 1.2
           
           positions.push({
             x,
@@ -121,8 +120,7 @@ export function ChristmasLights({
           const x = 0
           const y = i * actualSpacing
           const tiltVariation = ((i * 7) % 31) - 15
-          // Varied delay for each light to create organic blinking pattern
-          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
+          const delay = (i % 2) * 1.2
           
           positions.push({
             x,
@@ -137,8 +135,7 @@ export function ChristmasLights({
           const x = width
           const y = i * actualSpacing
           const tiltVariation = ((i * 7) % 31) - 15
-          // Varied delay for each light to create organic blinking pattern
-          const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
+          const delay = (i % 2) * 1.2
           
           positions.push({
             x,
@@ -223,8 +220,8 @@ export function ChristmasLights({
         // Add exaggerated tilt variation based on index
         const tiltVariation = ((i * 7) % 31) - 15 // Range from -15 to +15 degrees
         
-        // Varied delay for each light to create organic blinking pattern
-        const delay = ((i * 0.37) + (i * 0.13) % 1) % 1
+        // Alternate delay for predictable blinking
+        const delay = (i % 2) * 1.2
         
         positions.push({
           x,

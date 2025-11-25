@@ -26,3 +26,5 @@ CREATE INDEX IF NOT EXISTS idx_uploaded_videos_is_learn_page ON public.uploaded_
 COMMENT ON COLUMN public.uploaded_videos.is_learn_page_video IS 'True if this video is for the learn page (not tied to a community)';
 
 
+
+

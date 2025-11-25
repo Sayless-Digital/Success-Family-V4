@@ -37,7 +37,6 @@ import {
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import Silk from "@/components/Silk"
 import type { CommunityEvent } from "@/types"
 import { CommunityLogo } from "@/components/community-logo"
 import { StreamInfo } from "./stream-info"
@@ -821,18 +820,14 @@ function CallContentInner({
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden">
-        {/* Aurora Background */}
-        <div className="fixed inset-0 z-0 overflow-hidden w-full h-full">
-          <div className="w-full h-full">
-            <Silk
-              speed={0.3}
-              scale={1}
-              color="#0a0318"
-              noiseIntensity={1}
-              rotation={0}
-            />
-          </div>
-        </div>
+        {/* Static gradient background */}
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-0 w-full h-full"
+          style={{
+            background: "radial-gradient(circle at top, rgba(112, 4, 220, 0.45), transparent 60%), radial-gradient(circle at bottom, rgba(45, 3, 84, 0.5), transparent 55%), linear-gradient(135deg, rgba(13, 4, 31, 0.95), rgba(15, 5, 34, 0.95))",
+          }}
+        />
         {/* Header - Platform style matching bottom bar */}
         <div className="flex items-center justify-between px-1 h-12 z-10 flex-shrink-0 relative bg-gradient-to-br from-white/10 to-transparent backdrop-blur-md border-b border-white/20 rounded-b-lg">
           {/* Left: Community Logo */}

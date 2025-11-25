@@ -54,3 +54,5 @@ COMMENT ON COLUMN public.webinar_signups.whatsapp_number IS 'Phone number withou
 COMMENT ON COLUMN public.webinar_signups.signup_date IS 'Date of signup - tracks which day/form the signup was for';
 
 
+
+

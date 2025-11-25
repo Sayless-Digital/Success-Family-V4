@@ -1,18 +1,16 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { useIsChristmasMode } from "@/components/holiday-mode-context"
 
 /**
  * Snow buildup effect for the bottom of cards
  * Creates a decorative snow accumulation effect with a snowman
- * Cycles through many variations like an animation
+ * Now static to avoid animation/interval overhead
  */
 export function SnowBuildup({ className, cardId }: { className?: string; cardId?: string }) {
   const isChristmasSeason = useIsChristmasMode()
-  const [animationFrame, setAnimationFrame] = useState(0)
-  const [isWaving, setIsWaving] = useState(false)
 
   // Generate a starting variation based on cardId or random seed
   const baseVariation = useMemo(() => {
@@ -57,36 +55,10 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
     return Math.abs(hash) % 20
   }, [cardId])
 
-  // Cycle through variations (30 different variations)
-  useEffect(() => {
-    if (!isChristmasSeason) return
-    
-    const interval = setInterval(() => {
-      setAnimationFrame((prev) => (prev + 1) % 30)
-    }, 8000) // Change variation every 8 seconds
-
-    return () => clearInterval(interval)
-  }, [isChristmasSeason])
-
-  // Make snowman wave every once in a while
-  useEffect(() => {
-    if (!isChristmasSeason) return
-
-    const waveInterval = setInterval(() => {
-      setIsWaving(true)
-      // Wave animation lasts 1.5 seconds
-      setTimeout(() => {
-        setIsWaving(false)
-      }, 1500)
-    }, 12000) // Wave every 12 seconds
-
-    return () => clearInterval(waveInterval)
-  }, [isChristmasSeason])
-
   if (!isChristmasSeason) return null
 
-  // Combine base variation with animation frame for snowflake animations only
-  const variation = (baseVariation + animationFrame * 7) % 100
+  // Variation locked to base for static display
+  const variation = baseVariation
 
   // Ground type parameters - locked to cardId, stable per post
   // 20 different ground types with subtle, terrain-like characteristics
@@ -234,11 +206,9 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
           {/* Left arm (static) */}
           <line x1="10" y1="24" x2="6" y2="22" stroke="#8B4513" strokeWidth="1.2" strokeLinecap="round" />
           <circle cx="6" cy="22" r="1" fill="#8B4513" />
-          {/* Right arm (waving) */}
-          <g className={isWaving ? "animate-wave" : ""}>
-            <line x1="22" y1="24" x2="26" y2="20" stroke="#8B4513" strokeWidth="1.2" strokeLinecap="round" />
-            <circle cx="26" cy="20" r="1" fill="#8B4513" />
-          </g>
+          {/* Right arm (static) */}
+          <line x1="22" y1="24" x2="26" y2="20" stroke="#8B4513" strokeWidth="1.2" strokeLinecap="round" />
+          <circle cx="26" cy="20" r="1" fill="#8B4513" />
           {/* Santa hat */}
           <path d="M 12 12 Q 12 10, 14 10 Q 16 10, 18 10 Q 20 10, 20 12 L 20 13 Q 20 14, 18 14 L 14 14 Q 12 14, 12 13 Z" fill="#dc2626" />
           <circle cx="20" cy="13" r="1.5" fill="#ffffff" />
@@ -248,22 +218,18 @@ export function SnowBuildup({ className, cardId }: { className?: string; cardId?
       {/* Small decorative snowflakes scattered on top - varied count and positions */}
       <div className="absolute bottom-10 left-0 right-0 h-3">
         {Array.from({ length: snowflakeCount }).map((_, i) => {
-          // More varied positioning that changes with animation frame
           const baseOffset = (variation + i * 3) % 15
-          const frameOffset = (animationFrame * 2 + i) % 12
-          const offset = (baseOffset + frameOffset) % 15
-          const sizeVariation = 1.2 + ((variation + i + animationFrame) % 4) * 0.4
+          const sizeVariation = 1.2 + ((variation + i) % 4) * 0.4
           return (
             <div
               key={i}
-              className="absolute rounded-full bg-white/70 transition-all ease-in-out"
+              className="absolute rounded-full bg-white/70"
               style={{
-                left: `${((i * (100 / Math.max(snowflakeCount, 1))) + offset * 2.5) % 100}%`,
-                bottom: `${((i % 4) + (animationFrame % 3)) * 1.2}px`,
+                left: `${((i * (100 / Math.max(snowflakeCount, 1))) + baseOffset * 2.5) % 100}%`,
+                bottom: `${(i % 4) * 1.2}px`,
                 width: `${sizeVariation}px`,
                 height: `${sizeVariation}px`,
                 boxShadow: `0 0 ${2 + (i % 3)}px rgba(255, 255, 255, 0.8)`,
-                transitionDuration: '8000ms',
               }}
             />
           )

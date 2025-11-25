@@ -82,3 +82,5 @@ CREATE POLICY "Public can view learn page videos"
   USING (is_learn_page_video = true);
 
 
+
+

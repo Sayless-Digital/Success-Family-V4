@@ -9,6 +9,7 @@
     "setup:https": "bash scripts/setup-https.sh || ./scripts/setup-https.sh",
     "prebuild": "node scripts/generate-build-id.js",
     "build": "next build",
+    "build:analyze": "ANALYZE=true next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "update:supabase-email": "node scripts/update-supabase-auth-email.js"
@@ -78,6 +79,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@next/bundle-analyzer": "^16.0.4",
     "@tailwindcss/postcss": "^4.1.16",
     "@types/canvas-confetti": "^1.9.0",
     "@types/jsonwebtoken": "^9.0.10",

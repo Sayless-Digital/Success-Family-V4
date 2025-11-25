@@ -1,0 +1,112 @@
+
+> success-family-platform@0.1.0 prebuild /home/mercury/Documents/Projects/Success-Family
+> node scripts/generate-build-id.js
+
+Generated build ID: 1764085142237
+
+> success-family-platform@0.1.0 build /home/mercury/Documents/Projects/Success-Family
+> next build
+
+   ▲ Next.js 16.0.0 (Turbopack)
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 9.3s
+   Running TypeScript ...
+   Collecting page data ...
+   Generating static pages (0/39) ...
+   Generating static pages (9/39) 
+   Generating static pages (19/39) 
+   Generating static pages (29/39) 
+ ✓ Generating static pages (39/39) in 632.7ms
+   Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /[slug]
+├ ƒ /[slug]/events
+├ ƒ /[slug]/events/[eventId]/stream
+├ ƒ /[slug]/feed
+├ ƒ /[slug]/members
+├ ƒ /[slug]/playlists
+├ ƒ /[slug]/settings
+├ ƒ /[slug]/videos
+├ ƒ /account
+├ ƒ /admin
+├ ƒ /admin/bank-accounts
+├ ƒ /admin/crm
+├ ƒ /admin/curation
+├ ƒ /admin/emails
+├ ƒ /admin/payouts
+├ ƒ /admin/revenue
+├ ƒ /admin/settings
+├ ƒ /admin/transactions
+├ ƒ /admin/users
+├ ƒ /admin/webinar-signups
+├ ƒ /admin/withdrawals
+├ ƒ /api/admin/emails/update-endpoints
+├ ƒ /api/admin/learn-page-videos
+├ ƒ /api/admin/test-email
+├ ƒ /api/communities/[communityId]/settings
+├ ƒ /api/community-status
+├ ƒ /api/dm/copy-boost-attachments
+├ ƒ /api/dm/download/[attachmentId]
+├ ƒ /api/dm/threads
+├ ƒ /api/dm/threads/[threadId]/messages
+├ ƒ /api/dm/threads/[threadId]/messages/[messageId]
+├ ƒ /api/dm/threads/[threadId]/messages/read
+├ ƒ /api/dm/threads/[threadId]/read
+├ ƒ /api/emails/address
+├ ƒ /api/emails/inbox
+├ ƒ /api/emails/send
+├ ƒ /api/emails/setup
+├ ƒ /api/emails/webhook
+├ ƒ /api/follows
+├ ƒ /api/link-preview
+├ ƒ /api/notifications/create
+├ ƒ /api/notifications/push
+├ ƒ /api/payouts/generate
+├ ƒ /api/playlists
+├ ƒ /api/playlists/[playlistId]
+├ ƒ /api/receipts
+├ ƒ /api/recordings/configure
+├ ƒ /api/recordings/list
+├ ƒ /api/recordings/save
+├ ƒ /api/storage
+├ ƒ /api/storage/downgrade
+├ ƒ /api/storage/purchase
+├ ƒ /api/storage/signed-url
+├ ƒ /api/stream-call
+├ ƒ /api/stream-token
+├ ƒ /api/topup
+├ ƒ /api/tribe-status
+├ ƒ /api/users/search
+├ ƒ /api/videos/upload
+├ ƒ /api/videos/upload-learn-page
+├ ƒ /api/wallets/topup-reminder
+├ ƒ /api/webinar/signup
+├ ƒ /auth/callback
+├ ƒ /communities
+├ ƒ /emails
+├ ƒ /faq
+├ ○ /icon.svg
+├ ƒ /learn
+├ ○ /manifest.webmanifest
+├ ƒ /messages
+├ ƒ /profile/[username]
+├ ƒ /referrals
+├ ƒ /signup/[refCode]
+├ ƒ /storage
+├ ƒ /sw.js
+├ ƒ /topup
+└ ƒ /wallet
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

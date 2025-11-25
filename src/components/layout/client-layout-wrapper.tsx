@@ -16,13 +16,6 @@ import { HolidayModeProvider } from "@/components/holiday-mode-context"
 import type { HolidayMode } from "@/types/holiday"
 import { DEFAULT_HOLIDAY_MODE } from "@/types/holiday"
 import { GoogleOneTap } from "@/components/google-one-tap"
-import dynamic from "next/dynamic"
-
-// Dynamically import Silk with no SSR
-const Silk = dynamic(() => import("@/components/Silk"), { 
-  ssr: false,
-  loading: () => <div className="w-full h-full bg-gradient-to-br from-[#0a0318] to-[#0d041f]" />
-})
 
 interface ClientLayoutWrapperProps {
   children: React.ReactNode
@@ -414,31 +407,15 @@ export function ClientLayoutWrapper({ children, holidayMode = DEFAULT_HOLIDAY_MO
         paddingRight: isFullscreen && isMobile ? "0" : "env(safe-area-inset-right, 0)",
       }}
     >
-      {/* Silk Background - On all pages */}
+      {/* Static gradient background */}
       {!isStreamPage && (
-        <div 
-          className="fixed z-0 overflow-hidden opacity-100"
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-0"
           style={{
-            // In fullscreen mode, background should stretch to full viewport including notch area
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: "100%",
-            height: "100%",
+            background: "radial-gradient(circle at top, rgba(112, 4, 220, 0.45), transparent 60%), radial-gradient(circle at bottom, rgba(45, 3, 84, 0.5), transparent 55%), linear-gradient(135deg, rgba(13, 4, 31, 0.95), rgba(15, 5, 34, 0.95))",
           }}
-        >
-          <div className="w-full h-full">
-            <Silk
-              key={pathname}
-              speed={pathname === '/' ? 1.5 : 0.3}
-              scale={1}
-              color={pathname === '/' ? "#7004dc" : "#2d0354"}
-              noiseIntensity={1.5}
-              rotation={0}
-            />
-          </div>
-        </div>
+        />
       )}
       
       {/* Snow Effect - Christmas theme (December & January) */}
