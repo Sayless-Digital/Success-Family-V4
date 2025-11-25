@@ -486,20 +486,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof document === 'undefined') return
     
     const handleVisibilityChange = async () => {
-      // Only refresh if tab becomes visible, user exists, and we have a profile
-      // This ensures the profile image stays up-to-date after tab switches
-      if (document.visibilityState === 'visible' && user && userProfile) {
-        // Silently refresh profile in background without showing loading state
+      // When tab becomes visible, revalidate session and refresh user data
+      if (document.visibilityState === 'visible') {
         try {
-          const profile = await fetchProfileWithRetry(user.id, 1, 5000)
-          if (profile && profile.profile_picture !== userProfile.profile_picture) {
-            // Only update if profile picture changed to avoid unnecessary re-renders
-            setUserProfile(profile)
-            userProfileRef.current = profile
+          // First, check if we still have a valid session
+          const { data: { user: currentUser }, error } = await supabase.auth.getUser()
+          
+          if (error || !currentUser) {
+            // No valid session - clear state
+            if (user || userProfile) {
+              clearAuthState()
+              userRef.current = null
+              userProfileRef.current = null
+            }
+            return
+          }
+          
+          // We have a valid session
+          const existingUserId = userRef.current?.id
+          
+          // If user changed or we don't have a user, update it
+          if (existingUserId !== currentUser.id) {
+            setUser(currentUser)
+            userRef.current = currentUser
+          }
+          
+          // If we don't have a profile or user changed, fetch it
+          if (!userProfileRef.current || existingUserId !== currentUser.id) {
+            const profile = await fetchProfileWithRetry(currentUser.id, 2, 8000)
+            if (profile) {
+              setUserProfile(profile)
+              userProfileRef.current = profile
+              setProfileError(false)
+              stuckStateStartTimeRef.current = null
+            }
+          } else if (userProfileRef.current) {
+            // We have a profile, just refresh it silently to get latest data
+            const profile = await fetchProfileWithRetry(currentUser.id, 1, 5000)
+            if (profile) {
+              setUserProfile(profile)
+              userProfileRef.current = profile
+            }
           }
         } catch (error) {
           // Silently fail - don't disrupt user experience
-          // Profile will refresh on next interaction
+          console.warn('Failed to refresh auth state on visibility change:', error)
         }
       }
     }
@@ -508,7 +539,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [user, userProfile])
+  }, [user, userProfile, clearAuthState])
 
   // Stuck state detection - uses ref to track start time properly
   React.useEffect(() => {
