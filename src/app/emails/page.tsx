@@ -449,19 +449,28 @@ export default function EmailsPage() {
                         )}
                       >
                         <div className="px-3 py-2.5 flex items-start gap-2.5">
-                          <button
+                          <div
                             onClick={(e) => {
                               e.stopPropagation()
                               handleMarkRead(message.id, message.is_read, e)
                             }}
                             className="mt-0.5 flex-shrink-0 cursor-pointer"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleMarkRead(message.id, message.is_read, e as any)
+                              }
+                            }}
                           >
                             {message.is_read ? (
                               <Circle className="h-4 w-4 text-white/40" />
                             ) : (
                               <CheckCircle2 className="h-4 w-4 text-white/80" />
                             )}
-                          </button>
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <p className="text-white/80 font-medium truncate text-sm">
