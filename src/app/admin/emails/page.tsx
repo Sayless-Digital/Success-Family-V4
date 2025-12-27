@@ -104,6 +104,13 @@ export default function AdminEmailsPage() {
   const [isSending, setIsSending] = useState(false)
   const [sendStatus, setSendStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
+  // Set current user email as default recipient
+  useEffect(() => {
+    if (user?.email && !recipientEmail) {
+      setRecipientEmail(user.email)
+    }
+  }, [user?.email, recipientEmail])
+
   // Redirect non-admin users
   useEffect(() => {
     if (!isLoading && (!user || userProfile?.role !== 'admin')) {
@@ -236,6 +243,33 @@ export default function AdminEmailsPage() {
             <p className="text-white/60 text-sm mt-1">Test email templates and verify email delivery</p>
           </div>
         </div>
+
+        {/* Current User Email Display */}
+        {user?.email && (
+          <Card className="bg-white/10 border-0 backdrop-blur-md">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <Mail className="h-4 w-4 text-white/80" />
+                  </div>
+                  <div>
+                    <p className="text-white/60 text-xs">Your Email Address</p>
+                    <p className="text-white font-medium">{user.email}</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => user.email && setRecipientEmail(user.email)}
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 text-white/80 hover:bg-white/10 hover:text-white"
+                >
+                  Use as Recipient
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="bg-white/10 border-0 backdrop-blur-md">
           <CardHeader>

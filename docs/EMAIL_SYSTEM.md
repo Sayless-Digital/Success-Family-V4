@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Success Family platform uses Inbound API for sending transactional emails related to subscription and payment management. The email system covers both platform subscriptions (for creating communities) and community subscriptions (for joining communities).
+The Success Family platform uses Resend API for sending transactional emails related to subscription and payment management. The email system covers both platform subscriptions (for creating communities) and community subscriptions (for joining communities).
 
 ## Email Templates
 
@@ -131,8 +131,73 @@ New fields added to `payment_receipts` table:
 ## Environment Variables
 
 Required environment variables (set in `.env.local`):
-- `INBOUND_API_KEY` - Your Inbound API key
+- `RESEND_API_KEY` - Your Resend API key (get it from https://resend.com/api-keys)
 - `NEXT_PUBLIC_SITE_URL` - Base URL for email links (defaults to http://localhost:3000 in development)
+
+## Setting Up Resend
+
+1. **Create a Resend Account**: Sign up at [resend.com](https://resend.com)
+2. **Get API Key**: Navigate to API Keys section and create a new API key
+3. **Add to Environment**: Add `RESEND_API_KEY=your_key_here` to your `.env.local` file
+4. **Verify Domain** (for production): Add and verify your sending domain in Resend dashboard
+5. **Configure Webhooks** (optional, for receiving emails):
+   - Go to Webhooks section in Resend dashboard
+   - Add webhook endpoint: `https://yourdomain.com/api/emails/webhook`
+   - Subscribe to `email.received` event
+   - Copy webhook signing secret for verification (optional)
+
+## Sending Emails with Resend
+
+Resend provides a simple API for sending emails. The platform uses the `sendEmail` function from `src/lib/email.ts`:
+
+```typescript
+import { sendEmail } from '@/lib/email'
+
+await sendEmail({
+  to: 'user@example.com',
+  subject: 'Welcome to Success Family',
+  html: '<h1>Welcome!</h1><p>Thanks for joining.</p>',
+  from: 'Success Family <hello@successfamily.online>' // optional, has default
+})
+```
+
+## Receiving Emails with Resend (Optional)
+
+To receive emails with Resend:
+
+1. **Set up inbound email address** in Resend dashboard
+2. **Configure webhook** to receive `email.received` events
+3. **Webhook endpoint**: The platform's webhook at `/api/emails/webhook` handles incoming emails
+4. **Email storage**: Received emails are stored in `user_email_messages` table
+
+### Webhook Payload Structure
+
+Resend sends webhooks with the following structure for `email.received` events:
+
+```json
+{
+  "type": "email.received",
+  "created_at": "2024-01-01T00:00:00.000Z",
+  "data": {
+    "email_id": "abc123",
+    "from": "sender@example.com",
+    "to": ["recipient@successfamily.online"],
+    "subject": "Email subject",
+    "html": "<p>Email HTML content</p>",
+    "text": "Email text content"
+  }
+}
+```
+
+## Migration from Inbound to Resend
+
+The platform previously used Inbound API but has been migrated to Resend for better reliability and features:
+
+- **Simpler API**: Resend has a cleaner, more intuitive API
+- **Better deliverability**: Improved email delivery rates
+- **Batch sending**: Support for sending to multiple recipients efficiently
+- **Better documentation**: More comprehensive docs and examples
+- **Webhook support**: Built-in support for receiving emails via webhooks
 
 ## Future Enhancements
 
@@ -141,11 +206,14 @@ Required environment variables (set in `.env.local`):
 - Notification center within the app
 - Webhook support for payment status changes
 - Template customization for community owners
+- Email signature verification for webhooks
+- Email analytics and tracking
 
 ## Notes
 
 - All emails are sent asynchronously to prevent blocking the main flow
 - Email failures are logged but don't fail the parent operation
-- Consider rate limiting for production use
-- Review Inbound quota and pricing for high-volume scenarios
+- Resend has generous free tier: 3,000 emails/month, then pay as you go
+- For production, verify your domain in Resend for better deliverability
+- Use test mode during development to avoid sending real emails
 

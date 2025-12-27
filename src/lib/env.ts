@@ -7,9 +7,7 @@ export function validateEnv() {
 
   const optionalEnvVars = {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    INBOUND_API_KEY: process.env.INBOUND_API_KEY,
-    INBOUND_WEBHOOK_SECRET: process.env.INBOUND_WEBHOOK_SECRET,
-    INBOUND_WEBHOOK_URL: process.env.INBOUND_WEBHOOK_URL, // Production webhook URL (always used, even in dev)
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
     CRON_SECRET: process.env.CRON_SECRET,

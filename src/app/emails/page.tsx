@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { cn, formatRelativeTime } from "@/lib/utils"
@@ -335,70 +335,88 @@ export default function EmailsPage() {
           !isClient && "lg:flex hidden",
           isClient && isMobile && (mobileView === "email" || mobileView === "compose") && "hidden"
         )}>
-          <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
-            {/* Header with Tabs and Compose */}
-            <div className="p-3.5 border-b border-white/15 space-y-2.5">
+          <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full overflow-hidden">
+            {/* Current User Email Display */}
+            <div className="p-3 border-b border-white/15">
               <div className="flex items-center justify-between gap-2">
-                <Tabs value={activeTab} onValueChange={(v) => {
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="h-7 w-7 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                    <Mail className="h-3.5 w-3.5 text-white/80" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white/60 text-[10px] uppercase tracking-wide">Your Email</p>
+                    <p className="text-white font-medium text-xs truncate">{userEmail}</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleStartCompose}
+                  size="sm"
+                  className="bg-white/10 text-white/80 hover:bg-white/20 flex-shrink-0 h-7 px-2 text-xs"
+                >
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                  Compose
+                </Button>
+              </div>
+            </div>
+
+            {/* Header with Actions */}
+            <div className="p-3.5 border-b border-white/15">
+              {/* Search, Dropdown, and Refresh */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search emails"
+                    className="bg-white/10 border-white/15 text-white pl-9 h-9 text-sm placeholder:text-white/40"
+                  />
+                </div>
+                <Select value={activeTab} onValueChange={(v) => {
                   setActiveTab(v as "inbox" | "sent")
                   setSelectedMessage(null)
                   setIsComposing(false)
                   if (isMobile) {
                     setMobileView("list")
                   }
-                }} className="w-full">
-                  <TabsList className="bg-white/10 border-0 w-full grid grid-cols-2 h-10">
-                    <TabsTrigger value="inbox" className="data-[state=active]:bg-white/20 text-white/80 text-sm">
-                      <Inbox className="h-4 w-4 mr-2" />
-                      Inbox
-                      {unreadCount > 0 && (
-                        <span className="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-white/20 text-white/80">
-                          {unreadCount}
-                        </span>
-                      )}
-                    </TabsTrigger>
-                    <TabsTrigger value="sent" className="data-[state=active]:bg-white/20 text-white/80 text-sm">
-                      <Send className="h-4 w-4 mr-2" />
-                      Sent
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-              <div className="flex items-center gap-2">
+                }}>
+                  <SelectTrigger className="w-[120px] bg-white/10 border-white/20 text-white h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inbox">
+                      <div className="flex items-center gap-2">
+                        <Inbox className="h-4 w-4" />
+                        <span>Inbox</span>
+                        {unreadCount > 0 && (
+                          <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="sent">
+                      <div className="flex items-center gap-2">
+                        <Send className="h-4 w-4" />
+                        <span>Sent</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   onClick={fetchMessages}
                   disabled={loading}
-                  variant="outline"
-                  size="sm"
-                  className="border-white/20 text-white/80 hover:bg-white/10 flex-1 h-9 text-sm"
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full bg-white/10 text-white/80 hover:bg-white/15 h-9 w-9 flex-shrink-0"
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  Refresh
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
-                <Button 
-                  onClick={handleStartCompose}
-                  size="sm" 
-                  className="bg-white/10 text-white/80 hover:bg-white/20 flex-1 h-9 text-sm"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Compose
-                </Button>
-              </div>
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search emails"
-                  className="bg-white/10 border-white/15 text-white pl-9 h-9 text-sm placeholder:text-white/40"
-                />
               </div>
             </div>
 
             {/* Email List */}
-            <ScrollArea className="flex-1">
-              <div className="p-2 space-y-1.5">
+            <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
                 {loading ? (
                   <div className="p-6 text-center">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-white/80" />
@@ -472,8 +490,7 @@ export default function EmailsPage() {
                     )
                   })
                 )}
-              </div>
-            </ScrollArea>
+            </div>
           </div>
         </div>
 

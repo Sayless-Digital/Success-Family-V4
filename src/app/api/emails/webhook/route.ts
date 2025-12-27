@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServiceRoleSupabaseClient } from "@/lib/supabase-server"
 import { env } from "@/lib/env"
 
-// Webhook endpoint for receiving emails from Inbound
+// Webhook endpoint for receiving emails from Resend
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID()
   
@@ -21,22 +21,10 @@ export async function POST(request: Request) {
       },
     })
 
-    // Optional: Verify webhook secret if configured
-    // Inbound sends headers automatically - you don't need to add custom headers
-    // If you want to add security, you can:
-    // 1. Set INBOUND_WEBHOOK_SECRET in your .env file
-    // 2. Configure a verification token in your Inbound endpoint settings
-    // For now, we'll accept all requests (you can add verification later if needed)
-    
-    // If you set INBOUND_WEBHOOK_SECRET, uncomment this section:
-    // const webhookSecret = request.headers.get("X-Inbound-Secret") || 
-    //                      request.headers.get("x-inbound-secret") ||
-    //                      request.headers.get("Authorization")?.replace("Bearer ", "")
-    // 
-    // if (env.INBOUND_WEBHOOK_SECRET && webhookSecret && webhookSecret !== env.INBOUND_WEBHOOK_SECRET) {
-    //   console.warn("[Webhook] Secret mismatch")
-    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    // }
+    // Optional: Verify webhook signature from Resend
+    // Resend uses Svix for webhook signatures
+    // You can add signature verification here if needed
+    // See: https://resend.com/docs/dashboard/webhooks/verify-signature
 
     // Parse request body with timeout protection
     let body: any
@@ -57,53 +45,37 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
     
-    // Validate webhook payload - check if it has an email property
-    // Inbound webhook payload structure: { email: InboundWebhookEmail }
+    // Validate webhook payload - Resend structure
+    // Resend webhook payload for email.received event:
+    // { type: "email.received", created_at: "...", data: { ... } }
     if (!body || typeof body !== 'object') {
       console.error("[Webhook] Invalid payload - not an object")
       return NextResponse.json({ error: "Invalid webhook payload" }, { status: 400 })
     }
 
-    // Extract email from payload
-    const email = body.email
-    if (!email) {
-      console.error("[Webhook] No email in payload. Body:", JSON.stringify(body, null, 2))
-      return NextResponse.json({ error: "No email in payload" }, { status: 400 })
+    // Check event type
+    if (body.type !== 'email.received') {
+      console.log(`[Webhook ${requestId}] Ignoring event type: ${body.type}`)
+      return NextResponse.json({ success: true, message: "Event ignored" }, { status: 200 })
     }
 
-    // Extract recipient email - Inbound uses InboundEmailAddress structure
-    // which has: { text: string, addresses: Array<{name: string | null, address: string | null}> }
-    // Also check the recipient field directly which is always present
+    // Extract email data from Resend payload
+    const data = body.data
+    if (!data) {
+      console.error("[Webhook] No data in payload. Body:", JSON.stringify(body, null, 2))
+      return NextResponse.json({ error: "No data in payload" }, { status: 400 })
+    }
+
+    // Extract recipient email from Resend format
+    // Resend provides: to, from, subject, html, text, etc.
     let recipientEmail: string | null = null
     
-    // First, try the recipient field (most reliable)
-    if (email.recipient) {
-      recipientEmail = email.recipient
-    }
-    
-    // Then try the to field
-    if (!recipientEmail && email.to) {
-      // Handle InboundEmailAddress structure
-      if (email.to.addresses && Array.isArray(email.to.addresses) && email.to.addresses.length > 0) {
-        // Get the first recipient address
-        const firstAddress = email.to.addresses.find((addr: any) => addr.address)
-        recipientEmail = firstAddress?.address || null
+    if (data.to) {
+      if (Array.isArray(data.to)) {
+        recipientEmail = data.to[0] // Get first recipient
+      } else if (typeof data.to === 'string') {
+        recipientEmail = data.to
       }
-      // Fallback to text field
-      if (!recipientEmail && email.to.text) {
-        // Extract email from "Name <email@domain.com>" format or just email
-        const match = email.to.text.match(/<([^>]+)>/) || email.to.text.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
-        recipientEmail = match ? (match[1] || match[0]) : email.to.text.trim()
-      }
-      // Fallback to string format
-      if (!recipientEmail && typeof email.to === 'string') {
-        recipientEmail = email.to
-      }
-    }
-    
-    // Additional fallbacks
-    if (!recipientEmail) {
-      recipientEmail = email.to_email || email.destination || email.address
     }
     
     if (!recipientEmail) {
@@ -111,12 +83,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No recipient email found", requestId }, { status: 400 })
     }
     
-    // Clean up email address
-    recipientEmail = recipientEmail.replace(/^<|>$/g, '').trim()
-    const emailMatch = recipientEmail.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
+    // Clean up email address - extract from "Name <email@domain.com>" format
+    const emailMatch = recipientEmail.match(/<([^>]+)>/) || recipientEmail.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
     if (emailMatch) {
-      recipientEmail = emailMatch[1]
+      recipientEmail = emailMatch[1] || emailMatch[0]
     }
+    recipientEmail = recipientEmail.trim()
 
     console.log(`[Webhook ${requestId}] Recipient email extracted: ${recipientEmail}`)
 
@@ -147,14 +119,11 @@ export async function POST(request: Request) {
       
       console.error(`[Webhook ${requestId}] Available emails:`, allEmails?.map(e => e.email_address))
       console.error(`[Webhook ${requestId}] Email payload recipient fields:`, {
-        recipient: email.recipient,
-        to: email.to,
-        to_email: email.to_email,
-        destination: email.destination,
-        address: email.address,
+        to: data.to,
+        from: data.from,
       })
       
-      // Return 200 to prevent Inbound from retrying
+      // Return 200 to prevent Resend from retrying
       // We don't want to retry if the user doesn't exist
       return NextResponse.json({ 
         success: false, 
@@ -166,61 +135,19 @@ export async function POST(request: Request) {
 
     console.log(`[Webhook ${requestId}] Found user:`, userEmail.user_id)
 
-    // Extract from email and name - same structure as 'to'
+    // Extract from email and name from Resend format
     let fromEmail: string | null = null
     let fromName: string | null = null
     
-    if (email.from) {
-      // Handle InboundEmailAddress structure
-      if (email.from.addresses && Array.isArray(email.from.addresses) && email.from.addresses.length > 0) {
-        const firstAddress = email.from.addresses.find((addr: any) => addr.address)
-        fromEmail = firstAddress?.address || null
-        fromName = firstAddress?.name || null
-      }
-      // Fallback to text field
-      if (!fromEmail && email.from.text) {
-        const match = email.from.text.match(/^(.+?)\s*<([^>]+)>$/) || email.from.text.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
-        if (match) {
-          if (match[2]) {
-            fromName = match[1]?.trim() || null
-            fromEmail = match[2]
-          } else if (match[1] && match[1].includes('@')) {
-            fromEmail = match[1]
-          }
-        }
-        if (!fromEmail) {
-          fromEmail = email.from.text.trim()
-        }
-      }
-      // Fallback to string format
-      if (!fromEmail && typeof email.from === 'string') {
-        const match = email.from.match(/^(.+?)\s*<([^>]+)>$/) || email.from.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
-        if (match && match[2]) {
-          fromName = match[1]?.trim() || null
-          fromEmail = match[2]
-        } else {
-          fromEmail = email.from
-        }
-      }
-    }
-    
-    // Fallback to sender field
-    if (!fromEmail && email.sender) {
-      if (typeof email.sender === 'string') {
-        const match = email.sender.match(/^(.+?)\s*<([^>]+)>$/) || email.sender.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
-        fromEmail = match ? (match[2] || match[1]) : email.sender
-      } else if (email.sender.address) {
-        fromEmail = email.sender.address
-        fromName = email.sender.name || fromName
-      }
-    }
-    
-    // Clean up from email
-    if (fromEmail) {
-      fromEmail = fromEmail.replace(/^<|>$/g, '').trim()
-      const emailMatch = fromEmail.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
-      if (emailMatch) {
-        fromEmail = emailMatch[1]
+    if (data.from) {
+      const fromStr = Array.isArray(data.from) ? data.from[0] : data.from
+      const match = fromStr.match(/^(.+?)\s*<([^>]+)>$/)
+      if (match) {
+        fromName = match[1]?.trim() || null
+        fromEmail = match[2]
+      } else {
+        const emailMatch = fromStr.match(/([\w\.-]+@[\w\.-]+\.\w+)/)
+        fromEmail = emailMatch ? emailMatch[1] : fromStr
       }
     }
     
@@ -229,12 +156,12 @@ export async function POST(request: Request) {
       console.warn(`[Webhook ${requestId}] No from email found, using default`)
     }
 
-    // Extract email content
-    const subject = email.subject || email.parsedData?.subject || "(No Subject)"
-    const htmlContent = email.cleanedContent?.html || email.htmlBody || email.html || email.parsedData?.html || null
-    const textContent = email.cleanedContent?.text || email.textBody || email.text || email.parsedData?.text || null
-    const receivedAt = email.receivedAt || email.received_at || email.timestamp || email.date || new Date().toISOString()
-    const inboundEmailId = email.id || email.emailId || email.messageId || null
+    // Extract email content from Resend format
+    const subject = data.subject || "(No Subject)"
+    const htmlContent = data.html || null
+    const textContent = data.text || null
+    const receivedAt = body.created_at || new Date().toISOString()
+    const resendEmailId = data.email_id || data.id || null
 
     console.log(`[Webhook ${requestId}] Storing email:`, {
       subject,
@@ -252,7 +179,7 @@ export async function POST(request: Request) {
         user_id: userEmail.user_id,
         email_address: recipientEmail,
         message_type: "received",
-        inbound_email_id: inboundEmailId,
+        inbound_email_id: resendEmailId,
         from_email: fromEmail,
         from_name: fromName,
         to_email: recipientEmail,

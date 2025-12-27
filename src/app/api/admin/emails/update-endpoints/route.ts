@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import { updateInboundEndpoint } from "@/lib/inbound-email"
+import { getSetupInstructions } from "@/lib/resend-email"
 
 /**
  * Admin endpoint to update all email endpoint URLs to the current environment URL
@@ -48,60 +48,16 @@ export async function POST(request: Request) {
     
     const webhookUrl = `${baseUrl}/api/emails/webhook`
 
-    // Get all users with email addresses that have endpoint IDs
-    const { data: userEmails, error: fetchError } = await supabase
-      .from("user_emails")
-      .select("id, user_id, email_address, inbound_endpoint_id")
-      .eq("is_active", true)
-      .not("inbound_endpoint_id", "is", null)
-
-    if (fetchError) {
-      return NextResponse.json(
-        { error: "Failed to fetch user emails", details: fetchError.message },
-        { status: 500 }
-      )
-    }
-
-    if (!userEmails || userEmails.length === 0) {
-      return NextResponse.json({
-        message: "No email endpoints found to update",
-        updated: 0,
-        failed: 0,
-      })
-    }
-
-    // Update each endpoint
-    const results = {
-      updated: 0,
-      failed: 0,
-      errors: [] as string[],
-    }
-
-    for (const userEmail of userEmails) {
-      if (!userEmail.inbound_endpoint_id) continue
-
-      try {
-        await updateInboundEndpoint(
-          userEmail.inbound_endpoint_id,
-          webhookUrl,
-          userEmail.user_id
-        )
-        results.updated++
-        console.log(`[Admin] Updated endpoint for ${userEmail.email_address}`)
-      } catch (error: any) {
-        results.failed++
-        const errorMsg = `Failed to update ${userEmail.email_address}: ${error.message}`
-        results.errors.push(errorMsg)
-        console.error(`[Admin] ${errorMsg}`)
-      }
-    }
-
+    // With Resend, webhook URL is configured once in the dashboard
+    // for the entire domain wildcard (*@successfamily.online)
+    // No need to update individual endpoints
+    
     return NextResponse.json({
-      message: `Updated ${results.updated} endpoint(s), ${results.failed} failed`,
-      updated: results.updated,
-      failed: results.failed,
-      errors: results.errors.length > 0 ? results.errors : undefined,
-      webhookUrl,
+      message: "Resend uses wildcard domain routing - no individual endpoint updates needed",
+      info: "Configure the webhook URL once in Resend dashboard for *@yourdomain.com",
+      setupInstructions: getSetupInstructions(),
+      recommendedWebhookUrl: webhookUrl,
+      note: "All emails to any address @yourdomain.com will automatically route to your webhook"
     })
   } catch (error: any) {
     console.error("Error in bulk endpoint update:", error)

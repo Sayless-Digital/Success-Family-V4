@@ -11,7 +11,7 @@ A modern community platform built with Next.js, shadcn/ui, and Supabase.
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth
 - **Storage**: Supabase Storage
-- **Email**: Inbound API for transactional emails
+- **Email**: Resend API for transactional emails
 - **Package Manager**: pnpm
 - **Development**: Turbopack for fast development
 
