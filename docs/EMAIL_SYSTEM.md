@@ -171,9 +171,9 @@ To receive emails with Resend:
 4. **Email storage**: Received emails are stored in `user_email_messages` table
 
 ### Webhook Payload Structure
-
+ 
 Resend sends webhooks with the following structure for `email.received` events:
-
+ 
 ```json
 {
   "type": "email.received",
@@ -183,21 +183,13 @@ Resend sends webhooks with the following structure for `email.received` events:
     "from": "sender@example.com",
     "to": ["recipient@successfamily.online"],
     "subject": "Email subject",
-    "html": "<p>Email HTML content</p>",
-    "text": "Email text content"
+    "html": "<p>Email HTML content</p>",  // May be null
+    "text": "Email text content"  // May be null
   }
 }
 ```
 
-## Migration from Inbound to Resend
-
-The platform previously used Inbound API but has been migrated to Resend for better reliability and features:
-
-- **Simpler API**: Resend has a cleaner, more intuitive API
-- **Better deliverability**: Improved email delivery rates
-- **Batch sending**: Support for sending to multiple recipients efficiently
-- **Better documentation**: More comprehensive docs and examples
-- **Webhook support**: Built-in support for receiving emails via webhooks
+**Important**: The `html` and `text` fields may be `null` in the webhook payload. The webhook endpoint automatically fetches the full email content from the Resend API if these fields are missing.
 
 ## Future Enhancements
 

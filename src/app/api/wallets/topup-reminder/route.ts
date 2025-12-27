@@ -33,8 +33,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY is required" }, { status: 500 })
   }
 
-  if (!env.RESEND_API_KEY) {
-    return NextResponse.json({ error: "RESEND_API_KEY is required to send reminders" }, { status: 500 })
+  if (!env.INBOUND_API_KEY) {
+    return NextResponse.json({ error: "INBOUND_API_KEY is required to send reminders" }, { status: 500 })
   }
 
   const adminClient = createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY, {

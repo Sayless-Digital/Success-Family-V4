@@ -88,7 +88,6 @@ export default function EmailsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<"list" | "email" | "compose">("list")
-  const [isClient, setIsClient] = useState(false)
   
   const [composeData, setComposeData] = useState({
     to: "",
@@ -97,10 +96,15 @@ export default function EmailsPage() {
   })
 
   useEffect(() => {
-    setIsClient(true)
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 1024)
+      const mobile = window.innerWidth < 1024
+      setIsMobile(mobile)
+      // Reset to list view when switching to desktop
+      if (!mobile) {
+        setMobileView("list")
+      }
     }
+    // Initialize on mount
     handleResize()
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
@@ -118,6 +122,15 @@ export default function EmailsPage() {
       fetchMessages()
     }
   }, [user])
+
+  // Reset mobileView when switching to/from mobile
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileView("list")
+      setSelectedMessage(null)
+      setIsComposing(false)
+    }
+  }, [isMobile])
 
   const fetchUserEmail = async () => {
     try {
@@ -305,7 +318,11 @@ export default function EmailsPage() {
   }
 
   if (!user || isLoading) {
-    return null
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
+      </div>
+    )
   }
 
   if (!userEmail) {
@@ -332,8 +349,9 @@ export default function EmailsPage() {
         {/* Left Sidebar - Email List */}
         <div className={cn(
           "w-full lg:w-[360px] xl:w-[400px] lg:flex-none flex flex-col h-full",
-          !isClient && "lg:flex hidden",
-          isClient && isMobile && (mobileView === "email" || mobileView === "compose") && "hidden"
+          // Desktop: Always visible (lg:flex)
+          // Mobile: Only show when viewing list
+          isMobile ? (mobileView === "list" ? "flex" : "hidden") : "flex"
         )}>
           <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full overflow-hidden">
             {/* Current User Email Display */}
@@ -506,13 +524,9 @@ export default function EmailsPage() {
         {/* Right Panel - Email Preview or Compose */}
         <div className={cn(
           "flex flex-col h-full overflow-hidden lg:flex-1",
-          // Desktop: Always show right panel
-          !isClient && "hidden lg:flex",
-          // Mobile: Show only when viewing email or composing
-          isClient && isMobile && mobileView === "list" && "hidden",
-          isClient && isMobile && (mobileView === "email" || mobileView === "compose") && "flex",
           // Desktop: Always visible
-          !isMobile && "flex"
+          // Mobile: Only show when viewing email or composing
+          isMobile ? (mobileView === "email" || mobileView === "compose" ? "flex" : "hidden") : "flex"
         )}>
           <div className="bg-white/10 border border-white/20 rounded-2xl backdrop-blur-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] flex flex-col h-full">
             {isComposing ? (
@@ -531,9 +545,14 @@ export default function EmailsPage() {
                       </Button>
                     )}
                     <div className="min-w-0 flex-1">
-                      <h2 className="text-white/90 font-semibold text-base">
-                        Compose Email
-                      </h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-white/90 font-semibold text-base">
+                          Compose Email
+                        </h2>
+                        <div className="bg-yellow-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                          Coming Soon
+                        </div>
+                      </div>
                       <p className="text-xs text-white/50 mt-0.5">
                         From: {userEmail || "your email"}
                       </p>
@@ -549,6 +568,7 @@ export default function EmailsPage() {
                       placeholder="To: recipient@example.com"
                       value={composeData.to}
                       onChange={(e) => setComposeData({ ...composeData, to: e.target.value })}
+                      disabled
                       className="bg-white/10 border-white/20 text-white placeholder:text-white/50 h-10 text-sm"
                     />
                     <Input
@@ -556,6 +576,7 @@ export default function EmailsPage() {
                       placeholder="Subject: Email subject"
                       value={composeData.subject}
                       onChange={(e) => setComposeData({ ...composeData, subject: e.target.value })}
+                      disabled
                       className="bg-white/10 border-white/20 text-white placeholder:text-white/50 h-10 text-sm"
                     />
                   </div>
@@ -565,6 +586,7 @@ export default function EmailsPage() {
                       placeholder="Your message..."
                       value={composeData.html}
                       onChange={(e) => setComposeData({ ...composeData, html: e.target.value })}
+                      disabled
                       className="bg-white/10 border-white/20 text-white placeholder:text-white/50 resize-none text-sm h-full"
                     />
                   </div>
@@ -576,14 +598,15 @@ export default function EmailsPage() {
                   <Button
                     variant="outline"
                     onClick={handleCancelCompose}
-                    className="border-white/20 text-white/80 hover:bg-white/10 h-9 text-sm"
+                    disabled
+                    className="border-white/10 text-white/30 hover:bg-white/5 h-9 text-sm cursor-not-allowed"
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={handleSendEmail}
-                    disabled={sending || !composeData.to || !composeData.subject || !composeData.html}
-                    className="bg-white/10 text-white/80 hover:bg-white/20 h-9 text-sm"
+                    disabled
+                    className="bg-white/10 text-white/50 hover:bg-white/20 h-9 text-sm cursor-not-allowed"
                   >
                     {sending ? (
                       <>
@@ -597,6 +620,9 @@ export default function EmailsPage() {
                       </>
                     )}
                   </Button>
+                </div>
+                <div className="px-4 pb-4 text-center">
+                  <p className="text-white/30 text-sm">Email composing coming soon...</p>
                 </div>
               </>
             ) : selectedMessage ? (

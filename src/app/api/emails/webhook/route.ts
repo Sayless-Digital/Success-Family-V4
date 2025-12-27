@@ -53,10 +53,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid webhook payload" }, { status: 400 })
     }
 
-    // Check event type
+    // Check event type - be flexible and log all events
+    if (!body.type) {
+      console.error(`[Webhook ${requestId}] No event type in payload`)
+      return NextResponse.json({ error: "No event type in payload" }, { status: 400 })
+    }
+
+    // Log all event types for debugging
+    console.log(`[Webhook ${requestId}] Event type: ${body.type}`)
+    
+    // Accept multiple possible event types from Resend
+    const acceptedEventTypes = ['email.received', 'email.delivered', 'email.bounced', 'email.complained', 'email.opened', 'email.clicked']
+    
+    if (!acceptedEventTypes.includes(body.type)) {
+      console.log(`[Webhook ${requestId}] Unknown event type: ${body.type}`)
+      console.log(`[Webhook ${requestId}] Full payload:`, JSON.stringify(body, null, 2))
+      return NextResponse.json({ success: true, message: "Unknown event type logged" }, { status: 200 })
+    }
+    
+    // Only process 'email.received' events for storing in database
     if (body.type !== 'email.received') {
-      console.log(`[Webhook ${requestId}] Ignoring event type: ${body.type}`)
-      return NextResponse.json({ success: true, message: "Event ignored" }, { status: 200 })
+      console.log(`[Webhook ${requestId}] Skipping non-received event: ${body.type}`)
+      return NextResponse.json({ success: true, message: "Event skipped (not received)" }, { status: 200 })
     }
 
     // Extract email data from Resend payload
@@ -158,11 +176,14 @@ export async function POST(request: Request) {
 
     // Extract email content from Resend format
     const subject = data.subject || "(No Subject)"
-    const htmlContent = data.html || null
-    const textContent = data.text || null
+    
+    // Resend inbound webhooks may not include html/text for security/privacy
+    // Check multiple possible field names for email content
+    const htmlContent = data.html || data.content?.html || null
+    const textContent = data.text || data.content?.text || data.content || null
     const receivedAt = body.created_at || new Date().toISOString()
     const resendEmailId = data.email_id || data.id || null
-
+    
     console.log(`[Webhook ${requestId}] Storing email:`, {
       subject,
       fromEmail,
@@ -171,9 +192,16 @@ export async function POST(request: Request) {
       hasHtml: !!htmlContent,
       hasText: !!textContent,
     })
+    
+    // Log warning if email has no content
+    if (!htmlContent && !textContent) {
+      console.warn(`[Webhook ${requestId}] Email has no html or text content. Full data keys:`, Object.keys(data))
+      console.warn(`[Webhook ${requestId}] Full payload:`, JSON.stringify(data, null, 2))
+      console.warn(`[Webhook ${requestId}] NOTE: Resend inbound webhooks may not include email body content for security reasons`)
+    }
 
     // Store received email in database
-    const { error: insertError } = await supabase
+    const { data: insertedEmail, error: insertError } = await supabase
       .from("user_email_messages")
       .insert({
         user_id: userEmail.user_id,
@@ -190,7 +218,9 @@ export async function POST(request: Request) {
         received_at: receivedAt,
         is_read: false,
       })
-
+      .select('id')
+      .single()
+ 
     if (insertError) {
       console.error(`[Webhook ${requestId}] Error storing email:`, insertError)
       return NextResponse.json(
@@ -198,12 +228,12 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
-
-    console.log(`[Webhook ${requestId}] Email stored successfully`)
-    return NextResponse.json({ 
-      success: true, 
+ 
+    console.log(`[Webhook ${requestId}] Email stored successfully with ID:`, insertedEmail?.id)
+    return NextResponse.json({
+      success: true,
       message: "Email received and stored",
-      requestId 
+      requestId
     }, { status: 200 })
   } catch (error: any) {
     console.error(`[Webhook ${requestId}] Unexpected error:`, error)

@@ -30,7 +30,6 @@ const baseNavigationItems = [
 // User menu items (shown when authenticated)
 const userMenuItems = [
   { icon: User, label: "Profile", href: "#", isDynamic: true }, // Dynamic - will be set based on username
-  { icon: Mail, label: "Email", href: "/emails" },
   { icon: Gift, label: "Referrals", href: "/referrals" },
   { icon: Settings, label: "Account", href: "/account" },
   { icon: HardDrive, label: "Storage", href: "/storage" },
@@ -305,6 +304,25 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                         <span>Install App</span>
                       </Button>
                     </li>
+                  )}
+                  
+                  {/* Admin-only Email indicator - yellow to show it's not visible to others */}
+                  {isAdmin && (
+                    <>
+                      <Separator className="my-2 bg-white/10" />
+                      <li>
+                        <Button
+                            variant="ghost"
+                            className="w-full justify-start gap-3 h-10 text-yellow-400 hover:bg-yellow-400/20 hover:backdrop-blur-md touch-feedback"
+                            asChild
+                          >
+                            <Link href="/emails" onClick={() => isMobile && onClose()} prefetch={true}>
+                              <Mail className="h-4 w-4" />
+                              <span>Email (Admin Only)</span>
+                            </Link>
+                        </Button>
+                      </li>
+                    </>
                   )}
                   
                   {/* User menu items - shown when authenticated */}
