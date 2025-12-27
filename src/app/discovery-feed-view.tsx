@@ -1677,19 +1677,6 @@ export default function DiscoveryFeedView({
     return (
       <div className="relative w-full overflow-x-hidden overflow-y-visible">
         <div className="relative z-10 space-y-4">
-          {/* User Count Display */}
-          <div className="bg-white/10 backdrop-blur-2xl border-0 rounded-lg p-2 animate-shimmer-slow">
-            <div className="flex items-center justify-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
-                <Users className="h-4 w-4 text-white/70" />
-              </div>
-              <span className="text-sm font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
-                {currentUserCount.toLocaleString()}
-              </span>
-              <span className="text-sm font-medium text-white">Users Signed up</span>
-            </div>
-          </div>
-
           {/* New Posts Notification - Sticky at top when visible */}
           {newPostsCount > 0 && (
             <div className="sticky top-14 z-[100] flex justify-center py-2 mb-2">
@@ -1748,21 +1735,6 @@ export default function DiscoveryFeedView({
   return (
     <div className="relative w-full overflow-x-hidden overflow-y-visible">
       <div className="relative z-10 space-y-4">
-        {/* User Count Display - Hidden in single post view */}
-        {viewMode === "list" && (
-          <div className="bg-white/10 backdrop-blur-2xl border-0 rounded-lg p-2 animate-shimmer-slow">
-            <div className="flex items-center justify-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
-                <Users className="h-4 w-4 text-white/70" />
-              </div>
-              <span className="text-sm font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
-                {currentUserCount.toLocaleString()}
-              </span>
-              <span className="text-sm font-medium text-white">Users Signed up</span>
-            </div>
-          </div>
-        )}
-
         {/* New Posts Notification - Sticky at top when visible */}
         {newPostsCount > 0 && (
           <div className="sticky top-14 z-[100] flex justify-center py-2 mb-2">

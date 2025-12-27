@@ -121,7 +121,7 @@ export function LandingPage({ currentUserCount, userGoal }: LandingPageProps) {
                       <div className="text-sm sm:text-base text-white/70">Goal</div>
                       <div className="mt-2 w-32 sm:w-40 h-2 bg-white/10 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-white via-white/90 to-white/70 transition-all duration-1000 ease-out"
+                          className="h-full bg-white transition-all duration-1000 ease-out"
                           style={{ width: `${progressPercentage}%` }}
                         />
                       </div>

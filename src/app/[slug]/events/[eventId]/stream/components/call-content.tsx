@@ -825,7 +825,7 @@ function CallContentInner({
           aria-hidden="true"
           className="fixed inset-0 z-0 w-full h-full"
           style={{
-            background: "radial-gradient(circle at top, rgba(112, 4, 220, 0.45), transparent 60%), radial-gradient(circle at bottom, rgba(45, 3, 84, 0.5), transparent 55%), linear-gradient(135deg, rgba(13, 4, 31, 0.95), rgba(15, 5, 34, 0.95))",
+            background: "radial-gradient(circle at top, rgba(34, 197, 94, 0.45), transparent 60%), radial-gradient(circle at bottom, rgba(21, 128, 61, 0.5), transparent 55%), linear-gradient(135deg, rgba(5, 20, 10, 0.95), rgba(8, 25, 12, 0.95))",
           }}
         />
         {/* Header - Platform style matching bottom bar */}

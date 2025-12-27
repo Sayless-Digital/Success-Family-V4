@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth-provider"
+import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 
 interface GlobalSidebarProps {
@@ -65,6 +66,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isAppInstalled, setIsAppInstalled] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
+  const [currentUserCount, setCurrentUserCount] = useState<number>(0)
   const { userProfile, isLoading, user, signOut } = useAuth()
   const pathname = usePathname()
   
@@ -129,6 +131,22 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
     }
   }, [])
 
+  // Fetch user count
+  useEffect(() => {
+    const fetchUserCount = async () => {
+      try {
+        const { count } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+        setCurrentUserCount(count ?? 0)
+      } catch (error) {
+        console.error('Error fetching user count:', error)
+      }
+    }
+
+    fetchUserCount()
+  }, [])
+
   const handleInstallClick = async () => {
     if (installPrompt) {
       installPrompt.prompt()
@@ -142,7 +160,7 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
       }
     } else if (isIOS) {
       toast.info("Install Success Family", {
-        description: "Tap the share icon, then choose “Add to Home Screen”.",
+        description: "Tap the share icon, then choose \"Add to Home Screen\".",
       })
     }
 
@@ -220,8 +238,23 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
         }}
       >
         <div className="h-full flex flex-col relative z-10">
+          {/* User Count Display */}
+          <div className="px-4 pt-4 pb-2">
+            <div className="bg-white/10 backdrop-blur-2xl border-0 rounded-lg p-2">
+              <div className="flex items-center justify-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
+                  <Users className="h-4 w-4 text-white/70" />
+                </div>
+                <span className="text-sm font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
+                  {currentUserCount.toLocaleString()}
+                </span>
+                <span className="text-sm font-medium text-white">Users Signed up</span>
+              </div>
+            </div>
+          </div>
+
           {/* Navigation */}
-          <nav className="flex-1 p-4 pt-6 overflow-y-auto">
+          <nav className="flex-1 px-4 pt-2 overflow-y-auto">
             <ul className="space-y-2">
               {showAdminMenu ? (
                 // Admin users see only admin navigation with back to site button (only on admin routes)
@@ -306,14 +339,14 @@ export function GlobalSidebar({ isOpen, onClose, isPinned, onTogglePin, onHoverC
                     </li>
                   )}
                   
-                  {/* Admin-only Email indicator - yellow to show it's not visible to others */}
+                  {/* Admin-only Email indicator - orange to show it's not visible to others */}
                   {isAdmin && (
                     <>
                       <Separator className="my-2 bg-white/10" />
                       <li>
                         <Button
                             variant="ghost"
-                            className="w-full justify-start gap-3 h-10 text-yellow-400 hover:bg-yellow-400/20 hover:backdrop-blur-md touch-feedback"
+                            className="w-full justify-start gap-3 h-10 text-orange-500 hover:bg-orange-500/20 hover:backdrop-blur-md touch-feedback"
                             asChild
                           >
                             <Link href="/emails" onClick={() => isMobile && onClose()} prefetch={true}>
