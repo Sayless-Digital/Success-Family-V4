@@ -2,6 +2,8 @@
 
 A modern community platform built with Next.js, shadcn/ui, and Supabase.
 
+<!-- Version: 2025.01 -->
+
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router
