@@ -139,6 +139,16 @@ const nextConfig = {
         hostname: '**.supabase.co',
         pathname: '/storage/v1/object/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'i.ytimg.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.youtube.com',
+        pathname: '/**',
+      },
     ],
   },
   

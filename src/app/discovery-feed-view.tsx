@@ -195,9 +195,9 @@ export default function DiscoveryFeedView({
   ): T[] => {
     if (sortedArray.length === 0) return sortedArray
 
-    // Create a variety seed that changes with refresh token
-    // Use a more varied seed to ensure different shuffles each time
-    const varietySeed = refreshToken * 7919 + Date.now()
+    // Use only refreshToken for seed to ensure deterministic shuffle on initial render
+    // refreshToken starts at 0, ensuring same shuffle on server and client
+    const varietySeed = refreshToken * 7919
 
     // Better seeded random function
     const seededRandom = (seed: number, index: number) => {
